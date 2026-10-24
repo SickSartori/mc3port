@@ -89,3 +89,38 @@ Fatti emersi facendo girare il gioco, che il kernel emulato deve rispettare:
 - **Errore fatale del gioco**: `0x19070` (`exit(1)` con messaggio).
 - **Audio**: DirectSound aspetta `0xFE820010 ≥ 0x20` e il codec AC97 pronto (`0xFEC0012C` bit 8); XACT si ferma a
   `0x408FFC`.
+
+## DirectSound (DSOUND 5849)
+
+Punti d'ingresso chiamati da fuori la libreria (scansione di tutte le `call`/`jmp` verso `0x3C0400`-`0x3CBEBC`).
+I wrapper COM convertono l'interfaccia nell'oggetto interno: `this-8` per `IDirectSound`, `this-0x1C` per
+`IDirectSoundBuffer`; gli stream usano `this+4` e i metodi `XMediaObject` (`Process`, `GetStatus`, `Flush`…) vanno
+tramite vtable.
+
+| Indirizzo | Funzione | Come è stata riconosciuta |
+|---|---|---|
+| `0x3C38D3` | `DirectSoundCreate` | 3 argomenti, chiamata all'inizio di XACT |
+| `0x3C391A` | `DirectSoundCreateStream` | crea il device e chiama `CreateSoundStream` |
+| `0x3C22EC` | `DirectSoundDoWork` | 0 argomenti, chiamata dal ciclo del gioco |
+| `0x3C06F2` | `XAudioCalculatePitch` | 48000 Hz -> 0 (resta nativa) |
+| `0x3C073C`/`0x3C0741` | `XAudioCreatePcmFormat`/`AdpcmFormat` | riempiono `WAVEFORMATEX` (restano native) |
+| `0x3C2034` | `IDirectSound_SetMixBinHeadroom` | XACT la chiama per i 32 mixbin |
+| `0x3C36C5`/`0x3C36E9` | `CreateSoundBuffer`/`CreateSoundStream` | Bink usa la prima, `0x3C391A` la seconda |
+| `0x3C2054` | `GetOutputLevels` | copia 16 dword da memoria APU |
+| `0x3C2210`/`0x3C06D7` | `Lock`/`Unlock` | 8 argomenti / 5 argomenti senza effetto |
+| `0x3C2138`/`0x3C215C`/`0x3C2174` | `Play`/`Stop`/`StopEx` | flag di play; `StopEx` con timestamp |
+| `0x3C21D4`/`0x3C21F4`/`0x3C21B8` | `GetCurrentPosition`/`SetCurrentPosition`/`GetStatus` | Bink, cursori e stato |
+| `0x3C2913`/`0x3C2198` | `SetPlayRegion`/`SetLoopRegion` | controlli su dimensione buffer / regione di play |
+| `0x3C28BF`/`0x3C2090`/`0x3C2074` | `SetFrequency`/`SetPitch`/`SetVolume` | `XAudioCalculatePitch`; volume meno headroom |
+| `0x3C2240`/`0x3C211C` | `SetMixBins`/`SetMixBinVolumes` | coppie (mixbin, volume) |
+| `0x3C28F7`/`0x3C2F78` | `SetFormat`/`SetBufferData` | aggiorna il formato / imposta dati e dimensione |
+
+Elenco completo, compresi gli stream e le quattro funzioni non identificate, in `src/pc/dsound_hle.cpp`.
+
+DirectSound originale, senza APU, restituisce `DSERR_NODRIVER` (`0x88780078`); XACT allora fallisce e crasha nella
+propria pulizia (`0x408FFC`).
+
+## Rete
+
+- XNet scrive i registri della scheda di rete a `0xFEF00000` e collega l'interrupt di livello 4 (ISR `0x3D437B`).
+- All'avvio deriva chiavi con `XcHMAC`, `XcDESKeyParity`, `XcKeyTable`, `XcBlockCrypt*`.

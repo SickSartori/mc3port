@@ -20,6 +20,7 @@
 #include "core/xbe.h"
 #include "core/xdvdfs.h"
 #include "pc/exec_memory.h"
+#include "pc/dsound_hle.h"
 #include "pc/fs_patch.h"
 #include "pc/hle_patches.h"
 #include "pc/kernel.h"
@@ -246,14 +247,18 @@ void map_kernel_image_header() {
     std::memcpy(section->Name, ".data", 5);
 }
 
-// The MCPX audio hardware: the APU and the AC97 controller. Audio is phase 4 (DirectSound/XACT on XAudio2);
-// until then the libraries see plain memory there, preset so their initialisation can run.
+// MCPX devices the port does not emulate. DirectSound is replaced (dsound_hle.cpp), but its hardware stays
+// mapped as plain memory for any leftover access; the network stack sees an adapter without a link.
 void map_audio_placeholder() {
     struct Region {
         uint32_t base;
         uint32_t size;
     };
-    constexpr Region kRegions[] = {{0xFE800000, 0x80000}, {0xFEC00000, 0x1000}};  // APU, AC97
+    constexpr Region kRegions[] = {
+        {0xFE800000, 0x80000},  // APU
+        {0xFEC00000, 0x1000},   // AC97
+        {0xFEF00000, 0x1000},   // network controller: the port is offline, the network stack only initialises
+    };
     for (const Region& region : kRegions) {
         if (!VirtualAlloc(reinterpret_cast<void*>(static_cast<uintptr_t>(region.base)), region.size,
                           MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE)) {
@@ -350,6 +355,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     map_xbe(*g_xbe, host);
 
     apply_hle_patches(*g_xbe);
+    install_dsound_hle(*g_xbe);
     const FsPatchReport fs = patch_fs_reads(*g_xbe, g_exec_memory);
     log_line("fs: reads patched: %u (%u helpers), skipped: %u", fs.patched, fs.helpers, fs.skipped);
 

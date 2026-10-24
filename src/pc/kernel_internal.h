@@ -22,6 +22,7 @@ void register_thread_functions();
 void register_memory_functions();
 void register_system_functions();
 void register_io_functions();
+void register_crypto_functions();
 
 // Dispatcher (kernel_dispatcher.cpp). Objects are addresses of Xbox-layout dispatcher structures.
 NTSTATUS wait_for_objects(uint32_t count, const uint32_t* objects, bool wait_all, const int64_t* timeout);

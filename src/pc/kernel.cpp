@@ -151,6 +151,7 @@ void register_all_kernel_functions() {
     register_memory_functions();
     register_system_functions();
     register_io_functions();
+    register_crypto_functions();
 }
 
 void register_kernel_function(uint32_t ordinal, const void* function) {

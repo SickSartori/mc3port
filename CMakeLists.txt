@@ -25,11 +25,14 @@ if(WIN32)
 
     # Runtime: maps the XBE, emulates the Xbox kernel and hosts the game's threads.
     add_library(mc3runtime SHARED
+        src/pc/audio_mixer.cpp
+        src/pc/dsound_hle.cpp
         src/pc/exec_memory.cpp
         src/pc/fs_patch.cpp
         src/pc/handles.cpp
         src/pc/hle_patches.cpp
         src/pc/kernel.cpp
+        src/pc/kernel_crypto.cpp
         src/pc/kernel_dispatcher.cpp
         src/pc/kernel_io.cpp
         src/pc/kernel_memory.cpp
@@ -43,7 +46,7 @@ if(WIN32)
         src/pc/runtime.cpp
         src/pc/xbox_thread.cpp
     )
-    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm)
+    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
     # Launcher: linked at the XBE base (0x10000) so Windows reserves the game's address range for us.

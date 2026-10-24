@@ -26,7 +26,7 @@ Il codice del gioco è x86 a 32 bit, come il PC: non va tradotto, va solo "ospit
 | 1 | Launcher a 0x10000, mappatura XBE, patch `fs:`, thunk del kernel con stub che registrano la prima chiamata mancante | fatto |
 | 2 | Kernel: memoria, thread, sincronizzazione, file (`D:\` letto direttamente dalla ISO), tempo | fatto per l'avvio: il gioco arriva all'inizializzazione grafica. Restano 23 funzioni mai chiamate finora (driver `Io*`, crittografia `Xc*` per salvataggi e online) |
 | 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco; poi rendering su D3D11/Vulkan | in corso: `CreateDevice` riesce, il push buffer scorre, mancano disegno e presentazione |
-| 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | da fare |
+| 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | audio fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2); input da fare |
 | 5 | Miglioramenti: risoluzione, widescreen, 60 fps, caricamenti | da fare |
 
 ### Grafica: perché si emula la GPU e non Direct3D
@@ -45,13 +45,26 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
 Prossimi passi della fase 3: tradurre i metodi Kelvin (stati, vertex/pixel shader, texture swizzled, draw) in
 chiamate D3D11 e presentare i frame. Fino ad allora la finestra resta nera.
 
-### Input e audio provvisori
+### Audio
+
+DirectSound è sostituito alla sua interfaccia (`dsound_hle.cpp`): i 57 punti d'ingresso usati da gioco, XACT, Bink e
+XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano quelli originali e girano sopra.
+
+- **Mixer software** (`audio_mixer.cpp`): emula le voci dell'APU leggendo i campioni direttamente dalla memoria del
+  gioco (i ring buffer di Bink funzionano così come sono), con regioni di play/loop, pitch Xbox (4096 per ottava,
+  0 = 48 kHz), volumi in centesimi di dB, mixbin verso lo stereo, PCM 8/16 bit e ADPCM Xbox, pacchetti degli stream
+  con eventi e callback (consegnate in `DirectSoundDoWork`).
+- **Uscita**: XAudio2, stereo 48 kHz a blocchi da 10 ms. Il log riporta ogni 10 s quanto audio è stato prodotto.
+- **Non ancora emulati**: effetti DSP (riverbero, il file `dsstdfx.bin` viene accettato e ignorato), LFO, inviluppi,
+  filtri, headroom, audio 3D. Quattro funzioni DirectSound non sono ancora identificate con certezza: accettano gli
+  argomenti, riescono e lo registrano nel log.
+
+### Input e rete provvisori
 
 - **Input**: `XInitDevices` e `XGetDeviceEnumerationStatus` sono sostituite (`hle_patches.cpp`): nessun controller
   collegato. L'input vero arriverà sostituendo `XGetDevices`/`XInputOpen`/`XInputGetState` con XInput del PC.
-- **Audio**: l'APU (`0xFE800000`) e l'AC97 (`0xFEC00000`) sono memoria semplice con due valori preimpostati, quanto
-  basta per l'inizializzazione di DirectSound. Il motore XACT invece crasha (`0x408FFC`): è il prossimo blocco, e va
-  risolto sostituendo DirectSound/XACT con XAudio2 (fase 4).
+- **Rete**: la scheda di rete (`0xFEF00000`) è memoria semplice e il PHY risponde "cavo scollegato"; la cifratura
+  DES del traffico è un passaggio trasparente. Xbox Live e System Link non sono supportati.
 
 ## Xbox 360
 
