@@ -13,6 +13,7 @@
 
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
+#include "pc/nv2a.h"
 
 namespace mc3::pc {
 namespace {
@@ -52,15 +53,21 @@ NTSTATUS __stdcall KeRestoreFloatingPointState(void*) { return kStatusSuccess; }
 
 // --- firmware, HAL, debugging ---
 
+}  // namespace
+
 // Logs the stack words that look like return addresses into the game's code: a cheap backtrace that works
 // whether or not the game's functions keep frame pointers.
 void log_game_return_addresses(const void* stack_pointer) {
     const Xbe* xbe = g_xbe;
     if (!xbe) return;
     const auto* stack = static_cast<const uint32_t*>(stack_pointer);
+    MEMORY_BASIC_INFORMATION region{};
+    if (!VirtualQuery(stack, &region, sizeof(region)) || region.State != MEM_COMMIT) return;
+    const auto* end = reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(region.BaseAddress) +
+                                                        region.RegionSize);
     std::string line;
     int found = 0;
-    for (int i = 0; i < 1024 && found < 24; ++i) {
+    for (int i = 0; stack + i < end && i < 4096 && found < 32; ++i) {
         const uint32_t value = stack[i];
         for (const XbeSection& section : xbe->sections()) {
             if (section.executable() && value > section.virtual_address &&
@@ -75,6 +82,8 @@ void log_game_return_addresses(const void* stack_pointer) {
     }
     log_line("  return addresses on the stack:%s", line.c_str());
 }
+
+namespace {
 
 [[noreturn]] void quit(const char* reason, uint32_t code, const void* caller) {
     log_line("%s (%08X) called from %08X: the game asked to leave", reason, code, address_of(caller));
@@ -128,15 +137,24 @@ uint32_t __cdecl DbgPrint(const char* format, ...) {
 // --- video encoder ---
 
 constexpr uint32_t kAvQueryAvCapabilities = 6;
-constexpr uint32_t kAvStandardPalI = 0x00000300;
 constexpr uint32_t kAvPackScart = 0x00000003;
+constexpr uint32_t kAvStandardPalI = 0x00000300;
+constexpr uint32_t kAvFlags60Hz = 0x00400000;
+constexpr uint32_t kAvFlags50Hz = 0x00800000;
 
 uint32_t __stdcall AvGetSavedDataAddress() { return 0; }
 void __stdcall AvSetSavedDataAddress(uint32_t) {}
-NTSTATUS __stdcall AvSetDisplayMode(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) { return kStatusSuccess; }
+NTSTATUS __stdcall AvSetDisplayMode(uint32_t /*register_base*/, uint32_t /*step*/, uint32_t mode, uint32_t format,
+                                    uint32_t pitch, uint32_t frame_buffer) {
+    nv2a_set_display_mode(mode, format, pitch, frame_buffer);
+    return kStatusSuccess;
+}
 
 void __stdcall AvSendTVEncoderOption(uint32_t, uint32_t option, uint32_t, uint32_t* result) {
-    if (result) *result = option == kAvQueryAvCapabilities ? (kAvStandardPalI | kAvPackScart) : 0;
+    // A PAL console on SCART with PAL 60 enabled: both refresh rates are available.
+    if (result) {
+        *result = option == kAvQueryAvCapabilities ? (kAvPackScart | kAvStandardPalI | kAvFlags60Hz | kAvFlags50Hz) : 0;
+    }
 }
 
 // --- EEPROM settings (ExQueryNonVolatileSetting) ---
@@ -160,7 +178,7 @@ NTSTATUS __stdcall ExQueryNonVolatileSetting(uint32_t value_index, uint32_t* typ
     switch (value_index) {
         case 0x0: dword = 0; break;                       // XC_TIMEZONE_BIAS
         case 0x7: dword = configured_language(); break;   // XC_LANGUAGE
-        case 0x8: dword = 0x00000040; break;              // XC_VIDEO_FLAGS: PAL 60 Hz allowed
+        case 0x8: dword = kAvFlags60Hz; break;            // XC_VIDEO_FLAGS: PAL 60 Hz allowed
         case 0x9: dword = 0; break;                       // XC_AUDIO_FLAGS: stereo
         case 0xA: case 0xB: case 0xC: dword = 0; break;   // parental control: off
         case 0x11: dword = 0; break;                      // XC_MISC

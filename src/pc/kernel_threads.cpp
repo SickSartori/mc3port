@@ -11,7 +11,10 @@
 namespace mc3::pc {
 namespace {
 
-constexpr SIZE_T kMinimumStackReservation = 1024 * 1024;
+// Xbox stacks are committed up front and the Xbox CRT does not probe large stack frames page by page. On Windows
+// that would jump over the guard page into uncommitted memory, where not even an exception can be delivered, so
+// game threads get their whole stack committed.
+constexpr SIZE_T kMinimumStackSize = 1024 * 1024;
 
 struct ThreadStart {
     uint32_t start_routine;
@@ -60,8 +63,8 @@ NTSTATUS __stdcall PsCreateSystemThreadEx(uint32_t* thread_handle, uint32_t /*th
                                   CreateEventW(nullptr, TRUE, FALSE, nullptr),
                                   CreateEventW(nullptr, TRUE, FALSE, nullptr),
                                   nullptr};
-    const SIZE_T stack = std::max<SIZE_T>(kernel_stack_size, kMinimumStackReservation);
-    HANDLE thread = CreateThread(nullptr, stack, xbox_thread_main, start, STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+    const SIZE_T stack = std::max<SIZE_T>(kernel_stack_size, kMinimumStackSize);
+    HANDLE thread = CreateThread(nullptr, stack, xbox_thread_main, start, 0, nullptr);  // size = committed
     if (!thread) {
         log_line("PsCreateSystemThreadEx: CreateThread failed (error %lu)", GetLastError());
         CloseHandle(start->ready);

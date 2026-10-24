@@ -28,6 +28,7 @@ if(WIN32)
         src/pc/exec_memory.cpp
         src/pc/fs_patch.cpp
         src/pc/handles.cpp
+        src/pc/hle_patches.cpp
         src/pc/kernel.cpp
         src/pc/kernel_dispatcher.cpp
         src/pc/kernel_io.cpp
@@ -35,10 +36,14 @@ if(WIN32)
         src/pc/kernel_system.cpp
         src/pc/kernel_threads.cpp
         src/pc/log.cpp
+        src/pc/mmio.cpp
+        src/pc/nv2a.cpp
+        src/pc/physical_memory.cpp
+        src/pc/privileged.cpp
         src/pc/runtime.cpp
         src/pc/xbox_thread.cpp
     )
-    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 winmm)
+    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
     # Launcher: linked at the XBE base (0x10000) so Windows reserves the game's address range for us.

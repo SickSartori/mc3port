@@ -26,6 +26,8 @@ void register_io_functions();
 // Dispatcher (kernel_dispatcher.cpp). Objects are addresses of Xbox-layout dispatcher structures.
 NTSTATUS wait_for_objects(uint32_t count, const uint32_t* objects, bool wait_all, const int64_t* timeout);
 int32_t set_event(uint32_t event);
+// Runs the ISR connected to a bus interrupt level (KeConnectInterrupt); false if none is connected.
+bool trigger_interrupt(uint32_t bus_interrupt_level);
 void signal_thread_object(uint32_t kthread);  // the thread has terminated
 void start_dispatcher_services(const XbeTlsTemplate& tls);
 
@@ -40,6 +42,9 @@ int64_t timeout_to_milliseconds(const int64_t* timeout);
 
 // Value of the LaunchDataPage kernel variable (a LAUNCH_DATA_PAGE*, 0 if none).
 uint32_t kernel_launch_data_page();
+
+// Logs the words on a stack that look like return addresses into the game's code.
+void log_game_return_addresses(const void* stack_pointer);
 
 // The XBE being run, for XeLoadSection.
 void set_kernel_xbe(const Xbe* xbe);

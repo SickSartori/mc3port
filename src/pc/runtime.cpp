@@ -21,9 +21,13 @@
 #include "core/xdvdfs.h"
 #include "pc/exec_memory.h"
 #include "pc/fs_patch.h"
+#include "pc/hle_patches.h"
 #include "pc/kernel.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
+#include "pc/nv2a.h"
+#include "pc/physical_memory.h"
+#include "pc/privileged.h"
 #include "pc/xbox_thread.h"
 
 static_assert(sizeof(void*) == 4, "the PC runtime runs the game's x86 code natively and must be 32-bit");
@@ -205,9 +209,19 @@ LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     } else {
         log_line("  not an Xbox thread");
     }
+    // ESP itself may be what went wrong: only read it if it points at committed memory.
     const auto* stack = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(context->Esp));
-    log_line("  stack: %08X %08X %08X %08X %08X %08X %08X %08X", stack[0], stack[1], stack[2], stack[3], stack[4],
-             stack[5], stack[6], stack[7]);
+    MEMORY_BASIC_INFORMATION region{};
+    if (VirtualQuery(stack, &region, sizeof(region)) && region.State == MEM_COMMIT &&
+        reinterpret_cast<const uint8_t*>(stack + 8) <=
+            static_cast<const uint8_t*>(region.BaseAddress) + region.RegionSize &&
+        !(region.Protect & (PAGE_GUARD | PAGE_NOACCESS))) {
+        log_line("  stack: %08X %08X %08X %08X %08X %08X %08X %08X", stack[0], stack[1], stack[2], stack[3], stack[4],
+                 stack[5], stack[6], stack[7]);
+        log_game_return_addresses(stack);
+    } else {
+        log_line("  stack pointer %08lX is not readable", context->Esp);
+    }
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
@@ -216,9 +230,8 @@ LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
 void map_kernel_image_header() {
     constexpr uint32_t kKernelImageBase = 0x80010000;
     constexpr uint32_t kNtHeadersOffset = 0x80;
-    auto* base = static_cast<uint8_t*>(VirtualAlloc(reinterpret_cast<void*>(static_cast<uintptr_t>(kKernelImageBase)),
-                                                    0x1000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
-    if (!base) fatal("cannot map the kernel image header at %08X (error %lu)", kKernelImageBase, GetLastError());
+    // Inside the physical memory window, in the pages reserved for the kernel.
+    auto* base = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(kKernelImageBase));
     auto* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
     dos->e_magic = IMAGE_DOS_SIGNATURE;
     dos->e_lfanew = kNtHeadersOffset;
@@ -231,8 +244,27 @@ void map_kernel_image_header() {
     nt->OptionalHeader.ImageBase = kKernelImageBase;
     auto* section = IMAGE_FIRST_SECTION(nt);
     std::memcpy(section->Name, ".data", 5);
-    DWORD old_protection = 0;
-    VirtualProtect(base, 0x1000, PAGE_READONLY, &old_protection);
+}
+
+// The MCPX audio hardware: the APU and the AC97 controller. Audio is phase 4 (DirectSound/XACT on XAudio2);
+// until then the libraries see plain memory there, preset so their initialisation can run.
+void map_audio_placeholder() {
+    struct Region {
+        uint32_t base;
+        uint32_t size;
+    };
+    constexpr Region kRegions[] = {{0xFE800000, 0x80000}, {0xFEC00000, 0x1000}};  // APU, AC97
+    for (const Region& region : kRegions) {
+        if (!VirtualAlloc(reinterpret_cast<void*>(static_cast<uintptr_t>(region.base)), region.size,
+                          MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE)) {
+            fatal("cannot map the audio placeholder at %08X (error %lu)", region.base, GetLastError());
+        }
+    }
+    const auto preset = [](uint32_t address, uint32_t value) {
+        *reinterpret_cast<volatile uint32_t*>(static_cast<uintptr_t>(address)) = value;
+    };
+    preset(0xFE820010, 0x20);   // APU global processor counter: DirectSound waits for it to pass 0x20
+    preset(0xFEC0012C, 0x100);  // AC97 global status: primary codec ready
 }
 
 // The Xbox has one CPU, and game code may rely on it (for example by never expecting two of its threads to run
@@ -253,6 +285,14 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
     constexpr DWORD kSetThreadName = 0x406D1388;
     static volatile long reported = 0;
     const DWORD code = info->ExceptionRecord->ExceptionCode;
+    if (code == STATUS_PRIVILEGED_INSTRUCTION && emulate_privileged_instruction(info->ContextRecord)) {
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2 &&
+        nv2a_handle_access_violation(info->ContextRecord,
+                                     static_cast<uint32_t>(info->ExceptionRecord->ExceptionInformation[1]))) {
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
     if (code == kMsvcCppException || code == kSetThreadName || code == DBG_PRINTEXCEPTION_C ||
         code == DBG_PRINTEXCEPTION_WIDE_C) {
         return EXCEPTION_CONTINUE_SEARCH;
@@ -309,6 +349,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
 
     map_xbe(*g_xbe, host);
 
+    apply_hle_patches(*g_xbe);
     const FsPatchReport fs = patch_fs_reads(*g_xbe, g_exec_memory);
     log_line("fs: reads patched: %u (%u helpers), skipped: %u", fs.patched, fs.helpers, fs.skipped);
 
@@ -323,12 +364,17 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     configure_file_system(g_disc.get(), hdd_directory.c_str());
     log_line("hard disk partitions: %s", reinterpret_cast<const char*>(hdd_directory.u8string().c_str()));
     restrict_to_one_core();
+    if (!map_physical_memory()) fatal("cannot map the Xbox physical memory window at %08X", kPhysicalMapBase);
     map_kernel_image_header();
+    if (!start_nv2a()) fatal("cannot start the NV2A emulation");
+    map_audio_placeholder();
 
     g_main_thread_start = MainThreadStart{g_xbe->entry_point(), prepare_tls(*g_xbe)};
     start_dispatcher_services(g_main_thread_start.tls);
-    HANDLE thread = CreateThread(nullptr, kMainThreadStackSize, xbox_main_thread, &g_main_thread_start,
-                                 STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+    const XbeSection& text = g_xbe->sections().front();
+    start_thread_watchdog(text.virtual_address, g_xbe->base_address() + g_xbe->image_size());
+    // Committed, not just reserved: see kMinimumStackSize in kernel_threads.cpp.
+    HANDLE thread = CreateThread(nullptr, kMainThreadStackSize, xbox_main_thread, &g_main_thread_start, 0, nullptr);
     if (!thread) fatal("CreateThread failed (error %lu)", GetLastError());
     CloseHandle(thread);
 

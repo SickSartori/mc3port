@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 
 namespace mc3::pc {
 
@@ -44,11 +45,19 @@ XboxThreadContext* current_xbox_thread();
 XboxThreadContext* xbox_thread_from_kthread(uint32_t kthread_address);
 uint32_t kthread_address(const XboxThreadContext* context);
 
+// Host thread that will run game code (ISRs, DPCs): its whole stack is committed up front, because the Xbox
+// CRT does not probe large stack frames page by page and would skip Windows' guard page.
+void start_game_code_thread(std::function<void()> body);
+
 // IRQL of the calling thread. Raising to DISPATCH_LEVEL or above takes a process-wide lock: on the
 // single-core Xbox nothing else runs at that point, and game code relies on it.
 uint8_t raise_irql(uint8_t new_irql);
 void lower_irql(uint8_t new_irql);
 uint8_t current_irql();
+
+// With MC3_WATCHDOG=<seconds>, periodically logs where every game thread is (EIP and return addresses into
+// the game's code): the quickest way to see what a hung game is waiting for.
+void start_thread_watchdog(uint32_t code_begin, uint32_t code_end);
 
 // Shared by every thread: the fields of KPROCESS the game reads through KTHREAD.ApcState.Process.
 uint8_t* xbox_process();

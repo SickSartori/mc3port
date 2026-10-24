@@ -4,7 +4,9 @@
 
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <intrin.h>
 
 #include "core/byteorder.h"
 #include "core/kernel_exports.h"
@@ -96,6 +98,40 @@ extern "C" [[noreturn]] void __cdecl report_unimplemented(uint32_t ordinal, uint
     }
 }
 
+// MC3_TRACE_KERNEL=<n>: log the first n kernel calls (name and caller). The wrapper saves every register, so
+// it also works for the fastcall exports.
+volatile long g_trace_remaining = 0;
+
+extern "C" void __cdecl trace_kernel_call(uint32_t ordinal, uint32_t /*saved_registers*/[8], uint32_t return_address) {
+    if (_InterlockedDecrement(&g_trace_remaining) < 0) return;
+    const KernelExport* entry = find_kernel_export(ordinal);
+    log_line("kernel: %s from %08X (thread %lu)", entry ? entry->name : "?", return_address, GetCurrentThreadId());
+}
+
+const void* make_trace_wrapper(ExecMemory& memory, uint32_t ordinal, const void* target) {
+    uint8_t* code = memory.allocate(32);
+    if (!code) return nullptr;
+    uint8_t* p = code;
+    *p++ = 0x60;  // pushad
+    *p++ = 0xFF;  // push dword [esp + 32]: the caller's return address
+    *p++ = 0x74;
+    *p++ = 0x24;
+    *p++ = 0x20;
+    *p++ = 0x54;  // push esp
+    *p++ = 0x68;  // push ordinal
+    store_le32(p, ordinal);
+    p += 4;
+    emit_call(p, reinterpret_cast<const void*>(&trace_kernel_call));
+    p += 5;
+    *p++ = 0x83;  // add esp, 12
+    *p++ = 0xC4;
+    *p++ = 0x0C;
+    *p++ = 0x61;  // popad
+    *p = 0xE9;    // jmp target
+    store_le32(p + 1, address_of(target) - (address_of(p) + 5));
+    return code;
+}
+
 const void* make_unimplemented_stub(ExecMemory& memory, uint32_t ordinal) {
     uint8_t* code = memory.allocate(10);
     if (!code) return nullptr;
@@ -122,6 +158,8 @@ void register_kernel_function(uint32_t ordinal, const void* function) {
 }
 
 bool install_kernel_thunks(const Xbe& xbe, ExecMemory& memory, KernelThunkReport* report, std::string* error) {
+    char trace[16] = {};
+    if (GetEnvironmentVariableA("MC3_TRACE_KERNEL", trace, sizeof(trace))) g_trace_remaining = std::atol(trace);
     auto* thunk = reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(xbe.kernel_thunk_address()));
     for (; *thunk != 0; ++thunk) {
         const uint32_t import = *thunk;
@@ -141,7 +179,8 @@ bool install_kernel_thunks(const Xbe& xbe, ExecMemory& memory, KernelThunkReport
             target = data_export(ordinal);
             ++report->data;
         } else if (g_functions[ordinal]) {
-            target = g_functions[ordinal];
+            target = g_trace_remaining > 0 ? make_trace_wrapper(memory, ordinal, g_functions[ordinal])
+                                           : g_functions[ordinal];
             ++report->implemented;
         } else {
             target = make_unimplemented_stub(memory, ordinal);

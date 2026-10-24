@@ -68,3 +68,24 @@ Fatti emersi facendo girare il gioco, che il kernel emulato deve rispettare:
   `XLD_LAUNCH_DASHBOARD_ERROR` (passando da XOnline, `0x3EC96F`): un "riavvio rapido" con launch data di tipo 1
   significa che prima c'è stata un'eccezione.
 - **Primo accesso alla GPU.** `0x41BBC7` legge `0xFD001804` (registri NV2A).
+
+## Grafica, input e audio (fase 3)
+
+- **Push buffer**: il canale 0 parte da GET = 0 (RAMFC azzerata); il driver scrive all'indirizzo fisico 0 un salto
+  al vero push buffer (2 MB a `0x03DDF000`). L'oggetto DMA del push buffer ha base 0 e limite `0x07FFAFFF`.
+- **Oggetti GPU** (RAMHT a RAMIN `0x10000`, 32 KB): `0x0D` Kelvin `0x97`, `0x0E` `0x39` (memoria-memoria),
+  `0x10` `0x9F` (blit), `0x11` `0x62` (superfici 2D), `0x12` `0x44`, `0x19` `0x30`; DMA `0x08` = semafori a
+  `0x03FDF000` (il fence che il driver aspetta), `0x09`/`0x0A` = tutta la RAM.
+- **Attese del driver**: `NV_PFB_WBC` (`0x100410`) bit 16, `CACHE1_STATUS`/`RUNOUT_STATUS`/`DMA_PUSH`, PUT/GET della
+  cache, il fence a `0x03FDF000`, `PGRAPH_INTR` (`0x400100`, se non viene azzerato in scrittura il driver ricorre
+  all'infinito).
+- **Modalità video**: `AvSendTVEncoderOption(…, 6)` deve restituire cavo, standard e frequenze
+  (`0x00C00303` = SCART, PAL-I, 50 e 60 Hz); la tabella delle modalità è a `0x421118`. In EEPROM il PAL 60 Hz è il
+  bit `0x00400000` di `XC_VIDEO_FLAGS`. Se non trova una modalità, `CreateDevice` fallisce e il gioco mostra
+  "Could not start graphics" (messaggio ereditato dalla versione PC dell'engine) ed esce.
+- **Input (XPP)**: `XInitDevices` `0x43F0E7` (chiamata tramite `0x4409F0`), `XGetDeviceEnumerationStatus`
+  `0x4411A2`, `XGetDevices` `0x4409F5`, `XInputOpen` `0x441D4D`, tipo gamepad `0x43E994`; sequenza nel gioco a
+  `0x84B40`.
+- **Errore fatale del gioco**: `0x19070` (`exit(1)` con messaggio).
+- **Audio**: DirectSound aspetta `0xFE820010 ≥ 0x20` e il codec AC97 pronto (`0xFEC0012C` bit 8); XACT si ferma a
+  `0x408FFC`.

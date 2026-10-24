@@ -25,16 +25,33 @@ Il codice del gioco è x86 a 32 bit, come il PC: non va tradotto, va solo "ospit
 | 0 | Analisi disco/XBE, struttura progetto, build CMake | fatto |
 | 1 | Launcher a 0x10000, mappatura XBE, patch `fs:`, thunk del kernel con stub che registrano la prima chiamata mancante | fatto |
 | 2 | Kernel: memoria, thread, sincronizzazione, file (`D:\` letto direttamente dalla ISO), tempo | fatto per l'avvio: il gioco arriva all'inizializzazione grafica. Restano 23 funzioni mai chiamate finora (driver `Io*`, crittografia `Xc*` per salvataggi e online) |
-| 3 | Direct3D 8 -> D3D11/Vulkan: individuare le funzioni D3D/XGRAPHICS (firme XbSymbolDatabase), texture swizzle, vertex shader Xbox, combiner NV2A | da fare |
+| 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco; poi rendering su D3D11/Vulkan | in corso: `CreateDevice` riesce, il push buffer scorre, mancano disegno e presentazione |
 | 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | da fare |
 | 5 | Miglioramenti: risoluzione, widescreen, 60 fps, caricamenti | da fare |
 
-Rischio principale: la fase 3. Il gioco scrive direttamente nel push buffer della GPU NV2A tramite la libreria D3D
-linkata staticamente, quindi va intercettata a livello di API (sezione `D3D` dell'XBE) e non a livello hardware.
+### Grafica: perché si emula la GPU e non Direct3D
 
-Punto di partenza della fase 3: la prima istruzione che tocca la GPU è a `0x41BBC7` (sezione `D3D`), una lettura
-del registro NV2A `0xFD001804`, chiamata da `0x41C11F` / `0x41611B`. Le funzioni D3D vanno sostituite prima che
-il gioco arrivi lì.
+La libreria D3D dell'Xbox scrive gran parte dei comandi direttamente nel push buffer, anche con codice inline nel
+gioco: sostituire le funzioni D3D lascerebbe fuori quel codice. Si emula invece la GPU (come xemu): il D3D originale
+gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
+
+- **Memoria fisica**: 64 MB a `0x80000000` come sull'Xbox (`physical_memory.cpp`); gli indirizzi GPU tornano.
+- **Registri** a `0xFD000000`: non mappati; ogni accesso genera un'eccezione che `mmio.cpp` decodifica (mov, movzx,
+  test, cmp, or, and) e ripete sul modello dei registri (interrupt write-1-to-clear, timer, FIFO sempre inattiva,
+  PUT che sveglia il thread GPU). La RAM d'istanza (`0xFD700000`) è memoria normale.
+- **Push buffer**: salti, chiamate, metodi; oggetti risolti tramite RAMHT; semafori e reference per i fence.
+- **Vblank** a 60 Hz verso l'ISR del driver; finestra Win32 che mostrerà il front buffer (`PCRTC_START`).
+
+Prossimi passi della fase 3: tradurre i metodi Kelvin (stati, vertex/pixel shader, texture swizzled, draw) in
+chiamate D3D11 e presentare i frame. Fino ad allora la finestra resta nera.
+
+### Input e audio provvisori
+
+- **Input**: `XInitDevices` e `XGetDeviceEnumerationStatus` sono sostituite (`hle_patches.cpp`): nessun controller
+  collegato. L'input vero arriverà sostituendo `XGetDevices`/`XInputOpen`/`XInputGetState` con XInput del PC.
+- **Audio**: l'APU (`0xFE800000`) e l'AC97 (`0xFEC00000`) sono memoria semplice con due valori preimpostati, quanto
+  basta per l'inizializzazione di DirectSound. Il motore XACT invece crasha (`0x408FFC`): è il prossimo blocco, e va
+  risolto sostituendo DirectSound/XACT con XAudio2 (fase 4).
 
 ## Xbox 360
 

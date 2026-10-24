@@ -7,6 +7,7 @@
 // XAPI at startup through IoCreateSymbolicLink.
 
 #include <windows.h>
+#include <malloc.h>
 
 #include <algorithm>
 #include <cctype>
@@ -947,6 +948,49 @@ NTSTATUS __stdcall NtQuerySymbolicLinkObject(uint32_t link_handle, XAnsiString* 
     return kStatusSuccess;
 }
 
+// Driver objects (XAPI's USB peripheral driver creates some). Xbox DEVICE_OBJECT layout, extension right after.
+#pragma pack(push, 1)
+struct XDeviceObject {
+    int16_t type;
+    uint16_t size;
+    int32_t reference_count;
+    uint32_t driver_object;
+    uint32_t mounted_or_self_device;
+    uint32_t current_irp;
+    uint32_t flags;
+    uint32_t device_extension;
+    uint8_t device_type;
+    uint8_t start_io_flags;
+    int8_t stack_size;
+    uint8_t delete_pending;
+    uint32_t sector_size;
+    uint32_t alignment_requirement;
+    uint8_t device_queue[20];
+    uint8_t device_lock[16];
+    uint32_t start_io_key;
+};
+#pragma pack(pop)
+
+NTSTATUS __stdcall IoCreateDevice(uint32_t driver_object, uint32_t extension_size, const XAnsiString* name,
+                                  uint32_t device_type, uint8_t /*exclusive*/, uint32_t* device_object) {
+    constexpr int16_t kIoTypeDevice = 3;
+    const uint32_t size = static_cast<uint32_t>(sizeof(XDeviceObject)) + extension_size;
+    auto* device = static_cast<XDeviceObject*>(_aligned_malloc((size + 15) & ~15u, 16));
+    std::memset(device, 0, size);
+    device->type = kIoTypeDevice;
+    device->size = static_cast<uint16_t>(sizeof(XDeviceObject));
+    device->reference_count = 1;
+    device->driver_object = driver_object;
+    device->mounted_or_self_device = address_of(device);
+    device->device_extension = extension_size ? address_of(device + 1) : 0;
+    device->device_type = static_cast<uint8_t>(device_type);
+    device->stack_size = 1;
+    *device_object = address_of(device);
+    log_line("IoCreateDevice('%s', type %X, extension %X) = %08X", ansi_string(name).c_str(), device_type,
+             extension_size, *device_object);
+    return kStatusSuccess;
+}
+
 }  // namespace
 
 void configure_file_system(const XdvdfsImage* disc, const wchar_t* host_data_directory) {
@@ -978,6 +1022,7 @@ void register_io_functions() {
     register_kernel(69, &IoDeleteSymbolicLink);
     register_kernel(203, &NtOpenSymbolicLinkObject);
     register_kernel(215, &NtQuerySymbolicLinkObject);
+    register_kernel(65, &IoCreateDevice);
 }
 
 }  // namespace mc3::pc

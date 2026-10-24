@@ -7,10 +7,16 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <cstdio>
+#include <memory>
 #include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
 #include "core/byteorder.h"
 #include "pc/exec_memory.h"
+#include "pc/log.h"
 #include "pc/xbox_types.h"
 
 namespace mc3::pc {
@@ -42,6 +48,8 @@ constexpr uint32_t kTebStackLimit = 0x08;
 constexpr uint8_t kNormalBasePriority = 8;
 
 thread_local XboxThreadContext* t_context = nullptr;
+std::mutex g_threads_mutex;
+std::vector<XboxThreadContext*> g_threads;
 std::recursive_mutex g_dispatch_level_lock;
 
 alignas(16) uint8_t g_process[kKProcessSize] = {};
@@ -94,6 +102,10 @@ XboxThreadContext* attach_xbox_thread_context(const XbeTlsTemplate& tls, uint32_
 
     t_context = context;
     __writefsdword(kXboxContextFsSlot, address_of(kpcr));
+    {
+        std::lock_guard<std::mutex> lock(g_threads_mutex);
+        g_threads.push_back(context);
+    }
     return context;
 }
 
@@ -123,5 +135,72 @@ void lower_irql(uint8_t new_irql) {
 }
 
 uint8_t* xbox_process() { return g_process; }
+
+void start_game_code_thread(std::function<void()> body) {
+    constexpr SIZE_T kStackSize = 1024 * 1024;
+    auto* owned = new std::function<void()>(std::move(body));
+    HANDLE thread = CreateThread(
+        nullptr, kStackSize,
+        [](void* parameter) -> DWORD {
+            std::unique_ptr<std::function<void()>> function(static_cast<std::function<void()>*>(parameter));
+            (*function)();
+            return 0;
+        },
+        owned, 0, nullptr);
+    if (thread) {
+        CloseHandle(thread);
+    } else {
+        delete owned;
+    }
+}
+
+void start_thread_watchdog(uint32_t code_begin, uint32_t code_end) {
+    wchar_t value[16] = {};
+    if (!GetEnvironmentVariableW(L"MC3_WATCHDOG", value, 16)) return;
+    const DWORD period = static_cast<DWORD>(_wtoi(value)) * 1000;
+    if (!period) return;
+    std::thread([=] {
+        for (;;) {
+            Sleep(period);
+            std::vector<XboxThreadContext*> threads;
+            {
+                std::lock_guard<std::mutex> lock(g_threads_mutex);
+                threads = g_threads;
+            }
+            log_line("watchdog: %zu Xbox threads", threads.size());
+            for (XboxThreadContext* context : threads) {
+                if (WaitForSingleObject(context->windows_thread, 0) == WAIT_OBJECT_0) continue;  // exited
+                if (SuspendThread(context->windows_thread) == static_cast<DWORD>(-1)) continue;
+                CONTEXT registers{};
+                registers.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+                const bool ok = GetThreadContext(context->windows_thread, &registers) != 0;
+                std::string trace;
+                if (ok) {
+                    const auto* stack = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(registers.Esp));
+                    MEMORY_BASIC_INFORMATION info{};
+                    VirtualQuery(stack, &info, sizeof(info));
+                    const auto* region_end = reinterpret_cast<const uint32_t*>(
+                        static_cast<const uint8_t*>(info.BaseAddress) + info.RegionSize);
+                    int found = 0;
+                    for (int i = 0; stack + i < region_end && i < 4096 && found < 10; ++i) {
+                        if (stack[i] >= code_begin && stack[i] < code_end) {
+                            char entry[16];
+                            std::snprintf(entry, sizeof(entry), " %08X", stack[i]);
+                            trace += entry;
+                            ++found;
+                        }
+                    }
+                }
+                ResumeThread(context->windows_thread);
+                if (ok) {
+                    log_line("  thread %u: eip %08lX irql %u eax %08lX ebx %08lX ecx %08lX edx %08lX esi %08lX edi %08lX "
+                             "ebp %08lX, stack:%s",
+                             context->thread_id, registers.Eip, context->kpcr[kKpcrIrql], registers.Eax, registers.Ebx,
+                             registers.Ecx, registers.Edx, registers.Esi, registers.Edi, registers.Ebp, trace.c_str());
+                }
+            }
+        }
+    }).detach();
+}
 
 }  // namespace mc3::pc

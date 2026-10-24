@@ -363,10 +363,53 @@ uint8_t __stdcall KeRaiseIrqlToDpcLevel() { return raise_irql(kDispatchLevel); }
 uint8_t __fastcall KfRaiseIrql(uint8_t new_irql) { return raise_irql(new_irql); }
 void __fastcall KfLowerIrql(uint8_t new_irql) { lower_irql(new_irql); }
 
-// Interrupts belong to the GPU and audio hardware, which the port replaces: they are accepted and never fire.
-void __stdcall KeInitializeInterrupt(void*, uint32_t, uint32_t, uint32_t, uint8_t, uint32_t, uint8_t) {}
-uint8_t __stdcall KeConnectInterrupt(void*) { return 1; }
-uint8_t __stdcall KeDisconnectInterrupt(void*) { return 1; }
+// Interrupts: the emulated hardware (nv2a.cpp) raises them through trigger_interrupt.
+#pragma pack(push, 1)
+struct XKInterrupt {
+    uint32_t service_routine;
+    uint32_t service_context;
+    uint32_t bus_interrupt_level;
+    uint32_t irql;
+    uint8_t connected;
+    uint8_t share_vector;
+    uint8_t mode;
+    uint8_t padding;
+    uint32_t service_count;
+};
+#pragma pack(pop)
+
+constexpr uint32_t kPrimaryVectorBase = 0x30;  // matches HalGetInterruptVector
+std::mutex g_interrupt_mutex;
+std::map<uint32_t, XKInterrupt*> g_interrupts;  // bus interrupt level -> connected interrupt object
+
+void __stdcall KeInitializeInterrupt(XKInterrupt* interrupt, uint32_t service_routine, uint32_t service_context,
+                                     uint32_t vector, uint8_t irql, uint32_t mode, uint8_t share_vector) {
+    std::memset(interrupt, 0, sizeof(*interrupt));
+    interrupt->service_routine = service_routine;
+    interrupt->service_context = service_context;
+    interrupt->bus_interrupt_level = vector - kPrimaryVectorBase;
+    interrupt->irql = irql;
+    interrupt->mode = static_cast<uint8_t>(mode);
+    interrupt->share_vector = share_vector;
+}
+
+uint8_t __stdcall KeConnectInterrupt(XKInterrupt* interrupt) {
+    std::lock_guard<std::mutex> lock(g_interrupt_mutex);
+    if (interrupt->connected) return 0;
+    interrupt->connected = 1;
+    g_interrupts[interrupt->bus_interrupt_level] = interrupt;
+    log_line("interrupt connected: level %u, ISR %08X, IRQL %u", interrupt->bus_interrupt_level,
+             interrupt->service_routine, interrupt->irql);
+    return 1;
+}
+
+uint8_t __stdcall KeDisconnectInterrupt(XKInterrupt* interrupt) {
+    std::lock_guard<std::mutex> lock(g_interrupt_mutex);
+    if (!interrupt->connected) return 0;
+    interrupt->connected = 0;
+    g_interrupts.erase(interrupt->bus_interrupt_level);
+    return 1;
+}
 
 uint8_t __stdcall KeSynchronizeExecution(void* /*interrupt*/, uint32_t routine, uint32_t context) {
     const uint8_t old_irql = raise_irql(kDispatchLevel + 1);
@@ -463,6 +506,23 @@ NTSTATUS wait_for_objects(uint32_t count, const uint32_t* objects, bool wait_all
     }
 }
 
+bool trigger_interrupt(uint32_t bus_interrupt_level) {
+    XKInterrupt* interrupt = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_interrupt_mutex);
+        const auto it = g_interrupts.find(bus_interrupt_level);
+        if (it == g_interrupts.end()) return false;
+        interrupt = it->second;
+    }
+    using ServiceRoutine = uint8_t(__stdcall*)(uint32_t interrupt, uint32_t context);
+    const uint8_t old_irql = raise_irql(static_cast<uint8_t>(interrupt->irql));
+    ++interrupt->service_count;
+    reinterpret_cast<ServiceRoutine>(static_cast<uintptr_t>(interrupt->service_routine))(address_of(interrupt),
+                                                                                        interrupt->service_context);
+    lower_irql(old_irql);
+    return true;
+}
+
 int32_t set_event(uint32_t event) {
     std::lock_guard<std::mutex> lock(g_mutex);
     XDispatcherHeader* header = header_of(event);
@@ -490,7 +550,7 @@ void start_dispatcher_services(const XbeTlsTemplate& tls) {
     store_system_time(g_system_time, current_file_time());
     std::thread(clock_thread).detach();
     std::thread(timer_thread).detach();
-    std::thread(dpc_thread, tls).detach();
+    start_game_code_thread([tls] { dpc_thread(tls); });
 }
 
 void* kernel_tick_count() { return const_cast<uint32_t*>(&g_tick_count); }
