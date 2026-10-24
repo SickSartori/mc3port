@@ -1,0 +1,61 @@
+# mc3port
+
+Port nativo di **Midnight Club 3: DUB Edition Remix** (versione Xbox originale, PAL) per **PC** e, in futuro,
+**Xbox 360**, al posto della retrocompatibilità della 360 (modalità Arcade non funzionante, problemi di caricamento).
+
+Il repository contiene solo codice: il gioco va fornito con la propria copia del disco (`.iso` XISO o Redump).
+
+Piano e stato delle fasi: [docs/ROADMAP.md](docs/ROADMAP.md). Dati ricavati dall'eseguibile: [docs/ANALISI_XBE.md](docs/ANALISI_XBE.md).
+
+## Come funziona (PC)
+
+- `mc3.exe` è un launcher minuscolo linkato all'indirizzo `0x10000`, lo stesso dell'XBE: così Windows riserva
+  l'intervallo di memoria che il gioco si aspetta.
+- `mc3runtime.dll` legge `default.xbe` direttamente dalla ISO, lo copia sopra il launcher, sostituisce gli accessi
+  `fs:` del kernel Xbox, collega le 154 funzioni del kernel e salta all'entry point del gioco.
+- Le funzioni del kernel non ancora scritte fermano il gioco e scrivono in `mc3port.log` quale funzione serve,
+  da dove è stata chiamata e con quali argomenti.
+
+## Requisiti
+
+Visual Studio 2026 con il carico di lavoro **"Sviluppo di applicazioni desktop con C++"**, comprensivo di:
+
+- strumenti di compilazione MSVC x64/x86
+- Windows 11 SDK
+- strumenti CMake C++ per Windows
+
+Python 3 solo per gli strumenti in `tools/`.
+
+## Compilazione
+
+Da un "Developer PowerShell for VS 2026", nella cartella del progetto:
+
+```
+cmake --preset pc-x86
+cmake --build --preset pc-x86-debug
+```
+
+## Avvio
+
+```
+build\pc-x86\Debug\mc3.exe "percorso\del\gioco.iso"
+```
+
+Senza argomenti usa la prima `.iso` trovata accanto a `mc3.exe` o nella cartella corrente.
+
+L'hard disk dell'Xbox (salvataggi in `UDATA`, dati del titolo in `TDATA`, cache `Z:`) è la cartella `xbox_hdd`
+accanto a `mc3.exe`. Il log di ogni avvio è `mc3port.log`, nella stessa cartella.
+
+Variabili d'ambiente:
+
+| Variabile | Effetto |
+|---|---|
+| `MC3_LANGUAGE` | lingua del sistema: 1 inglese, 3 tedesco, 4 francese, 5 spagnolo, 6 italiano (predefinito) |
+| `MC3_MULTICORE=1` | usa tutti i core; per default il gioco gira su un core solo, come sull'Xbox |
+| `MC3_NO_DIALOG=1` | niente finestra in caso di errore fatale (per i test automatici) |
+
+## Strumenti
+
+- `python -I tools/xiso_inspect.py <iso> [default.xbe di output]`: elenca i file del disco, analizza l'XBE ed eventualmente lo estrae.
+- `python -I tools/check_xbe.py <default.xbe>`: verifica la tabella del kernel e la scansione `fs:` del loader sull'XBE reale.
+- `python -I tools/xbe_to_pe.py <default.xbe> <out.exe>`: impacchetta l'XBE come PE per disassemblarlo agli indirizzi reali, per esempio con `dumpbin /disasm /range:0x13600,0x13700 out.exe`.
