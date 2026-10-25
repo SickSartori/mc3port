@@ -33,13 +33,20 @@ constexpr uint32_t kPacketFlushed = 0x80004004;
 
 constexpr uint32_t kPlayLooping = 0x1;
 constexpr uint32_t kPlayFromStart = 0x2;
+constexpr uint32_t kStopExEnvelope = 0x1;
 constexpr uint32_t kStopExReleaseWaveform = 0x2;
+constexpr uint32_t kFlushExAsync = 0x1;
+constexpr uint32_t kFlushExEnvelope = 0x4;  // XACT passes ASYNC | ENVELOPE (5) where it stops buffers with 3
 constexpr uint32_t kStatusPlaying = 0x1;
 constexpr uint32_t kStatusPaused = 0x2;
 constexpr uint32_t kStatusLooping = 0x4;
 constexpr uint32_t kLockFromWriteCursor = 0x1;
 constexpr uint32_t kLockEntireBuffer = 0x2;
-constexpr uint32_t kXmoAcceptInputData = 0x1;
+constexpr uint32_t kXmoAcceptInputData = 0x1;  // DSSTREAMSTATUS_READY
+constexpr uint32_t kStreamPlaying = 0x10000;
+constexpr uint32_t kStreamPaused = 0x20000;
+constexpr uint32_t kStreamStarved = 0x40000;
+constexpr uint32_t kStreamEnvelope = 0x80000;
 
 #pragma pack(push, 1)
 struct XDsBufferDesc {
@@ -164,6 +171,9 @@ void flush_stream(Voice& voice) {
     voice.packets.clear();
     voice.stream_fraction = 0;
     voice.decoded_block = -1;
+    voice.envelope_stage = EnvelopeStage::kOff;
+    voice.playing = false;
+    voice.end_of_stream = false;
 }
 
 uint32_t __stdcall StreamAddRef(uint32_t self) { return ++guest<DsObject>(self)->references; }
@@ -192,6 +202,12 @@ HRESULT32 __stdcall StreamGetStatus(uint32_t self, uint32_t* status) {
     std::lock_guard<std::mutex> lock(audio_lock());
     const Voice* voice = voice_of(self);
     *status = voice->packets.size() < std::max<uint32_t>(1, voice->max_attached_packets) ? kXmoAcceptInputData : 0;
+    // XACT and the game's music player both take a stream without PLAYING as finished: XACT restarted its music
+    // over and over, and a stopped track kept playing.
+    if (voice->playing) *status |= kStreamPlaying;
+    if (voice->paused) *status |= kStreamPaused;
+    if (voice->playing && voice->packets.empty()) *status |= kStreamStarved;
+    if (voice->envelope_stage == EnvelopeStage::kRelease) *status |= kStreamEnvelope;
     return kOk;
 }
 
@@ -201,11 +217,31 @@ HRESULT32 __stdcall StreamProcess(uint32_t self, const XMediaPacket* input, cons
     Voice* voice = voice_of(self);
     if (input->completed_size) *guest<uint32_t>(input->completed_size) = 0;
     if (input->status) *guest<uint32_t>(input->status) = kPacketPending;
+    if (voice->stopped_by_flush) {
+        static uint32_t logged = 0;
+        if (logged++ < 10) log_line("dsound: stream %p stopped by a flush: packet handed back", static_cast<void*>(voice));
+        complete_packet(*voice, StreamPacket{*input, 0}, kPacketFlushed);
+        return kOk;
+    }
     voice->packets.push_back(StreamPacket{*input, 0});
+    voice->playing = true;
     return kOk;
 }
 
-HRESULT32 __stdcall StreamDiscontinuity(uint32_t) { return kOk; }
+// The stream is being set up for new sound: it may play again after an asynchronous flush stopped it.
+void restart_stream(Voice& voice) { voice.stopped_by_flush = false; }
+
+// No more data: the stream stops once its packets have played instead of starving.
+HRESULT32 __stdcall StreamDiscontinuity(uint32_t self) {
+    std::lock_guard<std::mutex> lock(audio_lock());
+    Voice* voice = voice_of(self);
+    if (voice->packets.empty()) {
+        voice->playing = false;
+    } else {
+        voice->end_of_stream = true;
+    }
+    return kOk;
+}
 
 HRESULT32 __stdcall StreamFlush(uint32_t self) {
     std::lock_guard<std::mutex> lock(audio_lock());
@@ -235,6 +271,7 @@ HRESULT32 __stdcall DirectSoundCreate(uint32_t /*guid*/, uint32_t* direct_sound,
 HRESULT32 create_stream(const XDsStreamDesc* desc, uint32_t* stream) {
     std::lock_guard<std::mutex> lock(audio_lock());
     auto* object = new DsObject{kStreamVtable, 1, create_voice(true)};
+    object->voice->create_flags = desc->flags;
     apply_format(*object->voice, desc->format);
     object->voice->max_attached_packets = desc->max_attached_packets;
     object->voice->callback = desc->callback;
@@ -313,6 +350,7 @@ HRESULT32 __stdcall DsCreateSoundBuffer(uint32_t, const XDsBufferDesc* desc, uin
     std::lock_guard<std::mutex> lock(audio_lock());
     auto* object = new DsObject{kBufferVtable, 1, create_voice(false)};
     Voice& voice = *object->voice;
+    voice.create_flags = desc->flags;
     static uint32_t logged = 0;
     if (logged++ < 30) {
         log_line("dsound: create buffer %p: size %u flags %08X bytes %u format %08X mix bins %08X input %08X",
@@ -385,6 +423,7 @@ HRESULT32 __stdcall VoiceGetVoiceProperties(uint32_t self, XDsVoiceProps* props)
 HRESULT32 __stdcall VoiceSetMixBins(uint32_t self, uint32_t mix_bins) {
     std::lock_guard<std::mutex> lock(audio_lock());
     apply_mix_bins(*voice_of(self), mix_bins, true);
+    restart_stream(*voice_of(self));
     return kOk;
 }
 
@@ -397,22 +436,61 @@ HRESULT32 __stdcall VoiceSetMixBinVolumes(uint32_t self, uint32_t mix_bins) {
 HRESULT32 __stdcall VoiceSetFormat(uint32_t self, uint32_t format) {
     std::lock_guard<std::mutex> lock(audio_lock());
     apply_format(*voice_of(self), format);
+    restart_stream(*voice_of(self));
     return kOk;
 }
 
-// LFO, envelope, filter and headroom shape the sound on the APU; not emulated yet.
+// DSENVELOPEDESC. Times are in units of 512 samples, the sustain level in 1/255.
+struct XDsEnvelopeDesc {
+    uint32_t generator;  // 0 amplitude, 1 multi (pitch and filter)
+    uint32_t mode;       // 0 disabled, 1 starts with the delay, 2 with the attack, 3 with the hold
+    uint32_t delay, attack, hold, decay, release, sustain;
+    int32_t pitch_scale, filter_cutoff;
+};
+
+// The amplitude envelope is emulated (XACT fades its sounds out with the release); the multi envelope, which
+// moves pitch and filter, is not.
+HRESULT32 __stdcall VoiceSetEnvelope(uint32_t self, const XDsEnvelopeDesc* desc) {
+    constexpr uint32_t kUnit = 512;
+    if (!desc || desc->generator != 0) return kOk;
+    std::lock_guard<std::mutex> lock(audio_lock());
+    Voice* voice = voice_of(self);
+    Envelope& envelope = voice->envelope;
+    envelope.enabled = desc->mode != 0;
+    envelope.first_stage = desc->mode;
+    envelope.delay = desc->delay * kUnit;
+    envelope.attack = desc->attack * kUnit;
+    envelope.hold = desc->hold * kUnit;
+    envelope.decay = desc->decay * kUnit;
+    envelope.release = desc->release * kUnit;
+    envelope.sustain = std::min<uint32_t>(desc->sustain, 255) / 255.0f;
+    static uint32_t logged = 0;
+    if (logged++ < 40) {
+        log_line("dsound: voice %p envelope mode %u delay %u attack %u hold %u decay %u release %u sustain %u",
+                 static_cast<void*>(voice), desc->mode, desc->delay, desc->attack, desc->hold, desc->decay,
+                 desc->release, desc->sustain);
+    }
+    return kOk;
+}
+
+// LFO, filter and headroom shape the sound on the APU; not emulated yet.
 HRESULT32 __stdcall VoiceSetLfo(uint32_t, uint32_t) { return kOk; }
-HRESULT32 __stdcall VoiceSetEnvelope(uint32_t, uint32_t) { return kOk; }
-HRESULT32 __stdcall VoiceSetFilter(uint32_t, uint32_t) { return kOk; }
+HRESULT32 __stdcall VoiceSetFilter(uint32_t, uint32_t) { return kOk; }  // MC3 never sets one
 HRESULT32 __stdcall VoiceSetHeadroom(uint32_t self, uint32_t headroom) {
     static uint32_t logged = 0;
     if (logged++ < 40) log_line("dsound: voice %p headroom %u", static_cast<void*>(voice_of(self)), headroom);
     return kOk;
 }
-HRESULT32 __stdcall VoiceSetOutputBuffer(uint32_t, uint32_t) { return kOk; }
+HRESULT32 __stdcall VoiceSetOutputBuffer(uint32_t, uint32_t) { return kOk; }  // MC3 only ever passes NULL
 
+// DirectSound 3D (see docs/ANALISI_XBE.md): 0x2C7C/0x1627 compute the source position relative to the listener and
+// 0x0C94 applies the result to the voice, 0x0DC5 switches 3D on and off. XACT only takes that path for 3D cues and
+// MC3 has none (it creates no DSBCAPS_CTRL3D buffer and only ever switches 3D off): it pans with mix bin volumes.
 HRESULT32 __stdcall VoiceUnidentified2a(uint32_t self, uint32_t a) { log_unidentified("voice 0x0C94", self, a); return kOk; }
-HRESULT32 __stdcall VoiceUnidentified2b(uint32_t self, uint32_t a) { log_unidentified("voice 0x0DC5", self, a); return kOk; }
+HRESULT32 __stdcall VoiceUnidentified2b(uint32_t self, uint32_t a) {
+    if (a) log_unidentified("voice 0x0DC5 (3D on)", self, a);
+    return kOk;
+}
 HRESULT32 __stdcall Voice3dParameters5(uint32_t self, uint32_t a, uint32_t, uint32_t, uint32_t) {
     log_unidentified("stream 3D 0x1627", self, a);
     return kOk;
@@ -425,6 +503,8 @@ HRESULT32 __stdcall BufferPlay(uint32_t self, uint32_t, uint32_t, uint32_t flags
     std::lock_guard<std::mutex> lock(audio_lock());
     Voice* voice = voice_of(self);
     if (flags & kPlayFromStart) voice->position = 0;
+    if (!voice->playing) voice->active_chunks = 0;
+    if (!voice->playing || voice->envelope_stage == EnvelopeStage::kRelease) start_envelope(*voice);
     voice->looping = (flags & kPlayLooping) != 0;
     voice->playing = true;
     voice->paused = false;
@@ -433,17 +513,23 @@ HRESULT32 __stdcall BufferPlay(uint32_t self, uint32_t, uint32_t, uint32_t flags
 
 HRESULT32 __stdcall BufferStop(uint32_t self) {
     std::lock_guard<std::mutex> lock(audio_lock());
-    voice_of(self)->playing = false;
+    Voice* voice = voice_of(self);
+    voice->playing = false;
+    voice->envelope_stage = EnvelopeStage::kOff;
     return kOk;
 }
 
+// DSBSTOPEX_ENVELOPE fades out with the envelope's release, DSBSTOPEX_RELEASEWAVEFORM leaves the loop and plays on
+// to the end; with both (what XACT uses) the voice ends with whichever comes first.
 HRESULT32 __stdcall BufferStopEx(uint32_t self, uint32_t, uint32_t, uint32_t flags) {
     std::lock_guard<std::mutex> lock(audio_lock());
     Voice* voice = voice_of(self);
-    if (flags & kStopExReleaseWaveform) {
-        voice->looping = false;  // play out to the end of the region
-    } else {
+    if (flags & kStopExReleaseWaveform) voice->looping = false;
+    if (flags & kStopExEnvelope) {
+        if (voice->playing) release_voice(*voice);
+    } else if (!(flags & kStopExReleaseWaveform)) {
         voice->playing = false;
+        voice->envelope_stage = EnvelopeStage::kOff;
     }
     return kOk;
 }
@@ -545,10 +631,18 @@ HRESULT32 __stdcall BufferSetBufferData(uint32_t self, uint32_t data, uint32_t b
 HRESULT32 __stdcall StreamPause(uint32_t self, uint32_t pause) {
     std::lock_guard<std::mutex> lock(audio_lock());
     voice_of(self)->paused = pause != 0;
+    restart_stream(*voice_of(self));
     return kOk;
 }
 
-HRESULT32 __stdcall StreamFlushEx(uint32_t self, uint32_t, uint32_t, uint32_t) { return StreamFlush(self); }
+// An asynchronous flush (XACT stops its streams with ASYNC, plus ENVELOPE to fade them) happens later in the mixer,
+// after the release; from then on the stream hands packets back unplayed (see Voice::stopped_by_flush).
+HRESULT32 __stdcall StreamFlushEx(uint32_t self, uint32_t, uint32_t, uint32_t flags) {
+    if (!(flags & (kFlushExAsync | kFlushExEnvelope))) return StreamFlush(self);
+    std::lock_guard<std::mutex> lock(audio_lock());
+    release_voice(*voice_of(self));
+    return kOk;
+}
 
 struct Redirect {
     uint32_t address;

@@ -50,9 +50,21 @@ struct CompletedPacket {
     uint32_t status;
 };
 
+// Amplitude envelope (DSENVELOPEDESC), times in mixer frames. XACT stops its sounds by releasing it: without it a
+// stopped sound played its whole sample out and piled up on the next one.
+struct Envelope {
+    bool enabled = false;
+    uint32_t first_stage = 1;  // dwMode: 1 delay, 2 attack, 3 hold
+    uint32_t delay = 0, attack = 0, hold = 0, decay = 0, release = 0;
+    float sustain = 1;
+};
+enum class EnvelopeStage : uint8_t { kOff, kDelay, kAttack, kHold, kDecay, kSustain, kRelease, kDone };
+
 struct Voice {
     bool is_stream = false;
     XWaveFormat format{};
+    uint32_t create_flags = 0;    // DSBUFFERDESC/DSSTREAMDESC flags, for the voice listing
+    uint32_t active_chunks = 0;   // 10 ms chunks mixed since it last started, for the voice listing
 
     // Buffers: sample data in guest memory, regions in bytes (loop region relative to the play region).
     uint8_t* data = nullptr;
@@ -70,8 +82,12 @@ struct Voice {
     uint32_t callback = 0;
     uint32_t callback_context = 0;
     double stream_fraction = 0;  // fractional frame inside the current packet
+    bool end_of_stream = false;  // Discontinuity: stop when the packets run out instead of starving
+    // Stopped by an asynchronous flush: packets are handed back unplayed until the stream is set up again. XACT keeps
+    // refilling a stopped stream until it sees it is no longer playing; playing them restarted the stopped music.
+    bool stopped_by_flush = false;
 
-    bool playing = false;
+    bool playing = false;  // streams: from the first packet until flushed or ended (XACT polls it)
     bool looping = false;
     bool paused = false;
     int32_t volume = 0;  // hundredths of a dB, 0 = full scale
@@ -88,6 +104,12 @@ struct Voice {
     // 10 ms is an audible click when the game moves volumes continuously, as it does for engines).
     float last_gains[2][2] = {};
     bool has_last_gains = false;
+
+    Envelope envelope;
+    EnvelopeStage envelope_stage = EnvelopeStage::kOff;  // kOff: full level
+    uint32_t envelope_frames = 0;                        // frames spent in the current stage
+    float envelope_level = 1;
+    float release_from = 1;  // level when the release started
 };
 
 // All voices and the device. Everything below requires audio_lock() held, except start_audio_output().
@@ -95,6 +117,11 @@ std::mutex& audio_lock();
 bool start_audio_output();
 Voice* create_voice(bool is_stream);
 void destroy_voice(Voice* voice);
+
+// Envelope control: start (Play) restarts it from its first stage, release fades the voice out over the release time
+// and then stops it (a stream is flushed).
+void start_envelope(Voice& voice);
+void release_voice(Voice& voice);
 
 // Pitch for a sample rate, like XAudioCalculatePitch: 0 at 48 kHz, 4096 per octave.
 int32_t pitch_for_rate(uint32_t samples_per_second);

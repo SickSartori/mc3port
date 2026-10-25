@@ -139,10 +139,29 @@ tramite vtable.
 | `0x3C211C` | `SetMixBinVolumes` | coppie (mixbin, volume) |
 | `0x3C28F7`/`0x3C2938` | `SetMixBins` (buffer/stream) | Bink costruisce un `DSMIXBINS` sullo stack (`0x3AEF60`) |
 | `0x3C2F5C`/`0x3C2F98` | `SetFormat` (buffer/stream) | riceve un `WAVEFORMATEX` (XACT: PCM mono 48 kHz) |
-| `0x3C28DB`/`0x3C2933` | `SetOutputBuffer` | l'argomento è un'altra voce (`-0x1C`) |
+| `0x3C28DB`/`0x3C2933` | `SetOutputBuffer` | l'argomento è un'altra voce (`-0x1C`); MC3 passa sempre NULL |
 | `0x3C2F78` | `SetBufferData` | imposta dati e dimensione |
+| `0x3C20C8`/`0x3C22A3` | `SetEnvelope` | `DSENVELOPEDESC`; MC3 non la chiama mai: il rilascio dell'inviluppo è quello predefinito |
+| `0x3C22BC` | `IDirectSoundStream_FlushEx` | XACT ferma gli stream con `5` (ASYNC 1 + ENVELOPE 4), i buffer con `StopEx(3)` (`0x40F229`); il lettore musicale del gioco con `1` |
 
 Elenco completo, compresi gli stream e le quattro funzioni non identificate, in `src/pc/dsound_hle.cpp`.
+
+### Come XACT ferma e controlla le voci
+
+- **Stop**: `0x40F229` chiama `StopEx(ENVELOPE | RELEASEWAVEFORM)` sui buffer e `FlushEx(ASYNC | ENVELOPE)` sugli
+  stream. Gli effetti partono in loop e finiscono solo con il rilascio dell'inviluppo: senza, un suono fermato
+  suonava fino alla fine del campione (anche 14 s) e si sommava al successivo.
+- **"Sta suonando?"** (`0x40F198`): per i buffer `GetStatus & 1`, per gli stream lo stato XMO `& 0x10000`
+  (`DSSTREAMSTATUS_PLAYING`). Gli altri bit: `0x20000` in pausa, `0x40000` senza dati, `0x80000` rilascio in corso.
+  Anche il lettore musicale del gioco (`0x2ED80F`) dopo il flush aspetta che `0x10000` si spenga.
+- **Stream fermato**: XACT continua a rimandare pacchetti (letti con polling dello stato, non con callback,
+  `0x40B241`) finché non vede lo stream fermo; uno stream fermato da un flush asincrono restituisce quindi i pacchetti
+  senza suonarli finché non viene preparato di nuovo (pausa, formato o mixbin).
+- **Audio 3D**: il percorso c'è (`0x40F80F`: `0x3C2F9D` -> interna `0x2C7C`, posizione relativa all'ascoltatore
+  `0x411238`; `0x3C22E3` -> `0x1627`, distanza, cono, volumi fronte/retro, doppler e angoli in un blocco di 0x38
+  byte; `0x3C225C`/`0x3C22D9` -> `0x0C94`, lo copia nella voce; `0x0DC5` accende o spegne il 3D, bit 0 di
+  `settings+0xB`). MC3 però non lo usa: nessun buffer `DSBCAPS_CTRL3D` e `0x0DC5` sempre con 0. XACT
+  posiziona i suoni con i volumi dei mixbin.
 
 DirectSound originale, senza APU, restituisce `DSERR_NODRIVER` (`0x88780078`); XACT allora fallisce e crasha nella
 propria pulizia (`0x408FFC`).

@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -28,6 +29,7 @@ constexpr uint16_t kFormatXboxAdpcm = 0x69;
 constexpr uint32_t kAdpcmBlockBytes = 36;  // per channel
 constexpr uint32_t kAdpcmBlockFrames = 64;
 constexpr int32_t kSilence = -10000;
+constexpr uint32_t kPacketFlushed = 0x80004004;
 
 std::mutex g_mutex;
 std::vector<Voice*> g_voices;
@@ -153,12 +155,72 @@ void channel_gains(const Voice& voice, float gains[2][2]) {
 
 double step_for(const Voice& voice) { return std::pow(2.0, voice.pitch / 4096.0); }
 
+// --- amplitude envelope ---
+
+constexpr uint32_t kShortestRelease = 240;  // 5 ms: a release of 0 still must not click
+
+uint32_t stage_frames(const Voice& voice, EnvelopeStage stage) {
+    const Envelope& envelope = voice.envelope;
+    switch (stage) {
+        case EnvelopeStage::kDelay: return envelope.delay;
+        case EnvelopeStage::kAttack: return envelope.attack;
+        case EnvelopeStage::kHold: return envelope.hold;
+        case EnvelopeStage::kDecay: return envelope.decay;
+        case EnvelopeStage::kRelease: return std::max(envelope.release, kShortestRelease);
+        default: return 0;
+    }
+}
+
+// Moves the envelope on by one chunk and returns its level at the end of the chunk.
+float advance_envelope(Voice& voice, uint32_t frames) {
+    EnvelopeStage& stage = voice.envelope_stage;
+    if (stage == EnvelopeStage::kOff) return 1;
+    voice.envelope_frames += frames;
+    while (stage != EnvelopeStage::kSustain && stage != EnvelopeStage::kDone) {
+        const uint32_t length = stage_frames(voice, stage);
+        if (voice.envelope_frames < length) break;
+        voice.envelope_frames -= length;
+        stage = static_cast<EnvelopeStage>(static_cast<uint8_t>(stage) + 1);
+        if (stage == EnvelopeStage::kRelease) stage = EnvelopeStage::kDone;  // sustain is left only by a release
+    }
+    const float sustain = voice.envelope.sustain;
+    const float t = stage_frames(voice, stage)
+                        ? static_cast<float>(voice.envelope_frames) / static_cast<float>(stage_frames(voice, stage))
+                        : 1.0f;
+    switch (stage) {
+        case EnvelopeStage::kDelay: voice.envelope_level = 0; break;
+        case EnvelopeStage::kAttack: voice.envelope_level = t; break;
+        case EnvelopeStage::kHold: voice.envelope_level = 1; break;
+        case EnvelopeStage::kDecay: voice.envelope_level = 1 + (sustain - 1) * t; break;
+        case EnvelopeStage::kSustain: voice.envelope_level = sustain; break;
+        case EnvelopeStage::kRelease: voice.envelope_level = voice.release_from * (1 - t); break;
+        default: voice.envelope_level = 0; break;
+    }
+    return voice.envelope_level;
+}
+
+// The release has faded the voice out: stop it, as the APU does at the end of the envelope.
+void finish_release(Voice& voice) {
+    voice.envelope_stage = EnvelopeStage::kOff;
+    voice.envelope_level = 1;
+    voice.playing = false;
+    if (!voice.is_stream) return;
+    voice.end_of_stream = false;
+    voice.stopped_by_flush = true;
+    for (const StreamPacket& packet : voice.packets) complete_packet(voice, packet, kPacketFlushed);
+    voice.packets.clear();
+    voice.stream_fraction = 0;
+    voice.decoded_block = -1;
+}
+
 // Per-chunk gain ramp: from the previous chunk's gains to the new ones.
 struct GainRamp {
     float start[2][2], delta[2][2];
     GainRamp(Voice& voice, uint32_t frames) {
         float target[2][2];
         channel_gains(voice, target);
+        const float level = advance_envelope(voice, frames);
+        for (int c = 0; c < 2; ++c) target[c][0] *= level, target[c][1] *= level;
         if (!voice.has_last_gains) std::memcpy(voice.last_gains, target, sizeof(target));
         for (int c = 0; c < 2; ++c) {
             for (int s = 0; s < 2; ++s) {
@@ -262,6 +324,10 @@ void mix_stream_voice(Voice& voice, float* out, uint32_t frames) {
             voice.decoded_block = -1;
         }
     }
+    if (voice.packets.empty() && voice.end_of_stream) {
+        voice.playing = false;
+        voice.end_of_stream = false;
+    }
 }
 
 void mix(float* out, uint32_t frames) {
@@ -271,16 +337,17 @@ void mix(float* out, uint32_t frames) {
     for (Voice* voice : g_voices) {
         if (voice->paused) continue;
         if (voice->is_stream) {
-            if (!voice->packets.empty()) ++active;
+            if (!voice->packets.empty()) ++active, ++voice->active_chunks;
             mix_stream_voice(*voice, out, frames);
         } else if (voice->playing) {
-            ++active;
+            ++active, ++voice->active_chunks;
             mix_buffer_voice(*voice, out, frames);
         }
+        if (voice->envelope_stage == EnvelopeStage::kDone) finish_release(*voice);
     }
     // Master level (the Xbox keeps headroom too), then a soft limiter instead of hard clipping: linear up to 0.8,
     // a smooth knee above, so many voices at once round off instead of crackling.
-    constexpr float kMasterGain = 0.5f, kKnee = 0.8f;
+    constexpr float kMasterGain = 0.4f, kKnee = 0.8f;  // 0.5 still kept the limiter busy while driving
     float peak = 0;
     uint32_t limited = 0;
     for (uint32_t i = 0; i < frames * 2; ++i) {
@@ -313,10 +380,19 @@ void mix(float* out, uint32_t frames) {
                 if (!active || voice->paused) continue;
                 float gains[2][2];
                 channel_gains(*voice, gains);
-                log_line("  voice %p %s ch %u vol %d pitch %d loop %d size %u pos %.0f gain L %.2f R %.2f bins %d",
-                         static_cast<const void*>(voice), voice->is_stream ? "stream" : "buffer", voice->format.channels,
-                         voice->volume, voice->pitch, voice->looping, voice->size, voice->position,
-                         gains[0][0] + gains[1][0], gains[0][1] + gains[1][1], voice->mix_bin_count);
+                std::string bins;
+                for (int32_t i = 0; i < voice->mix_bin_count; ++i) {
+                    char entry[24];
+                    std::snprintf(entry, sizeof(entry), " %u:%d", voice->mix_bins[i],
+                                  voice->mix_bin_volumes[voice->mix_bins[i] & 31]);
+                    bins += entry;
+                }
+                log_line("  voice %p %s flags %08X ch %u vol %d pitch %d loop %d size %u pos %.0f age %.1f s "
+                         "gain L %.2f R %.2f bins%s",
+                         static_cast<const void*>(voice), voice->is_stream ? "stream" : "buffer", voice->create_flags,
+                         voice->format.channels, voice->volume, voice->pitch, voice->looping, voice->size,
+                         voice->position, voice->active_chunks / 100.0, gains[0][0] + gains[1][0],
+                         gains[0][1] + gains[1][1], bins.c_str());
             }
         }
     }
@@ -453,6 +529,24 @@ Voice* create_voice(bool is_stream) {
 void destroy_voice(Voice* voice) {
     g_voices.erase(std::remove(g_voices.begin(), g_voices.end(), voice), g_voices.end());
     delete voice;
+}
+
+void start_envelope(Voice& voice) {
+    voice.envelope_frames = 0;
+    if (!voice.envelope.enabled) {
+        voice.envelope_stage = EnvelopeStage::kOff;
+        voice.envelope_level = 1;
+        return;
+    }
+    voice.envelope_stage = static_cast<EnvelopeStage>(std::clamp<uint32_t>(voice.envelope.first_stage, 1, 3));
+    voice.envelope_level = voice.envelope_stage == EnvelopeStage::kHold ? 1.0f : 0.0f;
+}
+
+void release_voice(Voice& voice) {
+    if (voice.envelope_stage == EnvelopeStage::kRelease || voice.envelope_stage == EnvelopeStage::kDone) return;
+    voice.release_from = voice.envelope_level;
+    voice.envelope_stage = EnvelopeStage::kRelease;
+    voice.envelope_frames = 0;
 }
 
 int32_t pitch_for_rate(uint32_t samples_per_second) {

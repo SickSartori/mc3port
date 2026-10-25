@@ -117,18 +117,23 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
   `SetFormat`; il vero `SetFormat` è `0x3C2F5C`/`0x3C2F98` (interna `0x2AD9`, XACT imposta lì i formati mono). Con
   i formati sbagliati video ed effetti suonavano come rumore.
 - **Uscita**: i 6 mixbin degli altoparlanti ridotti a stereo (anteriori 1, centrale e posteriori 0,5, LFE ed effetti
-  esclusi), volume generale 0,5 e limitatore morbido; interpolazione lineare nel ricampionamento e rampa del volume
+  esclusi), volume generale 0,4 e limitatore morbido; interpolazione lineare nel ricampionamento e rampa del volume
   in ogni blocco da 10 ms (niente click quando il gioco cambia volume e tono del motore). Una voce senza mixbin
   prende quelli del suo primo `SetMixBinVolumes`.
-- **Da fare**: audio 3D (posizione delle sorgenti calcolata da DirectSound): alcune voci di XACT suonano ancora al
-  centro e si sommano; urti e suoni sovrapposti da controllare.
+- **Stop e sovrapposizioni** (ottobre 2026): inviluppo d'ampiezza con rilascio (`StopEx`/`FlushEx` con ENVELOPE;
+  senza inviluppo impostato, 5 ms); stato degli stream con `DSSTREAMSTATUS_PLAYING`, `Discontinuity` e flush
+  asincrono. Prima gli effetti fermati suonavano fino alla fine e si accumulavano (fino a 63 voci in città) e la
+  musica del menu continuava sotto quella della città. Ora 20-35 voci e una sola musica. Dettagli in
+  [ANALISI_XBE.md](ANALISI_XBE.md).
+- **Audio 3D**: non serve, MC3 non lo usa (vedi ANALISI_XBE.md). Da verificare a orecchio: alcuni suoni del motore
+  sono suonati da due coppie di voci identiche (stesso campione, stessa posizione); potrebbe essere voluto da XACT.
 - **Mixer software** (`audio_mixer.cpp`): emula le voci dell'APU leggendo i campioni direttamente dalla memoria del
   gioco (i ring buffer di Bink funzionano così come sono), con regioni di play/loop, pitch Xbox (4096 per ottava,
   0 = 48 kHz), volumi in centesimi di dB, mixbin verso lo stereo, PCM 8/16 bit e ADPCM Xbox, pacchetti degli stream
   con eventi e callback (consegnate in `DirectSoundDoWork`).
 - **Uscita**: XAudio2, stereo 48 kHz a blocchi da 10 ms. Il log riporta ogni 10 s quanto audio è stato prodotto.
-- **Non ancora emulati**: effetti DSP (riverbero, il file `dsstdfx.bin` viene accettato e ignorato), LFO, inviluppi,
-  filtri, headroom, audio 3D. Quattro funzioni DirectSound non sono ancora identificate con certezza: accettano gli
+- **Non ancora emulati**: effetti DSP (riverbero, il file `dsstdfx.bin` viene accettato e ignorato), LFO, inviluppo
+  multiplo (tono e filtro), filtri, headroom, audio 3D (non usati da MC3). Quattro funzioni DirectSound non sono ancora identificate con certezza: accettano gli
   argomenti, riescono e lo registrano nel log.
 
 ### Input e rete provvisori
