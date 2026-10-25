@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include "core/xbe.h"
 
 namespace mc3::pc {
@@ -12,5 +14,8 @@ namespace mc3::pc {
 // controller 1 at those times since start (for automated tests). Buttons: start back a b x y black white up down
 // left right lt rt, and sl/sr for the left stick (steering).
 void install_input_hle(const Xbe& xbe);
+
+// For "@<file>" entries of MC3_INPUT_SCRIPT (times relative to the game opening a file).
+void input_note_file_opened(const std::string& path);
 
 }  // namespace mc3::pc

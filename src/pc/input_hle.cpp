@@ -86,7 +86,15 @@ struct ScriptedPress {
     ULONGLONG until_ms;  // "<start>-<end>:<button>" holds it; "<start>:<button>" taps it for 200 ms
     std::string button;
     bool logged = false;
+    // "@<file>[#n]+<seconds>[~<hold>]:<button>": relative to the n-th time the game opens a file whose path
+    // contains <file> (menus and loads open their files: robust against timing differences between runs).
+    std::string event;
+    size_t occurrence = 1;
+    ULONGLONG offset_ms = 0, hold_ms = 200;
 };
+
+// When the files named by "@" entries were opened (ms since start), per name.
+std::vector<std::pair<std::string, std::vector<ULONGLONG>>> g_events;
 
 using XInputGetStateFunction = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
 using XInputSetStateFunction = DWORD(WINAPI*)(DWORD, XINPUT_VIBRATION*);
@@ -121,7 +129,30 @@ void load_script() {
         if (end == std::string::npos) end = text.size();
         const std::string entry = text.substr(start, end - start);
         const size_t colon = entry.find(':');
-        if (colon != std::string::npos) {
+        if (colon != std::string::npos && entry[0] == '@') {
+            // @name[#n]+offset[~hold]:button
+            ScriptedPress press{~0ull, ~0ull, entry.substr(colon + 1)};
+            const std::string when = entry.substr(1, colon - 1);
+            const size_t plus = when.find('+');
+            std::string name = when.substr(0, plus);
+            const size_t hash = name.find('#');
+            if (hash != std::string::npos) {
+                press.occurrence = std::max<size_t>(1, std::strtoul(name.c_str() + hash + 1, nullptr, 10));
+                name.resize(hash);
+            }
+            for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            press.event = name;
+            if (plus != std::string::npos) {
+                const std::string rest = when.substr(plus + 1);
+                const size_t tilde = rest.find('~');
+                press.offset_ms = static_cast<ULONGLONG>(std::atof(rest.substr(0, tilde).c_str()) * 1000);
+                if (tilde != std::string::npos) press.hold_ms = static_cast<ULONGLONG>(std::atof(rest.c_str() + tilde + 1) * 1000);
+            }
+            if (std::none_of(g_events.begin(), g_events.end(), [&](const auto& e) { return e.first == name; })) {
+                g_events.push_back({name, {}});
+            }
+            g_script.push_back(press);
+        } else if (colon != std::string::npos) {
             const std::string when = entry.substr(0, colon);
             const size_t dash = when.find('-');
             const auto at = static_cast<ULONGLONG>(std::atof(when.substr(0, dash).c_str()) * 1000);
@@ -167,6 +198,14 @@ bool virtual_pad(XboxGamepad& pad) {
     if (!g_script.empty()) {
         const ULONGLONG now = GetTickCount64() - g_start_ms;
         for (ScriptedPress& entry : g_script) {
+            if (!entry.event.empty() && entry.at_ms == ~0ull) {
+                for (const auto& [name, times] : g_events) {
+                    if (name == entry.event && times.size() >= entry.occurrence) {
+                        entry.at_ms = times[entry.occurrence - 1] + entry.offset_ms;
+                        entry.until_ms = entry.at_ms + entry.hold_ms;
+                    }
+                }
+            }
             if (now >= entry.at_ms && now < entry.until_ms) {
                 press(pad, entry.button);
                 if (!entry.logged) log_line("input: script presses %s at %.1f s", entry.button.c_str(), now / 1000.0);
@@ -360,6 +399,17 @@ const Redirect kRedirects[] = {
 #undef R
 
 }  // namespace
+
+void input_note_file_opened(const std::string& path) {
+    if (g_events.empty()) return;
+    std::string lower = path;
+    for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::lock_guard<std::mutex> lock(g_mutex);
+    const ULONGLONG now = GetTickCount64() - g_start_ms;
+    for (auto& [name, times] : g_events) {
+        if (lower.find(name) != std::string::npos) times.push_back(now);
+    }
+}
 
 void install_input_hle(const Xbe& xbe) {
     constexpr uint32_t kTitleId = 0x54540079;

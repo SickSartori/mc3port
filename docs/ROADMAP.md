@@ -73,6 +73,19 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
 
 Stato: si arriva alla prima gara e si guida (35 fps in città nella build Release).
 
+Modalità provate (con lo script di input, 25 ottobre 2026):
+
+| Modalità | Stato |
+|---|---|
+| Carriera | funziona: profilo, video, garage, acquisto dell'auto, prima gara; i progressi (auto comprata) si salvano e si ricaricano |
+| Arcade | funziona: guida libera a San Diego (su Xbox 360 in retrocompatibilità non va) |
+| Rete | corretto senza connessione: "Il cavo di rete non è connesso" |
+| Sfida di Tokyo, Editor di gare | da provare (la navigazione automatica dei menu è instabile) |
+| Profili | creazione, scelta e caricamento all'avvio funzionano |
+
+Da verificare a mano: fine di una gara e salvataggio della carriera dopo una vittoria; velocità nei menu (scesa a
+circa 24 fps dopo le correzioni del radar, da controllare).
+
 - **Coordinate e clip**: i vertici arrivano in pixel della superficie intera e il renderer li converte con la
   dimensione vera della render target (larghezza dal pitch); il clip della superficie è uno scissor. Il radar
   restringe il clip a 256 pixel: prima la sua mappa finiva ingrandita al centro.
