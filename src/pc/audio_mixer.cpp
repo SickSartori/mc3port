@@ -335,7 +335,15 @@ void mix(float* out, uint32_t frames) {
     std::lock_guard<std::mutex> lock(g_mutex);
     uint32_t active = 0;
     for (Voice* voice : g_voices) {
-        if (voice->paused) continue;
+        if (voice->paused) {
+            // A paused voice is silent: a release asked for meanwhile ends at once. The game's music player stops a
+            // still-paused stream and waits, holding a lock, for it to stop playing: a release that never advanced
+            // froze the game at the title screen.
+            if (voice->envelope_stage == EnvelopeStage::kRelease || voice->envelope_stage == EnvelopeStage::kDone) {
+                finish_release(*voice);
+            }
+            continue;
+        }
         if (voice->is_stream) {
             if (!voice->packets.empty()) ++active, ++voice->active_chunks;
             mix_stream_voice(*voice, out, frames);
@@ -387,10 +395,12 @@ void mix(float* out, uint32_t frames) {
                                   voice->mix_bin_volumes[voice->mix_bins[i] & 31]);
                     bins += entry;
                 }
-                log_line("  voice %p %s flags %08X ch %u vol %d pitch %d loop %d size %u pos %.0f age %.1f s "
-                         "gain L %.2f R %.2f bins%s",
+                log_line("  voice %p %s flags %08X fmt %X/%u Hz/%u bit ch %u vol %d pitch %d loop %d size %u region "
+                         "%u+%u loop %u+%u pos %.0f age %.1f s gain L %.2f R %.2f bins%s",
                          static_cast<const void*>(voice), voice->is_stream ? "stream" : "buffer", voice->create_flags,
+                         voice->format.format_tag, voice->format.samples_per_second, voice->format.bits_per_sample,
                          voice->format.channels, voice->volume, voice->pitch, voice->looping, voice->size,
+                         voice->play_start, voice->play_length, voice->loop_start, voice->loop_length,
                          voice->position, voice->active_chunks / 100.0, gains[0][0] + gains[1][0],
                          gains[0][1] + gains[1][1], bins.c_str());
             }

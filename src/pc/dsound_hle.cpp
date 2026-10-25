@@ -94,8 +94,14 @@ void apply_format(Voice& voice, uint32_t format_address) {
     voice.format = format_address ? *guest<XWaveFormat>(format_address) : kDefaultFormat;
     voice.pitch = pitch_for_rate(voice.format.samples_per_second);
     voice.decoded_block = -1;
+    // Every distinct format once, whatever the order (a wrong format plays as noise).
+    static std::vector<XWaveFormat> seen;
+    const bool is_new = std::none_of(seen.begin(), seen.end(), [&](const XWaveFormat& format) {
+        return std::memcmp(&format, &voice.format, sizeof(format)) == 0;
+    });
+    if (is_new) seen.push_back(voice.format);
     static uint32_t logged = 0;
-    if (logged++ < 60) {
+    if (is_new || logged++ < 60) {
         log_line("dsound: voice %p format tag %X, %u channels, %u Hz, %u bits, block %u", static_cast<void*>(&voice),
                  voice.format.format_tag, voice.format.channels, voice.format.samples_per_second,
                  voice.format.bits_per_sample, voice.format.block_align);
