@@ -63,8 +63,23 @@ AnsiString g_disk_serial_number = make_ansi_string(g_disk_serial_text);
 // Opaque objects (object types, keys, handle table...): the game only compares addresses or reads zeros.
 alignas(16) uint8_t g_zeroed_data[kKernelOrdinalLimit][0x100];
 
+// IdexChannelObject: the IDE channel. XAPI's cancel-I/O walks its queue of pending requests (a list at +0x28,
+// entries are IRPs whose file object is at +0x60 of the entry minus 0x3C); with no queued request the list is
+// empty, i.e. its head points to itself.
+alignas(16) uint32_t g_idex_channel_object[0x40] = {};
+
+const void* idex_channel_object() {
+    constexpr uint32_t kPendingListHead = 0x28 / 4;
+    if (!g_idex_channel_object[kPendingListHead]) {
+        g_idex_channel_object[kPendingListHead] = address_of(&g_idex_channel_object[kPendingListHead]);
+        g_idex_channel_object[kPendingListHead + 1] = address_of(&g_idex_channel_object[kPendingListHead]);
+    }
+    return g_idex_channel_object;
+}
+
 const void* data_export(uint32_t ordinal) {
     switch (ordinal) {
+        case 357: return idex_channel_object();
         case 40: return &g_disk_cache_partition_count;
         case 41: return &g_disk_model_number;
         case 42: return &g_disk_serial_number;

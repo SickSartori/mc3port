@@ -26,7 +26,7 @@ Il codice del gioco è x86 a 32 bit, come il PC: non va tradotto, va solo "ospit
 | 1 | Launcher a 0x10000, mappatura XBE, patch `fs:`, thunk del kernel con stub che registrano la prima chiamata mancante | fatto |
 | 2 | Kernel: memoria, thread, sincronizzazione, file (`D:\` letto direttamente dalla ISO), tempo | fatto per l'avvio: il gioco arriva all'inizializzazione grafica. Restano 23 funzioni mai chiamate finora (driver `Io*`, crittografia `Xc*` per salvataggi e online) |
 | 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco; poi rendering su D3D11/Vulkan | in corso: video, menu (titolo, profilo, carriera) e città 3D illuminata visibili su D3D11; mancano texgen sferici/cube map, bump mapping, punti e linee, luci a due facce, culling; lento nei menu (build Debug) |
-| 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | audio fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2); input fatto (XInput, vibrazione, tastiera): START salta i video e supera il titolo |
+| 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | audio fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2, musica WMA in gara); input fatto (XInput, vibrazione, tastiera); salvataggio del profilo su `xbox_hdd`; da provare con un controller vero |
 | 5 | Miglioramenti: risoluzione, widescreen, 60 fps, caricamenti | da fare |
 
 ### Grafica: perché si emula la GPU e non Direct3D
@@ -71,8 +71,11 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
   I vertex shader di D3D finiscono con la trasformazione in coordinate dello schermo che usa `c[-38]`/`c[-37]`:
   senza, le auto (disegnate con vertex program) collassavano in un punto ed erano invisibili.
 
-Prossimi passi della fase 3: bump mapping (modalità texture `6`), cube map, vertici ancora calcolati sulla CPU
-(circa 1,5 milioni al secondo nei menu), punti e linee, culling; poi la guida vera e propria. Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
+Stato: si arriva alla prima gara e si guida (35 fps in città nella build Release).
+
+Da sistemare nelle migliorie grafiche (non bloccano il gioco): ellisse bianca sotto l'auto in gara, quadrato nero
+in basso a sinistra, mappa in trasparenza al centro, bump mapping (modalità texture `6`), cube map, punti e linee,
+culling; vertici ancora calcolati sulla CPU (circa 1,5 milioni al secondo). Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
 thread aspetta su un handle di file, cosa che il kernel emulato non supporta ancora.
 
 ### Audio

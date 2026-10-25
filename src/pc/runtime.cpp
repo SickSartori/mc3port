@@ -211,13 +211,34 @@ LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     } else {
         log_line("  not an Xbox thread");
     }
-    // ESP itself may be what went wrong: only read it if it points at committed memory.
+    // ESP itself may be what went wrong: only read memory that is committed and readable.
+    const auto readable = [](uint32_t address, uint32_t bytes) {
+        MEMORY_BASIC_INFORMATION region{};
+        const auto* pointer = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(address));
+        return VirtualQuery(pointer, &region, sizeof(region)) && region.State == MEM_COMMIT &&
+               pointer + bytes <= static_cast<const uint8_t*>(region.BaseAddress) + region.RegionSize &&
+               !(region.Protect & (PAGE_GUARD | PAGE_NOACCESS));
+    };
+    // What the registers point at (objects, their vtables): a bad call through an object shows its contents.
+    const struct {
+        const char* name;
+        uint32_t value;
+    } registers[] = {{"eax", context->Eax}, {"ebx", context->Ebx}, {"ecx", context->Ecx},
+                     {"esi", context->Esi}, {"edi", context->Edi}};
+    for (const auto& r : registers) {
+        if (r.value < 0x10000 || !readable(r.value, 32)) continue;
+        const auto* words = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(r.value));
+        log_line("  [%s] %08X %08X %08X %08X %08X %08X %08X %08X", r.name, words[0], words[1], words[2], words[3],
+                 words[4], words[5], words[6], words[7]);
+        if (words[0] >= 0x10000 && readable(words[0], 64)) {
+            const auto* table = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(words[0]));
+            log_line("  [[%s]] %08X %08X %08X %08X %08X %08X %08X %08X %08X %08X %08X %08X", r.name, table[0],
+                     table[1], table[2], table[3], table[4], table[5], table[6], table[7], table[8], table[9],
+                     table[10], table[11]);
+        }
+    }
     const auto* stack = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(context->Esp));
-    MEMORY_BASIC_INFORMATION region{};
-    if (VirtualQuery(stack, &region, sizeof(region)) && region.State == MEM_COMMIT &&
-        reinterpret_cast<const uint8_t*>(stack + 8) <=
-            static_cast<const uint8_t*>(region.BaseAddress) + region.RegionSize &&
-        !(region.Protect & (PAGE_GUARD | PAGE_NOACCESS))) {
+    if (readable(context->Esp, 32)) {
         log_line("  stack: %08X %08X %08X %08X %08X %08X %08X %08X", stack[0], stack[1], stack[2], stack[3], stack[4],
                  stack[5], stack[6], stack[7]);
         log_game_return_addresses(stack);

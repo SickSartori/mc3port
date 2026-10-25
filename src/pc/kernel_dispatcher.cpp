@@ -325,7 +325,7 @@ NTSTATUS __stdcall NtReleaseMutant(uint32_t handle, int32_t* previous_count) {
 }
 
 NTSTATUS __stdcall NtWaitForSingleObject(uint32_t handle, uint8_t /*alertable*/, const int64_t* timeout) {
-    const uint32_t object = object_from_handle(handle);
+    const uint32_t object = waitable_from_handle(handle);
     if (!object) return kStatusInvalidHandle;
     return wait_for_objects(1, &object, false, timeout);
 }
@@ -340,7 +340,7 @@ NTSTATUS __stdcall NtWaitForMultipleObjectsEx(uint32_t count, const uint32_t* ha
     uint32_t objects[64];
     if (count == 0 || count > 64) return kStatusInvalidParameter;
     for (uint32_t i = 0; i < count; ++i) {
-        objects[i] = object_from_handle(handles[i]);
+        objects[i] = waitable_from_handle(handles[i]);
         if (!objects[i]) return kStatusInvalidHandle;
     }
     return wait_for_objects(count, objects, wait_type == 0, timeout);

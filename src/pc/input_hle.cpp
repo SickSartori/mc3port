@@ -46,12 +46,16 @@ struct XboxInputState {
     uint32_t packet_number;
     XboxGamepad gamepad;
 };
+// XINPUT_CAPABILITIES: the output side is only the rumble motors. The game passes a 28-byte stack buffer, so a
+// bigger structure overwrites its return address.
 struct XboxCapabilities {
     uint8_t sub_type;
     uint16_t reserved;
     XboxGamepad in;
-    XboxGamepad out;
+    uint16_t left_motor;
+    uint16_t right_motor;
 };
+static_assert(sizeof(XboxCapabilities) <= 28);
 struct XboxFeedback {
     uint32_t status;
     uint32_t event;
@@ -79,7 +83,9 @@ struct Port {
 // MC3_INPUT_SCRIPT entries: button pressed from `at` for a short time.
 struct ScriptedPress {
     ULONGLONG at_ms;
+    ULONGLONG until_ms;  // "<start>-<end>:<button>" holds it; "<start>:<button>" taps it for 200 ms
     std::string button;
+    bool logged = false;
 };
 
 using XInputGetStateFunction = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
@@ -106,9 +112,9 @@ void load_xinput() {
 }
 
 void load_script() {
-    char value[1024] = {};
-    if (!GetEnvironmentVariableA("MC3_INPUT_SCRIPT", value, sizeof(value))) return;
-    const std::string text = value;
+    std::vector<char> value(16384);
+    if (!GetEnvironmentVariableA("MC3_INPUT_SCRIPT", value.data(), static_cast<DWORD>(value.size()))) return;
+    const std::string text = value.data();
     size_t start = 0;
     while (start < text.size()) {
         size_t end = text.find(',', start);
@@ -116,8 +122,12 @@ void load_script() {
         const std::string entry = text.substr(start, end - start);
         const size_t colon = entry.find(':');
         if (colon != std::string::npos) {
-            g_script.push_back({static_cast<ULONGLONG>(std::atof(entry.substr(0, colon).c_str()) * 1000),
-                                entry.substr(colon + 1)});
+            const std::string when = entry.substr(0, colon);
+            const size_t dash = when.find('-');
+            const auto at = static_cast<ULONGLONG>(std::atof(when.substr(0, dash).c_str()) * 1000);
+            const ULONGLONG until =
+                dash == std::string::npos ? at + 200 : static_cast<ULONGLONG>(std::atof(when.substr(dash + 1).c_str()) * 1000);
+            g_script.push_back({at, until, entry.substr(colon + 1)});
         }
         start = end + 1;
     }
@@ -147,6 +157,8 @@ void press(XboxGamepad& pad, const std::string& button) {
     else if (button == "white") pad.analog[kAnalogWhite] = 255;
     else if (button == "lt") pad.analog[kAnalogLeftTrigger] = 255;
     else if (button == "rt") pad.analog[kAnalogRightTrigger] = 255;
+    else if (button == "sl") pad.thumb_lx = -32768;  // steer with the left stick
+    else if (button == "sr") pad.thumb_lx = 32767;
 }
 
 // Controller 1 without a pad: the keyboard (only while the game window is in front) and the test script.
@@ -154,8 +166,12 @@ bool virtual_pad(XboxGamepad& pad) {
     pad = {};
     if (!g_script.empty()) {
         const ULONGLONG now = GetTickCount64() - g_start_ms;
-        for (const ScriptedPress& entry : g_script) {
-            if (now >= entry.at_ms && now < entry.at_ms + 200) press(pad, entry.button);
+        for (ScriptedPress& entry : g_script) {
+            if (now >= entry.at_ms && now < entry.until_ms) {
+                press(pad, entry.button);
+                if (!entry.logged) log_line("input: script presses %s at %.1f s", entry.button.c_str(), now / 1000.0);
+                entry.logged = true;
+            }
         }
     }
     if (game_has_focus()) {

@@ -85,6 +85,15 @@ struct DirectoryItem {
     FileInfo info;
 };
 
+// Xbox FILE_OBJECT address -> our file, for the Io* functions that receive the object instead of a handle.
+std::mutex g_file_objects_mutex;
+std::unordered_map<uint32_t, FileObject*> g_file_objects;
+
+void unregister_file_object(uint32_t address) {
+    std::lock_guard<std::mutex> lock(g_file_objects_mutex);
+    g_file_objects.erase(address);
+}
+
 }  // namespace
 
 struct FileObject {
@@ -101,7 +110,34 @@ struct FileObject {
     size_t next_item = 0;
     bool listed = false;
 
+    // A file handle can be waited on: the file object is signalled when its I/O completes (the game issues
+    // asynchronous reads and then waits on the handle). Every request here completes before returning, so the
+    // event is always signalled.
+    XDispatcherHeader completion{};
+
+    // What ObReferenceObjectByHandle hands out: the start of an Xbox FILE_OBJECT, for the XAPI code that reads
+    // it. XGetFilePhysicalSortKey reads FsContext: the file's first sector on the disc (GDFX), or a flags byte
+    // and an identifier at +0x1C on the hard disk (FATX).
+    struct {
+        uint16_t type = 5;  // IO_TYPE_FILE
+        uint16_t flags = 0;
+        uint32_t device_object = 0;
+        uint32_t fs_context = 0;
+        uint32_t fs_context2 = 0;
+        uint32_t reserved[12] = {};
+    } xbox;
+    uint32_t fcb[8] = {};
+
+    FileObject() {
+        completion.type = kEventNotificationObject;
+        completion.size = sizeof(XDispatcherHeader) / 4;
+        completion.signal_state = 1;
+        completion.wait_list_head = {address_of(&completion.wait_list_head), address_of(&completion.wait_list_head)};
+        xbox.fs_context = address_of(fcb);
+    }
+
     ~FileObject() {
+        unregister_file_object(address_of(&xbox));
         if (host != INVALID_HANDLE_VALUE) CloseHandle(host);
         if (delete_on_close) {
             std::error_code ignored;
@@ -445,7 +481,19 @@ NTSTATUS __stdcall NtCreateFile(uint32_t* file_handle, uint32_t desired_access, 
              location->xbox_path.c_str(), disposition, options, static_cast<uint32_t>(status));
     complete(io_status, status, information);
     if (status < 0) return status;
-    *file_handle = create_handle(HandleEntry{0, std::move(file)});
+    if (location->device == Device::Disc) {
+        file->fcb[0] = file->disc_entry.sector;
+    } else {
+        file->fcb[7] = static_cast<uint32_t>(std::hash<std::string>{}(location->xbox_path));
+    }
+    const uint32_t xbox_object = address_of(&file->xbox);
+    {
+        std::lock_guard<std::mutex> lock(g_file_objects_mutex);
+        g_file_objects[xbox_object] = file.get();
+    }
+    HandleEntry entry{xbox_object, std::move(file)};
+    entry.wait_object = address_of(&entry.file->completion);
+    *file_handle = create_handle(std::move(entry));
     return status;
 }
 
@@ -681,11 +729,18 @@ NTSTATUS __stdcall NtSetInformationFile(uint32_t handle, XIoStatusBlock* io_stat
     return status;
 }
 
-NTSTATUS __stdcall NtQueryVolumeInformationFile(uint32_t handle, XIoStatusBlock* io_status, void* information,
-                                                uint32_t length, uint32_t information_class) {
-    const std::shared_ptr<FileObject> file = file_from_handle(handle);
-    if (!file) return kStatusInvalidHandle;
-    const bool disc = file->location.device == Device::Disc;
+// FileFsAttributeInformation; Xbox file system names are 8-bit: "GDFX" for the disc, "FATX" for the hard disk.
+struct XFileFsAttributeInformation {
+    uint32_t attributes;
+    int32_t maximum_component_name_length;
+    uint32_t name_length;
+    char name[4];
+};
+
+// Shared by NtQueryVolumeInformationFile and IoQueryVolumeInformation.
+NTSTATUS query_volume(const FileObject& file, XIoStatusBlock* io_status, void* information, uint32_t length,
+                      uint32_t information_class) {
+    const bool disc = file.location.device == Device::Disc;
     // Plenty of room on the "hard disk", reported in 16 KB clusters like FATX.
     const uint64_t total_units = disc ? 0x4000000000ull / kClusterSize / 16 : 0x100000000ull / kClusterSize;
     const uint64_t free_units = disc ? 0 : 0x40000000ull / kClusterSize;
@@ -714,8 +769,16 @@ NTSTATUS __stdcall NtQueryVolumeInformationFile(uint32_t handle, XIoStatusBlock*
                     XFileFsDeviceInformation{disc ? kDeviceTypeCdRom : kDeviceTypeDisk, 0};
             }
             break;
+        case 5:  // FileFsAttributeInformation
+            size = sizeof(XFileFsAttributeInformation);
+            if (length >= size) {
+                XFileFsAttributeInformation attributes{0, 42, 4, {}};
+                std::memcpy(attributes.name, disc ? "GDFX" : "FATX", 4);
+                *static_cast<XFileFsAttributeInformation*>(information) = attributes;
+            }
+            break;
         default:
-            log_line("NtQueryVolumeInformationFile: class %u not implemented", information_class);
+            log_line("query volume information: class %u not implemented", information_class);
             complete(io_status, kStatusInvalidParameter, 0);
             return kStatusInvalidParameter;
     }
@@ -725,6 +788,29 @@ NTSTATUS __stdcall NtQueryVolumeInformationFile(uint32_t handle, XIoStatusBlock*
     }
     complete(io_status, kStatusSuccess, size);
     return kStatusSuccess;
+}
+
+NTSTATUS __stdcall NtQueryVolumeInformationFile(uint32_t handle, XIoStatusBlock* io_status, void* information,
+                                                uint32_t length, uint32_t information_class) {
+    const std::shared_ptr<FileObject> file = file_from_handle(handle);
+    if (!file) return kStatusInvalidHandle;
+    return query_volume(*file, io_status, information, length, information_class);
+}
+
+// The same on a FILE_OBJECT (from ObReferenceObjectByHandle) instead of a handle; the returned length is a pointer.
+NTSTATUS __stdcall IoQueryVolumeInformation(uint32_t file_object, uint32_t information_class, uint32_t length,
+                                            void* information, uint32_t* returned_length) {
+    FileObject* file = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_file_objects_mutex);
+        const auto it = g_file_objects.find(file_object);
+        if (it != g_file_objects.end()) file = it->second;
+    }
+    if (!file) return kStatusInvalidHandle;
+    XIoStatusBlock status{};
+    const NTSTATUS result = query_volume(*file, &status, information, length, information_class);
+    if (returned_length) *returned_length = status.information;
+    return result;
 }
 
 NTSTATUS __stdcall NtQueryFullAttributesFile(const XObjectAttributes* attributes,
@@ -1018,6 +1104,7 @@ void register_io_functions() {
     register_kernel(211, &NtQueryInformationFile);
     register_kernel(226, &NtSetInformationFile);
     register_kernel(218, &NtQueryVolumeInformationFile);
+    register_kernel(76, &IoQueryVolumeInformation);
     register_kernel(210, &NtQueryFullAttributesFile);
     register_kernel(207, &NtQueryDirectoryFile);
     register_kernel(195, &NtDeleteFile);

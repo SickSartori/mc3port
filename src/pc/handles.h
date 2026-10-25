@@ -15,6 +15,9 @@ struct HandleEntry {
     uint32_t object = 0;
     std::shared_ptr<FileObject> file;
     std::string symbolic_link_target;  // for handles from NtOpenSymbolicLinkObject
+    // What a wait on the handle waits for, when it is not `object` itself: a file object (not a dispatcher
+    // object) is waited on through the event it signals when its I/O completes.
+    uint32_t wait_object = 0;
 };
 
 uint32_t create_handle(HandleEntry entry);
@@ -23,5 +26,7 @@ bool close_handle(uint32_t handle);
 
 // Handle -> dispatcher object address, including the current-thread pseudo handle. 0 if unknown.
 uint32_t object_from_handle(uint32_t handle);
+// Handle -> the dispatcher object a wait on it uses (the I/O event for files). 0 if unknown.
+uint32_t waitable_from_handle(uint32_t handle);
 
 }  // namespace mc3::pc

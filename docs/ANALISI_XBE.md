@@ -103,7 +103,13 @@ Fatti emersi facendo girare il gioco, che il kernel emulato deve rispettare:
   due buffer. Con START: titolo ("Premi START per iniziare") sulla città 3D, controllo dei salvataggi su `U:\`,
   nome del profilo, `flash\bg_main.xbck`, `flash\bg_career.xbck`, `flash\transition.xbck` e il video della carriera
   `video\Story\Sgameint.bik`, il video tutorial `video\Tutorial\Tcustom.bik`, `flash\loadscreen_garage_s.xbck`,
-  `flash\garage.xbck` e `flash\toplevel_x.xbck` (acquisto dell'auto, uscita dall'officina).
+  `flash\garage.xbck` e `flash\toplevel_x.xbck` (acquisto dell'auto, uscita dall'officina), il tutorial
+  `video\Tutorial\Tordchek.bik`, `flash\loadscreen_career_filler_sNN.xbck`, `resources\city\hudmap.xbpf` e la gara.
+- **File**: XAPI aspetta sugli handle dei file dopo le letture asincrone e passa l'oggetto file a
+  `IoQueryVolumeInformation` (`XGetFilePhysicalSortKey`, `0x17A60`: file system "GDFX"/"FATX", poi `FsContext`).
+  La cancellazione delle letture (`0x326855`) scorre la coda di `IdexChannelObject + 0x28`.
+- **Controller in gara**: `0x2C9AA0` legge lo stato del controller del giocatore e chiama `XInputGetCapabilities`
+  con un buffer di 28 byte (`XINPUT_CAPABILITIES`: SubType, gamepad in ingresso, solo i motori in uscita).
 - **Audio**: DirectSound aspetta `0xFE820010 ≥ 0x20` e il codec AC97 pronto (`0xFEC0012C` bit 8); XACT si ferma a
   `0x408FFC`.
 

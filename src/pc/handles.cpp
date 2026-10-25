@@ -44,4 +44,11 @@ uint32_t object_from_handle(uint32_t handle) {
     return entry ? entry->object : 0;
 }
 
+uint32_t waitable_from_handle(uint32_t handle) {
+    if (handle == kCurrentThreadHandle) return kthread_address(current_xbox_thread());
+    const std::optional<HandleEntry> entry = lookup_handle(handle);
+    if (!entry) return 0;
+    return entry->wait_object ? entry->wait_object : entry->object;
+}
+
 }  // namespace mc3::pc
