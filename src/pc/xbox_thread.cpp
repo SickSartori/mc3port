@@ -1,6 +1,7 @@
 #include "pc/xbox_thread.h"
 
 #include <windows.h>
+#include <dbghelp.h>
 #include <intrin.h>
 #include <malloc.h>
 
@@ -57,11 +58,14 @@ std::once_flag g_process_once;
 
 }  // namespace
 
+DWORD_PTR g_game_cores = 0;  // 0: no restriction
+
 XboxThreadContext* attach_xbox_thread_context(const XbeTlsTemplate& tls, uint32_t tls_area_size) {
     std::call_once(g_process_once, [] {
         store_le32(g_process + kKProcessThreadQuantum, 60);  // 20 ms, the XAPI default
         g_process[kKProcessBasePriority] = kNormalBasePriority;
     });
+    if (g_game_cores) SetThreadAffinityMask(GetCurrentThread(), g_game_cores);
 
     auto* context = new XboxThreadContext{};
     // The TLS area sits right below the thread's StackBase; XAPI sets the TLS index to -(area size / 4), so
@@ -136,6 +140,15 @@ void lower_irql(uint8_t new_irql) {
 
 uint8_t* xbox_process() { return g_process; }
 
+void set_game_cores(unsigned long mask) { g_game_cores = mask; }
+
+unsigned long emulation_cores() {
+    DWORD_PTR process_mask = 0, system_mask = 0;
+    if (!GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask)) return 0;
+    const DWORD_PTR others = process_mask & ~g_game_cores;
+    return g_game_cores && others ? others : 0;
+}
+
 void start_game_code_thread(std::function<void()> body) {
     constexpr SIZE_T kStackSize = 1024 * 1024;
     auto* owned = new std::function<void()>(std::move(body));
@@ -156,6 +169,45 @@ void start_game_code_thread(std::function<void()> body) {
 
 uint32_t g_code_begin = 0, g_code_end = 0;
 
+// A copy of a suspended thread's stack, walked after the thread is resumed (walking while it is suspended could
+// block on a lock it holds, such as the heap's).
+struct StackCopy {
+    uint32_t base = 0;
+    std::vector<uint8_t> bytes;
+};
+// Names (from the PDB) of the values on the copied stack that point into this DLL: the host functions the thread
+// is in. A heuristic like the game scan above (stale values can appear), but it needs no unwind information.
+std::string describe_frames(const CONTEXT& /*registers*/, const StackCopy& copy) {
+    static bool symbols = SymInitialize(GetCurrentProcess(), nullptr, TRUE) != FALSE;
+    static const auto [module_begin, module_end] = [] {
+        HMODULE module = nullptr;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCWSTR>(&g_code_begin), &module);  // any address in this DLL
+        const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(module);
+        const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(reinterpret_cast<const uint8_t*>(module) + dos->e_lfanew);
+        const uintptr_t begin = reinterpret_cast<uintptr_t>(module);
+        return std::pair<uintptr_t, uintptr_t>{begin, begin + nt->OptionalHeader.SizeOfImage};
+    }();
+    std::string text;
+    int found = 0;
+    for (size_t offset = 0; offset + 4 <= copy.bytes.size() && found < 12; offset += 4) {
+        uint32_t value;
+        std::memcpy(&value, copy.bytes.data() + offset, 4);
+        if (value < module_begin || value >= module_end) continue;
+        alignas(SYMBOL_INFO) char storage[sizeof(SYMBOL_INFO) + 96] = {};
+        auto* symbol = reinterpret_cast<SYMBOL_INFO*>(storage);
+        symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+        symbol->MaxNameLen = 96;
+        DWORD64 displacement = 0;
+        if (!symbols || !SymFromAddr(GetCurrentProcess(), value, &displacement, symbol)) continue;
+        char entry[160];
+        std::snprintf(entry, sizeof(entry), " %s+%llX", symbol->Name, static_cast<unsigned long long>(displacement));
+        text += entry;
+        ++found;
+    }
+    return text;
+}
+
 void log_game_threads(const char* reason) {
     std::vector<XboxThreadContext*> threads;
     {
@@ -171,6 +223,7 @@ void log_game_threads(const char* reason) {
         registers.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
         const bool ok = GetThreadContext(context->windows_thread, &registers) != 0;
         std::string trace;
+        StackCopy copy;
         if (ok) {
             const auto* stack = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(registers.Esp));
             MEMORY_BASIC_INFORMATION info{};
@@ -186,6 +239,10 @@ void log_game_threads(const char* reason) {
                     ++found;
                 }
             }
+            const size_t bytes = std::min<size_t>(64 * 1024, reinterpret_cast<const uint8_t*>(region_end) -
+                                                                 reinterpret_cast<const uint8_t*>(stack));
+            copy.base = registers.Esp;
+            copy.bytes.assign(reinterpret_cast<const uint8_t*>(stack), reinterpret_cast<const uint8_t*>(stack) + bytes);
         }
         const int priority = GetThreadPriority(context->windows_thread);
         ResumeThread(context->windows_thread);
@@ -195,6 +252,7 @@ void log_game_threads(const char* reason) {
                      context->thread_id, priority, registers.Eip, context->kpcr[kKpcrIrql], registers.Eax,
                      registers.Ebx, registers.Ecx, registers.Edx, registers.Esi, registers.Edi, registers.Ebp,
                      trace.c_str());
+            log_line("    frames:%s", describe_frames(registers, copy).c_str());
         }
     }
 }

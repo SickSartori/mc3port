@@ -274,14 +274,16 @@ void map_audio_placeholder() {
 }
 
 // The Xbox has one CPU, and game code may rely on it (for example by never expecting two of its threads to run
-// at the same time). MC3_MULTICORE=1 lifts the restriction.
+// at the same time): game threads share one core, the emulated GPU gets the others. MC3_MULTICORE=1 lifts the
+// restriction.
 void restrict_to_one_core() {
     if (GetEnvironmentVariableW(L"MC3_MULTICORE", nullptr, 0)) return;
     DWORD_PTR process_mask = 0, system_mask = 0;
     if (!GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask) || !process_mask) return;
     const DWORD_PTR first_core = process_mask & (~process_mask + 1);
-    SetProcessAffinityMask(GetCurrentProcess(), first_core);
-    log_line("running on one CPU core (mask %08lX), like the Xbox", static_cast<unsigned long>(first_core));
+    set_game_cores(first_core);
+    log_line("game code runs on one CPU core (mask %08lX), like the Xbox; the GPU on mask %08lX",
+             static_cast<unsigned long>(first_core), emulation_cores());
 }
 
 // The game installs its own exception handlers (its crash screen exits to the dashboard), so faults would

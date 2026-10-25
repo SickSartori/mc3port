@@ -11,10 +11,12 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <map>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <unordered_map>
 
@@ -63,6 +65,36 @@ void store_system_time(KSystemTime& time, int64_t value) {
     time.high2_time = static_cast<int32_t>(value >> 32);
     time.low_part = static_cast<uint32_t>(value);
     time.high1_time = static_cast<int32_t>(value >> 32);
+}
+
+// The last events set (g_mutex held), for log_long_wait.
+struct SetRecord {
+    uint32_t event;
+    uint32_t thread_id;
+    Clock::time_point when;
+};
+SetRecord g_recent_sets[16] = {};
+uint32_t g_set_count = 0;
+
+// MC3_TRACE_WAITS=1: log_long_wait is active (idle worker threads also wait for long, so it is opt-in).
+const bool g_trace_waits = GetEnvironmentVariableW(L"MC3_TRACE_WAITS", nullptr, 0) != 0;
+
+void log_long_wait(uint32_t count, const uint32_t* objects) {
+    if (!g_trace_waits) return;
+    std::string list;
+    for (uint32_t i = 0; i < count; ++i) {
+        const XDispatcherHeader* header = header_of(objects[i]);
+        char entry[64];
+        std::snprintf(entry, sizeof(entry), " %08X (type %u, state %d)", objects[i], header->type, header->signal_state);
+        list += entry;
+    }
+    log_line("kernel: thread %lu has been waiting 5 s on%s", GetCurrentThreadId(), list.c_str());
+    const Clock::time_point now = Clock::now();
+    for (uint32_t i = g_set_count > 16 ? g_set_count - 16 : 0; i < g_set_count; ++i) {
+        const SetRecord& r = g_recent_sets[i % 16];
+        log_line("  event %08X set by thread %u, %lld ms ago", r.event, r.thread_id,
+                 static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(now - r.when).count()));
+    }
 }
 
 // --- wait satisfaction (g_mutex held) ---
@@ -154,12 +186,10 @@ void timer_thread() {
     }
 }
 
-void dpc_thread(XbeTlsTemplate tls) {
-    XboxThreadContext* context = attach_xbox_thread_context(tls, 0);
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
-    std::unique_lock<std::mutex> lock(g_mutex);
-    for (;;) {
-        g_dpc_queued.wait(lock, [] { return !g_dpc_queue.empty(); });
+// Runs the queued DPCs on the calling game-code thread. `lock` holds g_mutex on entry and on return.
+void run_queued_dpcs_locked(std::unique_lock<std::mutex>& lock) {
+    XboxThreadContext* context = current_xbox_thread();
+    while (!g_dpc_queue.empty()) {
         const uint32_t dpc_address = g_dpc_queue.front();
         g_dpc_queue.pop_front();
         XKDpc* dpc = guest<XKDpc>(dpc_address);
@@ -176,6 +206,17 @@ void dpc_thread(XbeTlsTemplate tls) {
         lower_irql(old_irql);
 
         lock.lock();
+    }
+}
+
+// Timer DPCs (and any DPC queued outside an interrupt) run here.
+void dpc_thread(XbeTlsTemplate tls) {
+    attach_xbox_thread_context(tls, 0);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+    std::unique_lock<std::mutex> lock(g_mutex);
+    for (;;) {
+        g_dpc_queued.wait(lock, [] { return !g_dpc_queue.empty(); });
+        run_queued_dpcs_locked(lock);
     }
 }
 
@@ -477,6 +518,8 @@ NTSTATUS wait_for_objects(uint32_t count, const uint32_t* objects, bool wait_all
     const uint32_t me = kthread_address(current_xbox_thread());
     const bool infinite = timeout == nullptr;
     const Clock::time_point deadline = infinite ? Clock::time_point::max() : deadline_from(timeout);
+    const Clock::time_point started = Clock::now();
+    bool reported = false;
 
     std::unique_lock<std::mutex> lock(g_mutex);
     for (;;) {
@@ -496,7 +539,13 @@ NTSTATUS wait_for_objects(uint32_t count, const uint32_t* objects, bool wait_all
             }
         }
         if (infinite) {
-            g_object_changed.wait(lock);
+            // A wait that lasts is logged once with what it waits for and the events set lately: hangs show up
+            // as "waiting on X, but Y was set".
+            g_object_changed.wait_for(lock, std::chrono::seconds(5));
+            if (!reported && Clock::now() - started > std::chrono::seconds(5)) {
+                reported = true;
+                log_long_wait(count, objects);
+            }
         } else if (g_object_changed.wait_until(lock, deadline) == std::cv_status::timeout) {
             // One last check happens on the next loop turn only if something changed; a timeout is final.
             bool signaled = false;
@@ -520,6 +569,10 @@ bool trigger_interrupt(uint32_t bus_interrupt_level) {
     reinterpret_cast<ServiceRoutine>(static_cast<uintptr_t>(interrupt->service_routine))(address_of(interrupt),
                                                                                         interrupt->service_context);
     lower_irql(old_irql);
+    // Like a CPU leaving interrupt level: the DPCs the ISR queued run now, before the next interrupt can be taken.
+    // Otherwise a second interrupt (the GPU runs in parallel) could overwrite what the ISR saved for its DPC.
+    std::unique_lock<std::mutex> lock(g_mutex);
+    run_queued_dpcs_locked(lock);
     return true;
 }
 
@@ -528,6 +581,7 @@ int32_t set_event(uint32_t event) {
     XDispatcherHeader* header = header_of(event);
     const int32_t previous = header->signal_state;
     header->signal_state = 1;
+    g_recent_sets[g_set_count++ % 16] = {event, GetCurrentThreadId(), Clock::now()};
     g_object_changed.notify_all();
     return previous;
 }

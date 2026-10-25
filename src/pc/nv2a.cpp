@@ -58,6 +58,10 @@ constexpr uint32_t kPgraphTrappedAddr = 0x400704;  // method 0x1FFF, subchannel 
 constexpr uint32_t kPgraphTrappedDataLow = 0x400708;
 constexpr uint32_t kPgraphSurface = 0x400710;  // flip counters: WRITE_3D 0x700000, READ_3D 0x7000000, MODULO 0x70000000
 constexpr uint32_t kPgraphIncrement = 0x40071C;
+// Bit 0: PGRAPH takes methods from the FIFO. The driver's interrupt handler clears it while it reads a trapped
+// method, so the GPU cannot overwrite TRAPPED_DATA with the next trap after the interrupt is acknowledged.
+constexpr uint32_t kPgraphFifo = 0x400720;
+std::atomic<bool> g_pgraph_fifo_enabled{true};
 constexpr uint32_t kPgraphIncrementRead3d = 1u << 1;
 // Written by the NV044 pattern object. D3D uses colour 0 as a progress marker: it puts a SET_MONOCHROME_COLOR0
 // in the push buffer (push buffer address and a counter) and polls the register to know how far the GPU got.
@@ -224,6 +228,17 @@ void write_register(uint32_t offset, uint32_t value) {
             return;
         case kPmcIntr0:
             return;  // a summary of the other registers
+        case kPgraphFifo:
+            reg(offset) = value;
+            g_pgraph_fifo_enabled = (value & 1) != 0;
+            if (value & 1) SetEvent(g_gpu_resume);
+            return;
+        case kPgraphIntrEn:
+        case kPmcIntrEn0:
+            // Enabling may release an interrupt that was already pending (a trapped software method).
+            reg(offset) = value;
+            SetEvent(g_interrupt_request);
+            return;
         case kPfbWbc:
             reg(offset) = value & ~kPfbWbcFlush;  // flushes complete at once: caches are coherent on the host
             return;
@@ -355,12 +370,45 @@ void set_flip_field(uint32_t shift, uint32_t value) {
     set_flip_field_locked(shift, value);
 }
 
-// NO_OPERATION with an argument is the driver's software method: the GPU stops and interrupts the CPU, whose ISR
-// reads the trapped method and data, does the work (callbacks, fences) and acknowledges by clearing the interrupt.
+// While the driver keeps PGRAPH's FIFO access off (kPgraphFifo), no method runs.
+void wait_for_pgraph_access() {
+    while (!g_pgraph_fifo_enabled) {
+        WaitForSingleObject(g_gpu_resume, 1);
+        service_present();
+    }
+}
+
+// The last software methods, for the hang detector: what the GPU asked the CPU and when it was answered.
+struct TrapRecord {
+    uint32_t method, argument, get;
+    ULONGLONG raised_ms, acknowledged_ms;
+};
+TrapRecord g_traps[16] = {};
+std::atomic<uint32_t> g_trap_count{0};
+
+void log_recent_traps() {
+    const uint32_t count = g_trap_count.load();
+    const ULONGLONG now = GetTickCount64();
+    log_line("nv2a: last software methods (of %u), PGRAPH_INTR %08X EN %08X, PMC_INTR_EN %08X, GET %08X PUT %08X",
+             count, reg(kPgraphIntr), reg(kPgraphIntrEn), reg(kPmcIntrEn0), g_push.get.load(), reg(kUserDmaPut));
+    for (uint32_t i = count > 16 ? count - 16 : 0; i < count; ++i) {
+        const TrapRecord& r = g_traps[i % 16];
+        log_line("  %04X(%08X) at GET %08X, %llu ms ago, answered after %lld ms", r.method, r.argument, r.get,
+                 now - r.raised_ms, r.acknowledged_ms ? static_cast<long long>(r.acknowledged_ms - r.raised_ms) : -1ll);
+    }
+}
+
+// NO_OPERATION with an argument is the driver's software method: the GPU stops and interrupts the CPU, whose
+// handler reads the trapped method and data, does the work (callbacks, fences) and acknowledges by clearing the
+// interrupt.
 void trap_software_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
+    TrapRecord& record = g_traps[g_trap_count % 16];
+    record = {method, argument, g_push.get.load(), GetTickCount64(), 0};
+    ++g_trap_count;
     {
+        // Like the hardware, the trap stays pending even while the interrupt is disabled (the driver's ISR may
+        // have masked it for a moment): it is raised as soon as it is enabled again, and PGRAPH waits until then.
         std::lock_guard<std::mutex> lock(g_register_mutex);
-        if (!(reg(kPgraphIntrEn) & kPgraphIntrError)) return;  // nobody would acknowledge it
         reg(kPgraphTrappedAddr) = (subchannel << 16) | method;
         reg(kPgraphTrappedDataLow) = argument;
         reg(kPgraphNsource) = kPgraphNsourceNotification;
@@ -370,7 +418,10 @@ void trap_software_method(uint32_t subchannel, uint32_t method, uint32_t argumen
     for (int waited = 0;; waited += 5) {
         {
             std::lock_guard<std::mutex> lock(g_register_mutex);
-            if (!(reg(kPgraphIntr) & kPgraphIntrError)) return;
+            if (!(reg(kPgraphIntr) & kPgraphIntrError)) {
+                record.acknowledged_ms = GetTickCount64();
+                return;
+            }
         }
         WaitForSingleObject(g_gpu_resume, 5);
         service_present();
@@ -466,6 +517,7 @@ bool image_blit_method(uint32_t method, uint32_t argument) {
 }
 
 void execute_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
+    wait_for_pgraph_access();
     if (g_collect_statistics) ++g_method_counts[(subchannel << 16) | method];
     if (g_trace_budget > 0 && g_frames >= g_trace_after_frame) {
         --g_trace_budget;
@@ -569,7 +621,9 @@ void run_push_buffer(uint32_t put) {
 }
 
 void gpu_thread() {
-    // Above the game's threads: on one core the GPU must be able to preempt a thread spinning on a register.
+    // The GPU is a processor of its own: off the game's core when there is another one. Above the game's threads
+    // anyway: when it has to share the core, it must preempt a thread spinning on a register.
+    if (const unsigned long cores = emulation_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
     g_renderer_ready = renderer_start(g_window);
     bool started = false;
@@ -719,6 +773,7 @@ void interrupt_thread() {
         last_get = get;
         if (still_frames == 600 || still_frames == 660 || still_frames == 720) {
             log_game_threads("nv2a: push buffer idle for 10 s");  // three samples, to tell a loop from a wait
+            if (still_frames == 600) log_recent_traps();
         }
     }
 }
@@ -745,6 +800,7 @@ bool start_nv2a() {
     reg(kPbusPciNv0) = 0x02A010DE;  // NVIDIA, NV2A
     reg(kPbusPciNv2) = 0x030000A2;  // VGA controller, revision A2
     reg(kPfbCstatus) = kPhysicalMemorySize;
+    reg(kPgraphFifo) = 1;  // PGRAPH takes methods
 
     HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     std::thread(window_thread, ready).detach();

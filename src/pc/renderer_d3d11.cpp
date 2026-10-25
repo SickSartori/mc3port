@@ -74,6 +74,7 @@ struct CachedTexture {
     ComPtr<ID3D11Texture2D> texture;
     ComPtr<ID3D11ShaderResourceView> srv;
     uint64_t content_hash = 0;
+    uint32_t checked_generation = 0;  // memory unchanged since this write-tracking generation
 };
 
 ComPtr<ID3D11Device> g_device;
@@ -91,12 +92,49 @@ ComPtr<ID3D11Texture2D> g_upload;  // guest framebuffers that were never rendere
 uint32_t g_upload_width = 0, g_upload_height = 0;
 
 std::unordered_map<uint32_t, Target> g_targets;
-std::unordered_map<uint32_t, DepthTarget> g_depth_targets;
+std::unordered_map<uint64_t, DepthTarget> g_depth_targets;
 std::unordered_map<uint64_t, ComPtr<ID3D11PixelShader>> g_pixel_shaders;
 std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>, CachedTexture> g_textures;
 std::map<std::tuple<bool, uint32_t, uint32_t, uint32_t, uint32_t>, ComPtr<ID3D11BlendState>> g_blend_states;
 std::map<std::tuple<bool, uint32_t, bool>, ComPtr<ID3D11DepthStencilState>> g_depth_states;
 std::map<std::pair<uint32_t, uint32_t>, ComPtr<ID3D11SamplerState>> g_samplers;
+
+// Statistics, logged every 10 s from renderer_present: where the GPU thread's time goes.
+struct Statistics {
+    uint64_t presents = 0, draws = 0, vertices = 0, vertex_ticks = 0;
+    uint64_t hashed_bytes = 0, hash_ticks = 0, uploads = 0, upload_ticks = 0, draw_ticks = 0;
+} g_stats;
+ULONGLONG g_stats_since = 0;
+
+uint64_t ticks() {
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    return static_cast<uint64_t>(now.QuadPart);
+}
+
+double milliseconds(uint64_t t) {
+    static const double frequency = [] {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        return static_cast<double>(f.QuadPart);
+    }();
+    return t * 1000.0 / frequency;
+}
+
+void log_statistics() {
+    const ULONGLONG now = GetTickCount64();
+    if (!g_stats_since) g_stats_since = now;
+    if (now - g_stats_since < 10000) return;
+    const double seconds = (now - g_stats_since) / 1000.0;
+    log_line("renderer: %.1f fps, %.0f draws/s, %.0f vertices/s | per second: vertices %.0f ms, texture hash %.0f ms "
+             "(%.1f MB), %.0f uploads %.0f ms, D3D %.0f ms",
+             g_stats.presents / seconds, g_stats.draws / seconds, g_stats.vertices / seconds,
+             milliseconds(g_stats.vertex_ticks) / seconds, milliseconds(g_stats.hash_ticks) / seconds,
+             g_stats.hashed_bytes / seconds / 1048576.0, g_stats.uploads / seconds,
+             milliseconds(g_stats.upload_ticks) / seconds, milliseconds(g_stats.draw_ticks) / seconds);
+    g_stats = {};
+    g_stats_since = now;
+}
 
 uint64_t hash_memory(const uint8_t* data, size_t size) {
     uint64_t hash = 1469598103934665603ull;
@@ -122,9 +160,13 @@ ComPtr<ID3DBlob> compile(const char* source, size_t size, const char* profile, c
     return code;
 }
 
+// The surface at `address`, at least width x height. A smaller request reuses the existing target (the draw's
+// viewport covers only its part); a larger one grows it and keeps what was drawn so far.
 Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     Target& target = g_targets[address];
-    if (target.texture && target.width == width && target.height == height) return &target;
+    if (target.texture && target.width >= width && target.height >= height) return &target;
+    width = std::max(width, target.width);
+    height = std::max(height, target.height);
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = width;
     desc.Height = height;
@@ -133,18 +175,25 @@ Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
     desc.SampleDesc.Count = 1;
     desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-    target = Target{};
-    if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &target.texture))) return nullptr;
-    g_device->CreateRenderTargetView(target.texture.Get(), nullptr, &target.rtv);
-    g_device->CreateShaderResourceView(target.texture.Get(), nullptr, &target.srv);
-    target.width = width;
-    target.height = height;
+    Target grown{};
+    if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &grown.texture))) return nullptr;
+    g_device->CreateRenderTargetView(grown.texture.Get(), nullptr, &grown.rtv);
+    g_device->CreateShaderResourceView(grown.texture.Get(), nullptr, &grown.srv);
+    grown.width = width;
+    grown.height = height;
+    if (target.texture) {
+        const D3D11_BOX box{0, 0, 0, target.width, target.height, 1};
+        g_context->CopySubresourceRegion(grown.texture.Get(), 0, 0, 0, 0, target.texture.Get(), 0, &box);
+    }
+    target = grown;
     log_line("renderer: render target %ux%u at %08X", width, height, address);
     return &target;
 }
 
+// Depth buffers must match their render target's size exactly in D3D11: one per address and size.
 DepthTarget* get_depth_target(uint32_t address, uint32_t width, uint32_t height) {
-    DepthTarget& target = g_depth_targets[address];
+    DepthTarget& target = g_depth_targets[(static_cast<uint64_t>(width) << 48) | (static_cast<uint64_t>(height) << 32) |
+                                          address];
     if (target.texture && target.width == width && target.height == height) return &target;
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = width;
@@ -261,6 +310,23 @@ ID3D11SamplerState* sampler(const TextureStage& stage) {
     return cached.Get();
 }
 
+// Current write-tracking generation, refreshed at most every 2 ms: a write that lands just after a refresh is
+// picked up by the next one.
+uint32_t g_write_generation = 0;
+uint64_t g_write_refreshed_at = 0;
+
+void refresh_write_tracking() {
+    static const uint64_t interval = [] {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        return static_cast<uint64_t>(f.QuadPart) / 500;
+    }();
+    const uint64_t now = ticks();
+    if (g_write_generation && now - g_write_refreshed_at < interval) return;
+    g_write_generation = refresh_physical_writes();
+    g_write_refreshed_at = now;
+}
+
 ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
     const TextureDescriptor& d = stage.descriptor;
     // A texture that is a render target (render to texture) is sampled from the GPU copy.
@@ -271,11 +337,27 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
     if (!texture_extent(d, &width, &height, &bytes)) return nullptr;
     const uint8_t* memory = physical_pointer(d.address);
     if (!memory || !physical_pointer(d.address + bytes - 1)) return nullptr;
-    const uint64_t hash = hash_memory(memory, bytes) ^ (d.palette ? hash_memory(physical_pointer(d.palette), 1024) : 0);
-
     CachedTexture& cached = g_textures[std::make_tuple(d.address, d.format, d.pitch, d.rect, d.palette)];
+    // Unchanged memory needs no look at all; written memory is hashed, and decoded again only if it differs.
+    uint32_t written = physical_write_generation(d.address, bytes);
+    if (d.palette) written = std::max(written, physical_write_generation(d.palette, 1024));
+    if (cached.srv && written <= cached.checked_generation) return cached.srv.Get();
+
+    const uint64_t hash_start = ticks();
+    const uint64_t hash = hash_memory(memory, bytes) ^ (d.palette ? hash_memory(physical_pointer(d.palette), 1024) : 0);
+    g_stats.hash_ticks += ticks() - hash_start;
+    g_stats.hashed_bytes += bytes;
+    cached.checked_generation = g_write_generation;
     if (cached.srv && cached.content_hash == hash) return cached.srv.Get();
 
+    const uint64_t upload_start = ticks();
+    struct Account {
+        uint64_t start;
+        ~Account() {
+            g_stats.upload_ticks += ticks() - start;
+            ++g_stats.uploads;
+        }
+    } account{upload_start};
     const TextureImage image = decode_texture(d);
     if (image.layout == TextureLayout::Unsupported) return nullptr;
     D3D11_TEXTURE2D_DESC desc{};
@@ -452,12 +534,18 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
 
 void renderer_draw(const SurfaceState& surface, const DrawState& state, const std::vector<RenderVertex>& triangles) {
     if (!g_device || triangles.empty() || !surface.width || !surface.height) return;
+    ++g_stats.draws;
+    const uint64_t draw_start = ticks();
+    struct Account {
+        uint64_t start;
+        ~Account() { g_stats.draw_ticks += ticks() - start; }
+    } account{draw_start};
     Target* target = get_target(surface.color_address, surface.width, surface.height);
     if (!target) return;
     ID3D11PixelShader* shader = pixel_shader(state.program);
     if (!shader) return;
     DepthTarget* depth = (surface.zeta_address && (state.depth_test || state.depth_write))
-                             ? get_depth_target(surface.zeta_address, surface.width, surface.height)
+                             ? get_depth_target(surface.zeta_address, target->width, target->height)
                              : nullptr;
 
     const uint32_t bytes = static_cast<uint32_t>(triangles.size() * sizeof(RenderVertex));
@@ -493,6 +581,7 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
 
     ID3D11ShaderResourceView* views[4] = {};
     ID3D11SamplerState* samplers[4] = {};
+    refresh_write_tracking();
     for (int i = 0; i < 4; ++i) {
         if (!state.textures[i].enabled) continue;
         views[i] = texture_view(state.textures[i]);
@@ -510,6 +599,11 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     g_context->VSSetShader(g_vertex_shader.Get(), nullptr, 0);
     g_context->PSSetShader(shader, nullptr, 0);
     g_context->Draw(static_cast<UINT>(triangles.size()), 0);
+}
+
+void renderer_note_vertex_work(uint64_t elapsed, uint32_t vertices) {
+    g_stats.vertex_ticks += elapsed;
+    g_stats.vertices += vertices;
 }
 
 void renderer_blit(const BlitRequest& b) {
@@ -582,6 +676,8 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
         g_context->CopyResource(back_buffer.Get(), g_upload.Get());
     }
     ++g_presented;
+    ++g_stats.presents;
+    log_statistics();
     if (g_dump_every && g_presented % g_dump_every == 0) {
         dump_frame(back_buffer.Get());
         const auto extra = g_targets.find(g_dump_target);

@@ -111,6 +111,13 @@ SurfaceState surface() {
     s.zeta_address = (g_k.surface_format & 0xF0) ? g_k.dma_zeta + g_k.zeta_offset : 0;
     s.width = g_k.clip_horizontal >> 16;
     s.height = g_k.clip_vertical >> 16;
+    constexpr uint32_t kSurfaceSwizzled = 2;
+    if (((g_k.surface_format >> 8) & 0xF) == kSurfaceSwizzled) {
+        // A swizzled surface is a whole power-of-two texture (log2 sizes in the format); the clip only limits
+        // where this draw writes, and the texture's coordinates are relative to its full size.
+        s.width = 1u << ((g_k.surface_format >> 16) & 0xF);
+        s.height = 1u << ((g_k.surface_format >> 24) & 0xF);
+    }
     return s;
 }
 
@@ -480,6 +487,8 @@ void draw(uint32_t count, Fetch fetch) {
     std::vector<RenderVertex> vertices(count);
     Vec4 inputs[kVshAttributes];
     Vec4 outputs[kVshOutputs];
+    LARGE_INTEGER vertex_start, vertex_end;
+    QueryPerformanceCounter(&vertex_start);
     for (uint32_t i = 0; i < count; ++i) {
         std::copy(std::begin(g_k.attribute), std::end(g_k.attribute), inputs);
         fetch(i, inputs);
@@ -491,6 +500,8 @@ void draw(uint32_t count, Fetch fetch) {
         outputs[kOutFog][0] = fog_factor(outputs[kOutFog][0]);
         vertices[i] = to_render_vertex(outputs, static_cast<float>(target.width), static_cast<float>(target.height));
     }
+    QueryPerformanceCounter(&vertex_end);
+    renderer_note_vertex_work(static_cast<uint64_t>(vertex_end.QuadPart - vertex_start.QuadPart), count);
     static bool fixed_function_only = false;  // MC3_DEBUG_DRAWS_FF=1: describe only fixed-function draws
     if (g_debug_draws < 0) {
         char value[16] = {};

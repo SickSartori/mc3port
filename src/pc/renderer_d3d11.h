@@ -49,6 +49,8 @@ struct DrawState {
 };
 
 bool renderer_start(HWND window);
+// Time spent producing vertices (vertex program / fixed function), for the statistics logged every 10 s.
+void renderer_note_vertex_work(uint64_t ticks, uint32_t vertices);
 void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color, uint32_t depth_stencil, int x0, int y0,
                     int x1, int y1);
 void renderer_draw(const SurfaceState& surface, const DrawState& state, const std::vector<RenderVertex>& triangles);

@@ -24,6 +24,7 @@
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
+#include "pc/physical_memory.h"
 
 namespace mc3::pc {
 
@@ -212,7 +213,10 @@ std::optional<Location> resolve_attributes(const XObjectAttributes* attributes) 
     constexpr uint32_t kDosDevicesDirectory = 0xFFFFFFFD;  // ObDosDevicesDirectory(): the "\??\" namespace
     std::string name = ansi_string(guest<XAnsiString>(attributes->object_name));
     if (attributes->root_directory == kDosDevicesDirectory) {
-        name = "\\??\\" + name;
+        // A name without a drive ("resources\vehicle\...", used for the car models) is relative to the title's
+        // directory, D:.
+        const bool has_drive = name.size() >= 2 && name[1] == ':';
+        name = (has_drive || (!name.empty() && name[0] == '\\')) ? "\\??\\" + name : "\\??\\D:\\" + name;
     } else if (attributes->root_directory) {
         const std::optional<HandleEntry> root = lookup_handle(attributes->root_directory);
         if (!root || !root->file) return std::nullopt;
@@ -490,6 +494,8 @@ NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_rout
         status = kStatusInvalidParameter;
     }
     file->position = offset + read;
+    // Windows' write watch does not see what its own I/O writes; textures loaded from disc must be re-read.
+    mark_physical_written(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(buffer)), read);
     complete(io_status, status, read);
     finish_request(event, apc_routine, apc_context, io_status);
     return status;

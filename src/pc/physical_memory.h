@@ -22,6 +22,13 @@ uint32_t allocate_contiguous(uint32_t size, uint32_t lowest, uint32_t highest, u
 void free_contiguous(uint32_t virtual_address);
 uint32_t contiguous_allocation_size(uint32_t virtual_address);  // 0 if not a contiguous allocation
 
+// Write tracking, so the renderer re-reads a texture only when its memory changed. Each page carries the
+// generation in which a write to it was last seen; refresh_physical_writes() collects the writes made since the
+// previous call (Windows write watch) and returns the new current generation.
+uint32_t refresh_physical_writes();
+uint32_t physical_write_generation(uint32_t physical_address, uint32_t bytes);  // latest over the range
+void mark_physical_written(uint32_t virtual_address, uint32_t bytes);  // writes Windows does not see (kernel I/O)
+
 bool is_physical_window(uint32_t virtual_address);
 uint32_t physical_to_virtual(uint32_t physical_address);
 uint8_t* physical_pointer(uint32_t physical_address);  // nullptr outside RAM

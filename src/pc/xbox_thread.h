@@ -62,6 +62,12 @@ void start_thread_watchdog(uint32_t code_begin, uint32_t code_end);
 // Logs every game thread once (what the watchdog prints), from any thread.
 void log_game_threads(const char* reason);
 
+// The Xbox has one CPU and game code may rely on it: every thread that runs game code (attached above) is kept on
+// `mask`. The emulated hardware (GPU) is another processor and runs on the remaining cores, emulation_cores()
+// (0 when there are none or no restriction is set).
+void set_game_cores(unsigned long mask);
+unsigned long emulation_cores();
+
 // Shared by every thread: the fields of KPROCESS the game reads through KTHREAD.ApcState.Process.
 uint8_t* xbox_process();
 

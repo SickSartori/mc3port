@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "pc/log.h"
+
 namespace mc3::pc {
 namespace {
 
@@ -167,7 +169,15 @@ std::string texture_fetch(uint32_t mode, int stage) {
                 "texture%d.Sample(sampler%d, input.t%d.xy / (input.t%d.w != 0 ? input.t%d.w : 1) * texture_scale[%d].xy)",
                 stage, stage, stage, stage, stage, stage);
         case kModePassthrough: return format("saturate(input.t%d)", stage);
-        default: return "float4(0, 0, 0, 0)";  // cube maps, bump mapping and dot-product modes: not yet
+        default: {
+            // Cube maps, bump mapping and dot-product modes: not yet (logged once per mode).
+            static uint32_t reported = 0;
+            if (mode < 32 && !(reported & (1u << mode))) {
+                reported |= 1u << mode;
+                log_line("nv2a: texture stage mode %u not supported yet (stage %d samples black)", mode, stage);
+            }
+            return "float4(0, 0, 0, 0)";
+        }
     }
 }
 

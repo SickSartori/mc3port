@@ -91,13 +91,19 @@ Fatti emersi facendo girare il gioco, che il kernel emulato deve rispettare:
   `0x43E994`, memory unit `0x43E918`, cuffie `0x43E884`/`0x43E890`. Inizializzazione a `0x84B40`, controllo dei
   cambiamenti a ogni frame a `0x84C00`, lettura dello stato a `0x848F0`.
 - **Errore fatale del gioco**: `0x19070` (`exit(1)` con messaggio).
+- **Interrupt di D3D**: l'ISR (`0x41B050`) spegne `PMC_INTR_EN` e accoda il DPC (`0x41BA00`), che legge
+  `PMC_INTR_0` e chiama i gestori finché ce n'è (`0x41B7C0` PGRAPH, `0x41B250` vblank, `0x41B870` PFIFO). Il gestore
+  PGRAPH mette `PGRAPH_FIFO` a 0, azzera l'interrupt, *poi* legge `TRAPPED_DATA` e chiama la tabella dei metodi
+  software (`0x41B784`, valori 1-14); il valore 5 fa `KeSetEvent` sull'evento a `device+0x1DCC`, che D3D aspetta a
+  `0x4166FD` quando il push buffer è pieno.
 - **Avanzamento della GPU**: D3D legge `PGRAPH 0x400B10` (`PATT_COLOR0`) a `0x41629B` e ci attende a `0x416300`
   (bit 2-6 = contatore); il valore arriva dal metodo `0x310` dell'oggetto `0x44` sul subchannel 5.
 - **Sequenza a schermo**: `rockstar.bik`, `sdlogo.bik`, `mc3intro.bik` (video lineari `X8R8G8B8` 640x480, coordinate
   in texel), poi `flash\legal_it_x.xbck` e `flash\bg_savegame.xbck` disegnati in fixed-function, con un blit 2D fra i
   due buffer. Con START: titolo ("Premi START per iniziare") sulla città 3D, controllo dei salvataggi su `U:\`,
   nome del profilo, `flash\bg_main.xbck`, `flash\bg_career.xbck`, `flash\transition.xbck` e il video della carriera
-  `video\Story\Sgameint.bik`.
+  `video\Story\Sgameint.bik`, il video tutorial `video\Tutorial\Tcustom.bik`, `flash\loadscreen_garage_s.xbck`,
+  `flash\garage.xbck` e `flash\toplevel_x.xbck` (acquisto dell'auto, uscita dall'officina).
 - **Audio**: DirectSound aspetta `0xFE820010 ≥ 0x20` e il codec AC97 pronto (`0xFEC0012C` bit 8); XACT si ferma a
   `0x408FFC`.
 

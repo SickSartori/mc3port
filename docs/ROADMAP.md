@@ -51,14 +51,25 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
 - **Marcatore di avanzamento**: D3D mette nel push buffer `SET_MONOCHROME_COLOR0` dell'oggetto pattern (`0x44`), che
   scrive `PGRAPH 0x400B10`, e lo legge per sapere fin dove è arrivata la GPU. Senza, il D3D del gioco si blocca a
   caso (su un contatore a 5 bit), anche durante i video.
-- **Rilevatore di blocchi**: se il push buffer resta fermo 10 s, il log riporta dove sono tutti i thread del gioco.
+- **Rilevatore di blocchi**: se il push buffer resta fermo 10 s, il log riporta dove sono tutti i thread del gioco
+  (indirizzi del gioco e funzioni del port, con i simboli del PDB) e gli ultimi metodi software della GPU.
+- **Core**: il codice del gioco (thread, ISR, DPC) gira su un core solo come sull'Xbox; la GPU emulata gira sugli
+  altri core, come un processore a parte. Per questo vanno emulati i punti in cui il driver ferma la GPU:
+  `PGRAPH_FIFO` (`0x400720`) a 0 mentre il gestore d'interrupt legge `TRAPPED_DATA`, e i DPC eseguiti subito dopo
+  l'ISR. Senza, la GPU sovrascriveva il metodo software `NOP(5)` e il gioco aspettava per sempre.
+- **Velocità**: con la build Release i menu 3D vanno a 28-50 fps (in Debug 2 fps). Le texture si rileggono solo se
+  la loro memoria è stata scritta (write watch di Windows sulla RAM emulata); le render target non si ricreano più
+  quando cambia il clip (le superfici swizzled hanno la dimensione del formato). Il log riporta ogni 10 s fps, draw
+  e tempo per vertici/texture/D3D.
 
 - **Menu**: l'interfaccia (file `flash\*.xbck`) è disegnata in una render target 512x512 swizzled e poi incollata in
   prospettiva sulla scena 3D con blend additivo e la nebbia nel final combiner: senza fattore di nebbia corretto
   restava invisibile.
 
-Prossimi passi della fase 3: prestazioni (build Release, vertici sulla CPU), texgen sfera/riflessione, cube map,
-bump mapping, punti e linee, culling; poi la guida vera e propria.
+Prossimi passi della fase 3: l'auto del garage non si vede (modalità texture mancanti: bump mapping `6`, cube map,
+riflessi), vertici ancora calcolati sulla CPU (circa 1,5 milioni al secondo nei menu), punti e linee, culling; poi
+la guida vera e propria. Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
+thread aspetta su un handle di file, cosa che il kernel emulato non supporta ancora.
 
 ### Audio
 
