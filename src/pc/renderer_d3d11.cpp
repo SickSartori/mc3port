@@ -43,9 +43,12 @@ struct PSInput {
     float4 t3 : TEXCOORD3;
     float fog : FOG;
 };
+// Positions arrive in pixels of the render target times w; scale = (2 / width, 2 / height).
+cbuffer Surface : register(b0) { float4 scale; };
 PSInput main(VSInput i) {
     PSInput o;
-    o.position = i.position;
+    o.position = float4(i.position.x * scale.x - i.position.w, i.position.w - i.position.y * scale.y,
+                        i.position.z, i.position.w);
     o.d0 = i.d0;
     o.d1 = i.d1;
     o.t0 = i.t0;
@@ -86,8 +89,11 @@ ComPtr<ID3D11VertexShader> g_vertex_shader;
 ComPtr<ID3D11InputLayout> g_input_layout;
 ComPtr<ID3D11Buffer> g_vertex_buffer;
 uint32_t g_vertex_capacity = 0;
+uint32_t g_vertex_used = 0;  // bytes of the ring buffer written since the last DISCARD
 ComPtr<ID3D11Buffer> g_constants;
 ComPtr<ID3D11RasterizerState> g_rasterizer;
+ComPtr<ID3D11Buffer> g_surface_constants;  // vertex shader: pixel-to-clip scale of the current target
+uint32_t g_surface_scale_width = 0, g_surface_scale_height = 0;
 ComPtr<ID3D11VertexShader> g_clear_vertex_shader;
 ComPtr<ID3D11PixelShader> g_clear_pixel_shader;
 ComPtr<ID3D11Buffer> g_clear_constants;
@@ -109,6 +115,8 @@ std::map<std::pair<uint32_t, uint32_t>, ComPtr<ID3D11SamplerState>> g_samplers;
 struct Statistics {
     uint64_t presents = 0, draws = 0, vertices = 0, vertex_ticks = 0;
     uint64_t hashed_bytes = 0, hash_ticks = 0, uploads = 0, upload_ticks = 0, draw_ticks = 0;
+    // Parts of draw_ticks: target/shader lookup, vertex upload, state, textures, the Draw call.
+    uint64_t part_ticks[5] = {};
 } g_stats;
 ULONGLONG g_stats_since = 0;
 
@@ -138,6 +146,11 @@ void log_statistics() {
              milliseconds(g_stats.vertex_ticks) / seconds, milliseconds(g_stats.hash_ticks) / seconds,
              g_stats.hashed_bytes / seconds / 1048576.0, g_stats.uploads / seconds,
              milliseconds(g_stats.upload_ticks) / seconds, milliseconds(g_stats.draw_ticks) / seconds);
+    log_line("renderer: D3D parts per second: setup %.0f ms, vertex upload %.0f ms, state %.0f ms, textures %.0f ms, "
+             "draw %.0f ms",
+             milliseconds(g_stats.part_ticks[0]) / seconds, milliseconds(g_stats.part_ticks[1]) / seconds,
+             milliseconds(g_stats.part_ticks[2]) / seconds, milliseconds(g_stats.part_ticks[3]) / seconds,
+             milliseconds(g_stats.part_ticks[4]) / seconds);
     g_stats = {};
     g_stats_since = now;
 }
@@ -570,6 +583,11 @@ bool renderer_start(HWND window) {
         g_device->CreateVertexShader(clear_vs->GetBufferPointer(), clear_vs->GetBufferSize(), nullptr, &g_clear_vertex_shader);
         g_device->CreatePixelShader(clear_ps->GetBufferPointer(), clear_ps->GetBufferSize(), nullptr, &g_clear_pixel_shader);
     }
+    D3D11_BUFFER_DESC surface_constants{};
+    surface_constants.ByteWidth = 16;
+    surface_constants.Usage = D3D11_USAGE_DEFAULT;
+    surface_constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    g_device->CreateBuffer(&surface_constants, nullptr, &g_surface_constants);
     D3D11_BUFFER_DESC clear_constants{};
     clear_constants.ByteWidth = 16;
     clear_constants.Usage = D3D11_USAGE_DEFAULT;
@@ -659,9 +677,21 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
                              ? get_depth_target(surface.zeta_address, target->width, target->height)
                              : nullptr;
 
+    uint64_t mark = ticks();
+    const auto part = [&mark](int index) {
+        const uint64_t now = ticks();
+        g_stats.part_ticks[index] += now - mark;
+        mark = now;
+    };
+    g_stats.part_ticks[0] += mark - draw_start;
+
+    // Vertices go into a ring buffer: appended without waiting (NO_OVERWRITE), and the buffer is renamed (DISCARD)
+    // only when it is full, instead of once per draw.
     const uint32_t bytes = static_cast<uint32_t>(triangles.size() * sizeof(RenderVertex));
+    constexpr uint32_t kMinimumRing = 8u << 20;
     if (bytes > g_vertex_capacity) {
-        g_vertex_capacity = std::max(bytes, g_vertex_capacity * 2);
+        g_vertex_capacity = std::max({bytes, g_vertex_capacity * 2, kMinimumRing});
+        g_vertex_capacity -= g_vertex_capacity % sizeof(RenderVertex);
         D3D11_BUFFER_DESC desc{};
         desc.ByteWidth = g_vertex_capacity;
         desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -669,19 +699,30 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
         desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
         g_vertex_buffer.Reset();
         g_device->CreateBuffer(&desc, nullptr, &g_vertex_buffer);
+        g_vertex_used = g_vertex_capacity;  // forces a DISCARD below
     }
+    const bool wrap = g_vertex_used + bytes > g_vertex_capacity;
+    if (wrap) g_vertex_used = 0;
     D3D11_MAPPED_SUBRESOURCE mapped;
-    if (FAILED(g_context->Map(g_vertex_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
-    // Pixels (times w) to clip space, over the render target's real size.
-    const float scale_x = 2.0f / target->width, scale_y = 2.0f / target->height;
-    auto* out = static_cast<RenderVertex*>(mapped.pData);
-    for (size_t i = 0; i < triangles.size(); ++i) {
-        out[i] = triangles[i];
-        const float w = triangles[i].position[3];
-        out[i].position[0] = triangles[i].position[0] * scale_x - w;
-        out[i].position[1] = w - triangles[i].position[1] * scale_y;
+    if (FAILED(g_context->Map(g_vertex_buffer.Get(), 0, wrap ? D3D11_MAP_WRITE_DISCARD : D3D11_MAP_WRITE_NO_OVERWRITE, 0,
+                              &mapped))) {
+        return;
     }
+    // One sequential copy: the buffer is write-combined memory, slow to write piecewise. The vertex shader maps
+    // pixels to clip space over the render target's real size.
+    const UINT first_vertex = g_vertex_used / sizeof(RenderVertex);
+    std::memcpy(static_cast<uint8_t*>(mapped.pData) + g_vertex_used, triangles.data(), bytes);
     g_context->Unmap(g_vertex_buffer.Get(), 0);
+    g_vertex_used += bytes;
+    if (g_surface_scale_width != target->width || g_surface_scale_height != target->height) {
+        const float scale[4] = {2.0f / target->width, 2.0f / target->height, 0, 0};
+        g_context->UpdateSubresource(g_surface_constants.Get(), 0, nullptr, scale, 0, 0);
+        g_surface_scale_width = target->width;
+        g_surface_scale_height = target->height;
+    }
+    ID3D11Buffer* surface_constants = g_surface_constants.Get();
+    g_context->VSSetConstantBuffers(0, 1, &surface_constants);
+    part(1);
 
     ID3D11RenderTargetView* rtv = target->rtv.Get();
     // A surface can be both the target and a texture of the same draw; unbind it from the pixel shader first.
@@ -711,6 +752,7 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
     ID3D11Buffer* constants = g_constants.Get();
     g_context->PSSetConstantBuffers(0, 1, &constants);
+    part(2);
 
     ID3D11ShaderResourceView* views[4] = {};
     ID3D11SamplerState* samplers[4] = {};
@@ -723,6 +765,7 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     }
     g_context->PSSetShaderResources(0, 4, views);
     g_context->PSSetSamplers(0, 4, samplers);
+    part(3);
 
     const UINT stride = sizeof(RenderVertex), offset = 0;
     ID3D11Buffer* buffer = g_vertex_buffer.Get();
@@ -731,7 +774,8 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_context->VSSetShader(g_vertex_shader.Get(), nullptr, 0);
     g_context->PSSetShader(shader, nullptr, 0);
-    g_context->Draw(static_cast<UINT>(triangles.size()), 0);
+    g_context->Draw(static_cast<UINT>(triangles.size()), first_vertex);
+    part(4);
 }
 
 bool renderer_probe(uint32_t address, uint32_t x, uint32_t y, uint8_t bgra[4]) {
