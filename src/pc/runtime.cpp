@@ -23,6 +23,7 @@
 #include "pc/dsound_hle.h"
 #include "pc/fs_patch.h"
 #include "pc/hle_patches.h"
+#include "pc/input_hle.h"
 #include "pc/kernel.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
@@ -356,6 +357,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
 
     apply_hle_patches(*g_xbe);
     install_dsound_hle(*g_xbe);
+    install_input_hle(*g_xbe);
     const FsPatchReport fs = patch_fs_reads(*g_xbe, g_exec_memory);
     log_line("fs: reads patched: %u (%u helpers), skipped: %u", fs.patched, fs.helpers, fs.skipped);
 

@@ -46,6 +46,19 @@ Senza argomenti usa la prima `.iso` trovata accanto a `mc3.exe` o nella cartella
 L'hard disk dell'Xbox (salvataggi in `UDATA`, dati del titolo in `TDATA`, cache `Z:`) è la cartella `xbox_hdd`
 accanto a `mc3.exe`. Il log di ogni avvio è `mc3port.log`, nella stessa cartella.
 
+Controlli: i controller XInput (Xbox 360/One/Series) sono le porte 1-4; Bianco e Nero diventano LB e RB. Senza
+controller, la porta 1 è la tastiera (solo quando la finestra del gioco è in primo piano):
+
+| Tasto | Pulsante Xbox |
+|---|---|
+| Frecce | croce direzionale |
+| Invio / Backspace | START / BACK |
+| Spazio / Esc / Z / C | A / B / X / Y |
+| W / S | grilletto destro (gas) / sinistro (freno) |
+| A / D | levetta sinistra (sterzo) |
+| I / J / K / L | levetta destra |
+| Shift sinistro / Ctrl sinistro | Nero / Bianco |
+
 Variabili d'ambiente:
 
 | Variabile | Effetto |
@@ -56,6 +69,7 @@ Variabili d'ambiente:
 | `MC3_DUMP_FRAMES=<n>` | salva un frame presentato ogni `n` come `frame-NNNNN.bmp` nella cartella di lavoro |
 | `MC3_DEBUG_DRAWS=<n>` | descrive nel log i primi `n` draw (vertici, combiner, texture, stati); con `MC3_DEBUG_DRAWS_FF=1` solo quelli fixed-function |
 | `MC3_GPU_STATS=1` | ogni 10 s, i metodi GPU più usati |
+| `MC3_INPUT_SCRIPT=<s>:<pulsante>,...` | preme pulsanti del controller 1 a quei secondi dall'avvio, per i test (`start back a b x y black white up down left right lt rt`) |
 | `MC3_WATCHDOG=<s>` | ogni `s` secondi, dove si trovano i thread del gioco (cambia la temporizzazione) |
 
 ## Strumenti

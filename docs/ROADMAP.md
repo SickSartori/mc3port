@@ -26,7 +26,7 @@ Il codice del gioco è x86 a 32 bit, come il PC: non va tradotto, va solo "ospit
 | 1 | Launcher a 0x10000, mappatura XBE, patch `fs:`, thunk del kernel con stub che registrano la prima chiamata mancante | fatto |
 | 2 | Kernel: memoria, thread, sincronizzazione, file (`D:\` letto direttamente dalla ISO), tempo | fatto per l'avvio: il gioco arriva all'inizializzazione grafica. Restano 23 funzioni mai chiamate finora (driver `Io*`, crittografia `Xc*` per salvataggi e online) |
 | 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco; poi rendering su D3D11/Vulkan | in corso: video Bink, schermata legale e schermata del titolo visibili su D3D11; mancano illuminazione fixed-function, texgen sferici/cube map, bump mapping, punti e linee |
-| 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | audio fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2); input da fare |
+| 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | audio fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2); input fatto (XInput, vibrazione, tastiera): START salta i video e supera il titolo |
 | 5 | Miglioramenti: risoluzione, widescreen, 60 fps, caricamenti | da fare |
 
 ### Grafica: perché si emula la GPU e non Direct3D
@@ -71,8 +71,9 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
 
 ### Input e rete provvisori
 
-- **Input**: `XInitDevices` e `XGetDeviceEnumerationStatus` sono sostituite (`hle_patches.cpp`): nessun controller
-  collegato. L'input vero arriverà sostituendo `XGetDevices`/`XInputOpen`/`XInputGetState` con XInput del PC.
+- **Input**: `XInitDevices` non avvia lo stack USB (`hle_patches.cpp`); le sette funzioni XPP che il gioco usa per i
+  controller sono redirette a XInput del PC (`input_hle.cpp`), con vibrazione, collegamento a caldo e tastiera come
+  controller 1. Memory unit e cuffie Xbox Live restano assenti.
 - **Rete**: la scheda di rete (`0xFEF00000`) è memoria semplice e il PHY risponde "cavo scollegato"; la cifratura
   DES del traffico è un passaggio trasparente. Xbox Live e System Link non sono supportati.
 

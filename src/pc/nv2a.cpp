@@ -717,7 +717,9 @@ void interrupt_thread() {
         const uint32_t get = g_push.get.load();
         still_frames = (get == last_get) ? still_frames + 1 : 0;
         last_get = get;
-        if (still_frames == 600) log_game_threads("nv2a: push buffer idle for 10 s");
+        if (still_frames == 600 || still_frames == 660 || still_frames == 720) {
+            log_game_threads("nv2a: push buffer idle for 10 s");  // three samples, to tell a loop from a wait
+        }
     }
 }
 

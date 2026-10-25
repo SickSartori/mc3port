@@ -31,6 +31,7 @@ if(WIN32)
         src/pc/fs_patch.cpp
         src/pc/handles.cpp
         src/pc/hle_patches.cpp
+        src/pc/input_hle.cpp
         src/pc/kernel.cpp
         src/pc/kernel_crypto.cpp
         src/pc/kernel_dispatcher.cpp

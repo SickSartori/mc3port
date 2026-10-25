@@ -84,8 +84,12 @@ Fatti emersi facendo girare il gioco, che il kernel emulato deve rispettare:
   bit `0x00400000` di `XC_VIDEO_FLAGS`. Se non trova una modalità, `CreateDevice` fallisce e il gioco mostra
   "Could not start graphics" (messaggio ereditato dalla versione PC dell'engine) ed esce.
 - **Input (XPP)**: `XInitDevices` `0x43F0E7` (chiamata tramite `0x4409F0`), `XGetDeviceEnumerationStatus`
-  `0x4411A2`, `XGetDevices` `0x4409F5`, `XInputOpen` `0x441D4D`, tipo gamepad `0x43E994`; sequenza nel gioco a
-  `0x84B40`.
+  `0x4411A2`, `XGetDevices` `0x4409F5`, `XGetDeviceChanges` `0x440A17`, `XInputOpen` `0x441D4D`, `XInputClose`
+  `0x441DA3`, `XInputGetCapabilities` `0x441DAF` (il gioco riconosce il volante dal SubType `0x10`),
+  `XInputGetState` `0x441F87`, `XInputSetState` `0x441FFA` (il gioco aspetta `ERROR_IO_PENDING` e rilegge lo stato
+  nell'intestazione del feedback). Un tipo di dispositivo è `{collegati, cambiati, collegati prima}`: gamepad
+  `0x43E994`, memory unit `0x43E918`, cuffie `0x43E884`/`0x43E890`. Inizializzazione a `0x84B40`, controllo dei
+  cambiamenti a ogni frame a `0x84C00`, lettura dello stato a `0x848F0`.
 - **Errore fatale del gioco**: `0x19070` (`exit(1)` con messaggio).
 - **Avanzamento della GPU**: D3D legge `PGRAPH 0x400B10` (`PATT_COLOR0`) a `0x41629B` e ci attende a `0x416300`
   (bit 2-6 = contatore); il valore arriva dal metodo `0x310` dell'oggetto `0x44` sul subchannel 5.
