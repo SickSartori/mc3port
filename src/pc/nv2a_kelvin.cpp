@@ -27,6 +27,12 @@ enum : uint32_t { kTypeUbD3d = 0, kTypeS1 = 1, kTypeFloat = 2, kTypeUbOgl = 4, k
 
 constexpr uint32_t kExecutionModeProgram = 2;
 
+// Slots of the transform constant memory that fixed-function methods also write (NV_IGRAPH_XF_XFCTX_*).
+constexpr uint32_t kXfComposite = 0x00;  // 4 rows
+constexpr uint32_t kXfEyePosition = 0x38;
+constexpr uint32_t kXfViewportScale = 0x3A;   // c[-38] in D3D's vertex shaders
+constexpr uint32_t kXfViewportOffset = 0x3B;  // c[-37]
+
 struct Kelvin {
     DmaResolver dma = nullptr;
     uint32_t dma_a = 0, dma_b = 0, dma_color = 0, dma_zeta = 0, dma_vertex_a = 0, dma_vertex_b = 0;
@@ -582,14 +588,16 @@ void draw(uint32_t count, Fetch fetch) {
         const DrawState& d = g_k.draw;
         const RenderVertex& v = vertices[0];
         log_line("frame draw %llu: %s prim %u n %u surf %08X | tex0 %s %08X fmt %08X | blend %d %X %X | z %d %X w %d | "
-                 "atest %d %X ref %02X | mask %08X | clip (%.3g %.3g %.3g %.3g) d0 (%.2f %.2f %.2f %.2f) | comb %08X %08X %08X",
+                 "atest %d %X ref %02X | mask %08X | clip (%.3g %.3g %.3g %.3g) d0 (%.2f %.2f %.2f %.2f) | comb %08X %08X %08X"
+                 " | stages %05X ctl %08X",
                  static_cast<unsigned long long>(g_draws), fixed_function ? "ff" : "vp", g_k.primitive, count,
                  target.color_address, d.textures[0].enabled ? "on" : "off", d.textures[0].descriptor.address,
                  d.textures[0].descriptor.format, d.blend_enable, d.blend_source, d.blend_destination, d.depth_test,
                  d.depth_function, d.depth_write, g_k.alpha_test, g_k.alpha_function, g_k.alpha_reference,
                  d.color_mask, v.position[0] / v.position[3], v.position[1] / v.position[3],
                  v.position[2] / v.position[3], v.position[3], v.diffuse[0], v.diffuse[1], v.diffuse[2],
-                 v.diffuse[3], d.program.color_input[0], d.program.final0, d.program.final1);
+                 v.diffuse[3], d.program.color_input[0], d.program.final0, d.program.final1, d.program.stage_program,
+                 d.program.control);
     }
 }
 
@@ -684,7 +692,14 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
         g_k.model_view[(method - 0x0480) / 0x40][((method - 0x0480) % 0x40) / 4] = as_float(argument);
         return true;
     }
-    if (method >= 0x0680 && method < 0x06C0) { g_k.composite[(method - 0x0680) / 4] = as_float(argument); return true; }
+    // The fixed-function state lives in the same constant memory the vertex programs read (NV_IGRAPH_XF_XFCTX_*):
+    // D3D's vertex shaders end with a screen transform that uses the viewport scale and offset as c[-38], c[-37].
+    if (method >= 0x0680 && method < 0x06C0) {
+        const uint32_t i = (method - 0x0680) / 4;
+        g_k.composite[i] = as_float(argument);
+        g_k.constants[kXfComposite + i / 4][i % 4] = as_float(argument);
+        return true;
+    }
     if (method >= 0x06C0 && method < 0x07C0) {  // SET_TEXTURE_MATRIX0..3
         g_k.texture_matrix[(method - 0x06C0) / 0x40][((method - 0x06C0) % 0x40) / 4] = as_float(argument);
         return true;
@@ -699,8 +714,16 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
         g_k.texgen_plane[offset / 0x40][(offset % 0x40) / 0x10][(offset % 0x10) / 4] = as_float(argument);
         return true;
     }
-    if (method >= 0x0A20 && method < 0x0A30) { g_k.viewport_offset[(method - 0x0A20) / 4] = as_float(argument); return true; }
-    if (method >= 0x0AF0 && method < 0x0B00) { g_k.viewport_scale[(method - 0x0AF0) / 4] = as_float(argument); return true; }
+    if (method >= 0x0A20 && method < 0x0A30) {
+        g_k.viewport_offset[(method - 0x0A20) / 4] = as_float(argument);
+        g_k.constants[kXfViewportOffset][(method - 0x0A20) / 4] = as_float(argument);
+        return true;
+    }
+    if (method >= 0x0AF0 && method < 0x0B00) {
+        g_k.viewport_scale[(method - 0x0AF0) / 4] = as_float(argument);
+        g_k.constants[kXfViewportScale][(method - 0x0AF0) / 4] = as_float(argument);
+        return true;
+    }
     if (method >= 0x09D0 && method < 0x09E0) { g_k.fog_plane[(method - 0x09D0) / 4] = as_float(argument); return true; }
     if (method >= 0x09C0 && method < 0x09CC) { g_k.fog_params[(method - 0x09C0) / 4] = as_float(argument); return true; }
 
@@ -718,7 +741,11 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
     if (method >= 0x1E28 && method < 0x1E40) return true;  // SET_SPECULAR_PARAMS_BACK
     if (method >= 0x0A10 && method < 0x0A1C) { g_k.scene_ambient[(method - 0x0A10) / 4] = as_float(argument); return true; }
     if (method >= 0x03A8 && method < 0x03B4) { g_k.material_emission[(method - 0x03A8) / 4] = as_float(argument); return true; }
-    if (method >= 0x0A50 && method < 0x0A60) { g_k.eye_position[(method - 0x0A50) / 4] = as_float(argument); return true; }
+    if (method >= 0x0A50 && method < 0x0A60) {
+        g_k.eye_position[(method - 0x0A50) / 4] = as_float(argument);
+        g_k.constants[kXfEyePosition][(method - 0x0A50) / 4] = as_float(argument);
+        return true;
+    }
 
     if (method >= 0x0260 && method < 0x0280) { p.alpha_input[(method - 0x0260) / 4] = argument; return true; }
     if (method >= 0x0A60 && method < 0x0A80) { g_k.combiner_factor0[(method - 0x0A60) / 4] = argument; return true; }

@@ -432,16 +432,20 @@ HRESULT32 __stdcall BufferGetStatus(uint32_t self, uint32_t* status) {
     return kOk;
 }
 
+// The write cursor runs one APU frame (32 samples) ahead of the play cursor, like the hardware. A bigger lead
+// (it was 10 ms) traps Bink: it fills silence until write - play is small and never re-reads the cursors.
+uint32_t write_cursor_of(const Voice& voice, uint32_t play) {
+    constexpr uint32_t kApuFrameSamples = 32;
+    const uint32_t ahead = frames_to_bytes(voice, kApuFrameSamples);
+    return voice.size ? (play + ahead) % voice.size : play;
+}
+
 HRESULT32 __stdcall BufferGetCurrentPosition(uint32_t self, uint32_t* play_cursor, uint32_t* write_cursor) {
     std::lock_guard<std::mutex> lock(audio_lock());
     const Voice* voice = voice_of(self);
     const uint32_t play = buffer_play_cursor(*voice);
     if (play_cursor) *play_cursor = play;
-    if (write_cursor) {
-        // The write cursor runs one mixing chunk ahead of the play cursor.
-        const uint32_t ahead = frames_to_bytes(*voice, voice->format.samples_per_second / 100);
-        *write_cursor = voice->size ? (play + ahead) % voice->size : play;
-    }
+    if (write_cursor) *write_cursor = write_cursor_of(*voice, play);
     return kOk;
 }
 
@@ -458,10 +462,7 @@ HRESULT32 __stdcall BufferLock(uint32_t self, uint32_t offset, uint32_t bytes, u
     Voice* voice = voice_of(self);
     if (!voice->data || voice->size == 0) return kInvalidCall;
     if (flags & kLockEntireBuffer) bytes = voice->size;
-    if (flags & kLockFromWriteCursor) {
-        offset = (buffer_play_cursor(*voice) + frames_to_bytes(*voice, voice->format.samples_per_second / 100)) %
-                 voice->size;
-    }
+    if (flags & kLockFromWriteCursor) offset = write_cursor_of(*voice, buffer_play_cursor(*voice));
     offset %= voice->size;
     bytes = std::min(bytes, voice->size);
     const uint32_t first = std::min(bytes, voice->size - offset);

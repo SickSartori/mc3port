@@ -66,9 +66,13 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
   prospettiva sulla scena 3D con blend additivo e la nebbia nel final combiner: senza fattore di nebbia corretto
   restava invisibile.
 
-Prossimi passi della fase 3: l'auto del garage non si vede (modalità texture mancanti: bump mapping `6`, cube map,
-riflessi), vertici ancora calcolati sulla CPU (circa 1,5 milioni al secondo nei menu), punti e linee, culling; poi
-la guida vera e propria. Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
+- **Costanti condivise**: matrice composita, posizione dell'occhio, scala e spostamento del viewport stanno nella
+  stessa memoria delle costanti dei vertex program (`NV_IGRAPH_XF_XFCTX_*`, slot `0x00`, `0x38`, `0x3A`, `0x3B`).
+  I vertex shader di D3D finiscono con la trasformazione in coordinate dello schermo che usa `c[-38]`/`c[-37]`:
+  senza, le auto (disegnate con vertex program) collassavano in un punto ed erano invisibili.
+
+Prossimi passi della fase 3: bump mapping (modalità texture `6`), cube map, vertici ancora calcolati sulla CPU
+(circa 1,5 milioni al secondo nei menu), punti e linee, culling; poi la guida vera e propria. Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
 thread aspetta su un handle di file, cosa che il kernel emulato non supporta ancora.
 
 ### Audio
@@ -76,6 +80,8 @@ thread aspetta su un handle di file, cosa che il kernel emulato non supporta anc
 DirectSound è sostituito alla sua interfaccia (`dsound_hle.cpp`): i 57 punti d'ingresso usati da gioco, XACT, Bink e
 XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano quelli originali e girano sopra.
 
+- **Cursori**: il cursore di scrittura sta 32 campioni (un frame dell'APU) davanti a quello di riproduzione. Con
+  10 ms di anticipo Bink, all'avvio dei video, riempiva di silenzio in un ciclo che non finiva più.
 - **Mixer software** (`audio_mixer.cpp`): emula le voci dell'APU leggendo i campioni direttamente dalla memoria del
   gioco (i ring buffer di Bink funzionano così come sono), con regioni di play/loop, pitch Xbox (4096 per ottava,
   0 = 48 kHz), volumi in centesimi di dB, mixbin verso lo stereo, PCM 8/16 bit e ADPCM Xbox, pacchetti degli stream
