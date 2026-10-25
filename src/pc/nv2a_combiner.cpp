@@ -38,7 +38,7 @@ std::string register_name(uint32_t reg, int stage) {
         case kRegZero: return "float4(0, 0, 0, 0)";
         case kRegC0: return stage < 0 ? "final_factor0" : format("factor0[%d]", stage);
         case kRegC1: return stage < 0 ? "final_factor1" : format("factor1[%d]", stage);
-        case kRegFog: return "float4(fog_color.rgb, input.fog)";
+        case kRegFog: return "float4(fog_color.rgb, saturate(input.fog))";  // alpha = fog factor, 1 = no fog
         case kRegV0: return "v0";
         case kRegV1: return "v1";
         case kRegT0: return "t0";

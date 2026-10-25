@@ -316,7 +316,10 @@ ID3D11PixelShader* pixel_shader(const CombinerProgram& program) {
 uint32_t g_dump_every = 0;
 uint64_t g_presented = 0;
 
-void dump_frame(ID3D11Texture2D* texture) {
+// MC3_DUMP_TARGET=<hex address>: with each dumped frame, also the render target at that physical address.
+uint32_t g_dump_target = 0;
+
+void dump_frame(ID3D11Texture2D* texture, const char* prefix = "frame") {
     D3D11_TEXTURE2D_DESC desc;
     texture->GetDesc(&desc);
     desc.BindFlags = 0;
@@ -329,7 +332,7 @@ void dump_frame(ID3D11Texture2D* texture) {
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (FAILED(g_context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return;
     char name[64];
-    std::snprintf(name, sizeof(name), "frame-%05llu.bmp", static_cast<unsigned long long>(g_presented));
+    std::snprintf(name, sizeof(name), "%s-%05llu.bmp", prefix, static_cast<unsigned long long>(g_presented));
     if (FILE* file = std::fopen(name, "wb")) {
         const uint32_t row = desc.Width * 4;
         BITMAPFILEHEADER header{};
@@ -421,6 +424,7 @@ bool renderer_start(HWND window) {
     g_device->CreateRasterizerState(&raster, &g_rasterizer);
     char dump[16] = {};
     if (GetEnvironmentVariableA("MC3_DUMP_FRAMES", dump, sizeof(dump))) g_dump_every = std::strtoul(dump, nullptr, 10);
+    if (GetEnvironmentVariableA("MC3_DUMP_TARGET", dump, sizeof(dump))) g_dump_target = std::strtoul(dump, nullptr, 16);
     log_line("renderer: Direct3D 11 ready");
     return true;
 }
@@ -578,7 +582,11 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
         g_context->CopyResource(back_buffer.Get(), g_upload.Get());
     }
     ++g_presented;
-    if (g_dump_every && g_presented % g_dump_every == 0) dump_frame(back_buffer.Get());
+    if (g_dump_every && g_presented % g_dump_every == 0) {
+        dump_frame(back_buffer.Get());
+        const auto extra = g_targets.find(g_dump_target);
+        if (extra != g_targets.end()) dump_frame(extra->second.texture.Get(), "target");
+    }
     g_swap_chain->Present(0, 0);
 }
 

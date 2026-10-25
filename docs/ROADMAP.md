@@ -25,7 +25,7 @@ Il codice del gioco è x86 a 32 bit, come il PC: non va tradotto, va solo "ospit
 | 0 | Analisi disco/XBE, struttura progetto, build CMake | fatto |
 | 1 | Launcher a 0x10000, mappatura XBE, patch `fs:`, thunk del kernel con stub che registrano la prima chiamata mancante | fatto |
 | 2 | Kernel: memoria, thread, sincronizzazione, file (`D:\` letto direttamente dalla ISO), tempo | fatto per l'avvio: il gioco arriva all'inizializzazione grafica. Restano 23 funzioni mai chiamate finora (driver `Io*`, crittografia `Xc*` per salvataggi e online) |
-| 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco; poi rendering su D3D11/Vulkan | in corso: video Bink, schermata legale e schermata del titolo visibili su D3D11; mancano illuminazione fixed-function, texgen sferici/cube map, bump mapping, punti e linee |
+| 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco; poi rendering su D3D11/Vulkan | in corso: video, menu (titolo, profilo, carriera) e città 3D illuminata visibili su D3D11; mancano texgen sferici/cube map, bump mapping, punti e linee, luci a due facce, culling; lento nei menu (build Debug) |
 | 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | audio fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2); input fatto (XInput, vibrazione, tastiera): START salta i video e supera il titolo |
 | 5 | Miglioramenti: risoluzione, widescreen, 60 fps, caricamenti | da fare |
 
@@ -43,7 +43,8 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
 - **Vblank** a 60 Hz verso l'ISR del driver; la finestra Win32 mostra il front buffer (`PCRTC_START`).
 - **Rendering** (`nv2a_kelvin.cpp` -> `renderer_d3d11.cpp`): i vertici passano dal vertex program NV2A interpretato
   sulla CPU (`nv2a_vsh.cpp`) oppure dalla pipeline fixed-function (matrice composita, offset del viewport, texgen
-  lineari, matrici delle texture, nebbia); i register combiner diventano un pixel shader HLSL generato
+  lineari, matrici delle texture, 8 luci infinite/locali/spot con color material, speculare separato o sommato);
+  il fattore di nebbia si calcola per vertice da modo e parametri (`0x9C0`) per entrambi i percorsi; i register combiner diventano un pixel shader HLSL generato
   (`nv2a_combiner.cpp`); le texture swizzled, lineari e DXT sono decodificate da `nv2a_texture.cpp`. Le texture
   lineari usano coordinate in texel (come le rectangle texture) e vengono normalizzate nello shader. Ogni superficie
   di rendering è una render target D3D11; il blit 2D (`0x9F`/`0x62`) copia fra render target.
@@ -52,8 +53,12 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
   caso (su un contatore a 5 bit), anche durante i video.
 - **Rilevatore di blocchi**: se il push buffer resta fermo 10 s, il log riporta dove sono tutti i thread del gioco.
 
-Prossimi passi della fase 3: illuminazione fixed-function (luci, materiali), texgen sfera/riflessione, cube map,
-bump mapping, punti e linee; poi verificare i menu e la guida vera e propria.
+- **Menu**: l'interfaccia (file `flash\*.xbck`) è disegnata in una render target 512x512 swizzled e poi incollata in
+  prospettiva sulla scena 3D con blend additivo e la nebbia nel final combiner: senza fattore di nebbia corretto
+  restava invisibile.
+
+Prossimi passi della fase 3: prestazioni (build Release, vertici sulla CPU), texgen sfera/riflessione, cube map,
+bump mapping, punti e linee, culling; poi la guida vera e propria.
 
 ### Audio
 

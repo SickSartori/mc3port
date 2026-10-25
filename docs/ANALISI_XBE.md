@@ -95,7 +95,9 @@ Fatti emersi facendo girare il gioco, che il kernel emulato deve rispettare:
   (bit 2-6 = contatore); il valore arriva dal metodo `0x310` dell'oggetto `0x44` sul subchannel 5.
 - **Sequenza a schermo**: `rockstar.bik`, `sdlogo.bik`, `mc3intro.bik` (video lineari `X8R8G8B8` 640x480, coordinate
   in texel), poi `flash\legal_it_x.xbck` e `flash\bg_savegame.xbck` disegnati in fixed-function, con un blit 2D fra i
-  due buffer.
+  due buffer. Con START: titolo ("Premi START per iniziare") sulla città 3D, controllo dei salvataggi su `U:\`,
+  nome del profilo, `flash\bg_main.xbck`, `flash\bg_career.xbck`, `flash\transition.xbck` e il video della carriera
+  `video\Story\Sgameint.bik`.
 - **Audio**: DirectSound aspetta `0xFE820010 ≥ 0x20` e il codec AC97 pronto (`0xFEC0012C` bit 8); XACT si ferma a
   `0x408FFC`.
 

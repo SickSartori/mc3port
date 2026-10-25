@@ -68,6 +68,8 @@ Variabili d'ambiente:
 | `MC3_NO_DIALOG=1` | niente finestra in caso di errore fatale (per i test automatici) |
 | `MC3_DUMP_FRAMES=<n>` | salva un frame presentato ogni `n` come `frame-NNNNN.bmp` nella cartella di lavoro |
 | `MC3_DEBUG_DRAWS=<n>` | descrive nel log i primi `n` draw (vertici, combiner, texture, stati); con `MC3_DEBUG_DRAWS_FF=1` solo quelli fixed-function |
+| `MC3_DUMP_TARGET=<indirizzo hex>` | con ogni frame salvato, anche la render target a quell'indirizzo fisico (`target-NNNNN.bmp`) |
+| `MC3_DEBUG_FRAME_AT=<s>` | una riga per draw durante 1 s, a partire da `s` secondi dopo il primo draw |
 | `MC3_GPU_STATS=1` | ogni 10 s, i metodi GPU più usati |
 | `MC3_INPUT_SCRIPT=<s>:<pulsante>,...` | preme pulsanti del controller 1 a quei secondi dall'avvio, per i test (`start back a b x y black white up down left right lt rt`) |
 | `MC3_WATCHDOG=<s>` | ogni `s` secondi, dove si trovano i thread del gioco (cambia la temporizzazione) |

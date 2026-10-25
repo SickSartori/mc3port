@@ -68,10 +68,23 @@ struct Kelvin {
     uint32_t texgen[4][4] = {};          // per stage, S T R Q
     float texgen_plane[4][4][4] = {};    // per stage, S T R Q
     float viewport_offset[4] = {}, viewport_scale[4] = {};
-    bool lighting = false, specular = false, fog = false;
-    uint32_t skin_mode = 0, fog_gen_mode = 0;
-    float fog_plane[4] = {};
+    bool lighting = false, specular = false, fog = false, normalization = false;
+    uint32_t skin_mode = 0, fog_gen_mode = 0, fog_mode = 0x2601;
+    float fog_plane[4] = {}, fog_params[3] = {};
+
+    // Lighting. D3D folds the material into these: the light colours are already light x material.
+    float inverse_model_view[4][16] = {};
+    float light[8][32] = {};  // NV097_SET_LIGHT_*, 0x80 bytes per light
+    uint32_t light_enable_mask = 0, light_control = 0, color_material = 0;
+    float scene_ambient[3] = {}, material_emission[3] = {}, material_alpha = 1;
+    float specular_params[6] = {};
+    float eye_position[4] = {};
 };
+
+// Float offsets inside one light's block of NV097_SET_LIGHT_* methods.
+enum : int { kLightAmbient = 0, kLightDiffuse = 3, kLightSpecular = 6, kLightRange = 9, kLightHalfVector = 10,
+             kLightDirection = 13, kLightSpotFalloff = 16, kLightSpotDirection = 19, kLightPosition = 23,
+             kLightAttenuation = 26 };
 
 Kelvin g_k;
 std::set<uint32_t> g_logged;
@@ -233,12 +246,146 @@ Vec4 transform(const float* matrix, const Vec4& v) {
 
 float dot4(const float* a, const Vec4& b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]; }
 
+struct Vec3 {
+    float x = 0, y = 0, z = 0;
+};
+Vec3 operator+(Vec3 a, Vec3 b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
+Vec3 operator-(Vec3 a, Vec3 b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
+Vec3 operator*(Vec3 a, float s) { return {a.x * s, a.y * s, a.z * s}; }
+Vec3 operator*(Vec3 a, Vec3 b) { return {a.x * b.x, a.y * b.y, a.z * b.z}; }
+float dot(Vec3 a, Vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+float length(Vec3 a) { return std::sqrt(dot(a, a)); }
+Vec3 normalize(Vec3 a) {
+    const float l = length(a);
+    return l > 0 ? a * (1.0f / l) : a;
+}
+Vec3 vec3(const float* p) { return {p[0], p[1], p[2]}; }
+Vec3 rgb(const Vec4& v) { return {v[0], v[1], v[2]}; }
+
+// NV097_SET_COLOR_MATERIAL sources (2 bits each: emission, ambient, diffuse, specular).
+constexpr uint32_t kSourceMaterial = 0, kSourceDiffuse = 1;
+constexpr uint32_t kLightControlSeparateSpecular = 1, kLightControlLocalEye = 1u << 16;
+constexpr uint32_t kLightInfinite = 1, kLightLocal = 2, kLightSpot = 3;
+
+// Fixed-function lighting. `eye` is the eye-space position. Writes the front colours (back faces are not lit:
+// they keep their vertex colours).
+void light_vertex(const Vec4* in, const Vec4& eye, Vec4* out) {
+    const Vec4& diffuse = in[kInDiffuse];
+    const Vec4& specular = in[kInSpecular];
+    const uint32_t emission_source = g_k.color_material & 3, ambient_source = (g_k.color_material >> 2) & 3,
+                   diffuse_source = (g_k.color_material >> 4) & 3, specular_source = (g_k.color_material >> 6) & 3;
+    const auto source = [&](uint32_t s) { return s == kSourceDiffuse ? rgb(diffuse) : rgb(specular); };
+    const Vec3 emission_factor = vec3(g_k.material_emission);
+
+    // Emission and ambient: vertex-coloured terms are scaled by the material register, material ones are folded
+    // into the scene ambient.
+    Vec3 front;
+    if (emission_source == kSourceMaterial || ambient_source == kSourceMaterial) {
+        front = vec3(g_k.scene_ambient);
+        if (emission_source != kSourceMaterial) front = front + source(emission_source) * emission_factor;
+        if (ambient_source != kSourceMaterial) front = front + source(ambient_source) * emission_factor;
+    } else {
+        front = source(emission_source) + source(ambient_source) * emission_factor;
+    }
+    const float alpha = diffuse_source == kSourceMaterial ? g_k.material_alpha
+                        : diffuse_source == kSourceDiffuse ? diffuse[3] : specular[3];
+    Vec3 lit_specular;
+
+    Vec3 normal = rgb(transform(g_k.inverse_model_view[0], {in[kInNormal][0], in[kInNormal][1], in[kInNormal][2], 0}));
+    if (g_k.normalization) normal = normalize(normal);
+    const float w = eye[3] != 0 ? eye[3] : 1;
+    const Vec3 position{eye[0] / w, eye[1] / w, eye[2] / w};
+    const bool local_eye = (g_k.light_control & kLightControlLocalEye) != 0;
+    const Vec3 to_eye = normalize(vec3(g_k.eye_position) - position);
+    const float* sp = g_k.specular_params;
+
+    for (int i = 0; i < 8; ++i) {
+        const uint32_t type = (g_k.light_enable_mask >> (i * 2)) & 3;
+        if (!type) continue;
+        const float* l = g_k.light[i];
+        float attenuation = 1;
+        Vec3 direction, half;
+        if (type == kLightInfinite) {
+            direction = normalize(vec3(l + kLightDirection));
+            half = local_eye ? normalize(direction + to_eye) : vec3(l + kLightHalfVector);
+        } else {
+            Vec3 to_light = vec3(l + kLightPosition) - position;
+            const float d = length(to_light);
+            if (d > l[kLightRange]) continue;
+            direction = normalize(to_light);
+            const float* a = l + kLightAttenuation;
+            const float denominator = a[0] + a[1] * d + a[2] * d * d;
+            attenuation = denominator != 0 ? 1 / denominator : 1;
+            half = normalize(direction + (local_eye ? to_eye : Vec3{}));
+            if (type == kLightSpot) {
+                const float* s = l + kLightSpotDirection;
+                const float* f = l + kLightSpotFalloff;
+                const float cosine = s[0] * direction.x + s[1] * direction.y + s[2] * direction.z + s[3];
+                float spot = 1;
+                if (cosine <= 0) {
+                    spot = 0;
+                } else if (cosine < 1 && cosine > -f[0]) {
+                    const float denom = f[1] * cosine + f[2];
+                    spot = denom != 0 ? std::clamp((cosine + f[0]) / denom, 0.0f, 1.0f) : 1;
+                }
+                attenuation *= spot;
+            }
+        }
+        const float n_dot_l = std::max(0.0f, dot(normal, direction));
+        const float n_dot_h = std::max(0.0f, dot(normal, half));
+        float power = 0;
+        if (n_dot_l > 0 && n_dot_h > -sp[0]) {
+            const float denominator = sp[1] * n_dot_h + sp[2];
+            power = denominator == 0 ? 10000.0f
+                    : denominator > 0 ? std::clamp((n_dot_h + sp[0]) / denominator, 0.0f, 10000.0f) : 0;
+        }
+        front = front + vec3(l + kLightAmbient) * attenuation;
+        Vec3 diffuse_term = vec3(l + kLightDiffuse) * (attenuation * n_dot_l);
+        if (diffuse_source != kSourceMaterial) diffuse_term = diffuse_term * source(diffuse_source);
+        front = front + diffuse_term;
+        Vec3 specular_term = vec3(l + kLightSpecular) * (attenuation * power);
+        if (specular_source != kSourceMaterial) specular_term = specular_term * source(specular_source);
+        lit_specular = lit_specular + specular_term;
+    }
+
+    out[kOutDiffuse] = {front.x, front.y, front.z, alpha};
+    if (!g_k.specular) {
+        out[kOutSpecular] = {0, 0, 0, 1};
+    } else if (g_k.light_control & kLightControlSeparateSpecular) {
+        out[kOutSpecular] = {lit_specular.x, lit_specular.y, lit_specular.z, specular[3]};
+    } else {
+        out[kOutDiffuse] = {front.x + lit_specular.x, front.y + lit_specular.y, front.z + lit_specular.z, alpha};
+        out[kOutSpecular] = specular;
+    }
+}
+
+// Fog factor from the fog distance (oFog.x of a vertex program, or the fixed-function fog generation):
+// 1 = no fog. The pixel shader clamps it to 0..1.
+float fog_factor(float distance) {
+    if (!g_k.fog) return 1;
+    if (std::isinf(distance)) return g_k.fog_mode == 0x801 || g_k.fog_mode == 0x803 ? 0.0f : 1.0f;
+    float factor = 1;
+    switch (g_k.fog_mode) {
+        case 0x2601: case 0x804:  // LINEAR, LINEAR_ABS
+            factor = g_k.fog_params[0] + distance * g_k.fog_params[1] - 1.0f;
+            break;
+        case 0x800: case 0x802:  // EXP, EXP_ABS
+            factor = g_k.fog_params[0] + std::exp2(distance * g_k.fog_params[1] * 16.0f) - 1.5f;
+            break;
+        case 0x801: case 0x803:  // EXP2, EXP2_ABS
+            factor = g_k.fog_params[0] +
+                     std::exp2(-distance * distance * g_k.fog_params[1] * g_k.fog_params[1] * 32.0f) - 1.5f;
+            break;
+        default: log_once(0x2300 + g_k.fog_mode, "fog mode not supported yet"); break;
+    }
+    if (g_k.fog_mode == 0x802 || g_k.fog_mode == 0x803 || g_k.fog_mode == 0x804) factor = std::fabs(factor);
+    return std::isnan(factor) ? 1.0f : factor;
+}
+
 // The fixed-function transform, producing the same outputs a vertex program would: a screen-space position
 // (x and y divided by w, the viewport offset added), colours, texture coordinates and fog.
 void transform_fixed_function(const Vec4* in, Vec4* out) {
     if (g_k.skin_mode) log_once(0x2001, "fixed-function skinning is not supported yet; the first matrix is used");
-    if (g_k.lighting) log_once(0x2002, "fixed-function lighting is not supported yet; vertex colours are used");
-
     const Vec4& position = in[kInPosition];
     const Vec4 eye = transform(g_k.model_view[0], position);  // what eye-space texgen and fog see
 
@@ -247,10 +394,14 @@ void transform_fixed_function(const Vec4* in, Vec4* out) {
     if (!std::isfinite(w) || std::fabs(w) < 5.42101e-20f) w = w < 0 ? -5.42101e-20f : 5.42101e-20f;
     out[kOutPosition] = {p[0] / w + g_k.viewport_offset[0], p[1] / w + g_k.viewport_offset[1], p[2] / w, w};
 
-    out[kOutDiffuse] = in[kInDiffuse];
     out[kOutBackDiffuse] = in[kInBackDiffuse];
-    out[kOutSpecular] = g_k.specular ? in[kInSpecular] : Vec4{0, 0, 0, 1};
     out[kOutBackSpecular] = g_k.specular ? in[kInBackSpecular] : Vec4{0, 0, 0, 1};
+    if (g_k.lighting) {
+        light_vertex(in, eye, out);
+    } else {
+        out[kOutDiffuse] = in[kInDiffuse];
+        out[kOutSpecular] = g_k.specular ? in[kInSpecular] : Vec4{0, 0, 0, 1};
+    }
 
     for (int stage = 0; stage < 4; ++stage) {
         Vec4 t = in[kInTexture0 + stage];
@@ -337,6 +488,7 @@ void draw(uint32_t count, Fetch fetch) {
         } else {
             g_k.vertex_program.execute(inputs, g_k.constants, outputs);
         }
+        outputs[kOutFog][0] = fog_factor(outputs[kOutFog][0]);
         vertices[i] = to_render_vertex(outputs, static_cast<float>(target.width), static_cast<float>(target.height));
     }
     static bool fixed_function_only = false;  // MC3_DEBUG_DRAWS_FF=1: describe only fixed-function draws
@@ -402,6 +554,32 @@ void draw(uint32_t count, Fetch fetch) {
     prepare_draw_state();
     renderer_draw(target, g_k.draw, triangles);
     ++g_draws;
+
+    // MC3_DEBUG_FRAME_AT=<seconds>: one line per draw during 1 s from that time (counted from the first draw), to
+    // see what the frames are made of.
+    static ULONGLONG window_start = 0, window_end = 0;
+    if (!window_start) {
+        char value[16] = {};
+        const ULONGLONG now = GetTickCount64();
+        window_start = GetEnvironmentVariableA("MC3_DEBUG_FRAME_AT", value, sizeof(value))
+                           ? now + static_cast<ULONGLONG>(std::atof(value) * 1000)
+                           : ~0ull;
+        window_end = window_start + 1000;
+    }
+    const ULONGLONG now = GetTickCount64();
+    if (now >= window_start && now < window_end) {
+        const DrawState& d = g_k.draw;
+        const RenderVertex& v = vertices[0];
+        log_line("frame draw %llu: %s prim %u n %u surf %08X | tex0 %s %08X fmt %08X | blend %d %X %X | z %d %X w %d | "
+                 "atest %d %X ref %02X | mask %08X | clip (%.3g %.3g %.3g %.3g) d0 (%.2f %.2f %.2f %.2f) | comb %08X %08X %08X",
+                 static_cast<unsigned long long>(g_draws), fixed_function ? "ff" : "vp", g_k.primitive, count,
+                 target.color_address, d.textures[0].enabled ? "on" : "off", d.textures[0].descriptor.address,
+                 d.textures[0].descriptor.format, d.blend_enable, d.blend_source, d.blend_destination, d.depth_test,
+                 d.depth_function, d.depth_write, g_k.alpha_test, g_k.alpha_function, g_k.alpha_reference,
+                 d.color_mask, v.position[0] / v.position[3], v.position[1] / v.position[3],
+                 v.position[2] / v.position[3], v.position[3], v.diffuse[0], v.diffuse[1], v.diffuse[2],
+                 v.diffuse[3], d.program.color_input[0], d.program.final0, d.program.final1);
+    }
 }
 
 void draw_inline() {
@@ -495,7 +673,6 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
         g_k.model_view[(method - 0x0480) / 0x40][((method - 0x0480) % 0x40) / 4] = as_float(argument);
         return true;
     }
-    if (method >= 0x0580 && method < 0x0680) return true;  // SET_INVERSE_MODEL_VIEW_MATRIX0..3: lighting only
     if (method >= 0x0680 && method < 0x06C0) { g_k.composite[(method - 0x0680) / 4] = as_float(argument); return true; }
     if (method >= 0x06C0 && method < 0x07C0) {  // SET_TEXTURE_MATRIX0..3
         g_k.texture_matrix[(method - 0x06C0) / 0x40][((method - 0x06C0) % 0x40) / 4] = as_float(argument);
@@ -514,6 +691,23 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
     if (method >= 0x0A20 && method < 0x0A30) { g_k.viewport_offset[(method - 0x0A20) / 4] = as_float(argument); return true; }
     if (method >= 0x0AF0 && method < 0x0B00) { g_k.viewport_scale[(method - 0x0AF0) / 4] = as_float(argument); return true; }
     if (method >= 0x09D0 && method < 0x09E0) { g_k.fog_plane[(method - 0x09D0) / 4] = as_float(argument); return true; }
+    if (method >= 0x09C0 && method < 0x09CC) { g_k.fog_params[(method - 0x09C0) / 4] = as_float(argument); return true; }
+
+    // Lighting state.
+    if (method >= 0x0580 && method < 0x0680) {  // SET_INVERSE_MODEL_VIEW_MATRIX0..3
+        g_k.inverse_model_view[(method - 0x0580) / 0x40][((method - 0x0580) % 0x40) / 4] = as_float(argument);
+        return true;
+    }
+    if (method >= 0x1000 && method < 0x1400) {  // SET_LIGHT_*, 0x80 per light
+        g_k.light[(method - 0x1000) / 0x80][((method - 0x1000) % 0x80) / 4] = as_float(argument);
+        return true;
+    }
+    if (method >= 0x0C00 && method < 0x0E00) return true;  // SET_BACK_LIGHT_*: two-sided lighting, not yet
+    if (method >= 0x09E0 && method < 0x09F8) { g_k.specular_params[(method - 0x09E0) / 4] = as_float(argument); return true; }
+    if (method >= 0x1E28 && method < 0x1E40) return true;  // SET_SPECULAR_PARAMS_BACK
+    if (method >= 0x0A10 && method < 0x0A1C) { g_k.scene_ambient[(method - 0x0A10) / 4] = as_float(argument); return true; }
+    if (method >= 0x03A8 && method < 0x03B4) { g_k.material_emission[(method - 0x03A8) / 4] = as_float(argument); return true; }
+    if (method >= 0x0A50 && method < 0x0A60) { g_k.eye_position[(method - 0x0A50) / 4] = as_float(argument); return true; }
 
     if (method >= 0x0260 && method < 0x0280) { p.alpha_input[(method - 0x0260) / 4] = argument; return true; }
     if (method >= 0x0A60 && method < 0x0A80) { g_k.combiner_factor0[(method - 0x0A60) / 4] = argument; return true; }
@@ -555,6 +749,15 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
         case 0x020C: g_k.surface_pitch = argument; return true;
         case 0x0210: g_k.color_offset = argument; return true;
         case 0x0214: g_k.zeta_offset = argument; return true;
+        case 0x02A8:  // SET_FOG_COLOR: red in the low byte (ABGR), unlike the ARGB colours elsewhere
+            for (int i = 0; i < 4; ++i) d.constants.fog_color[i] = ((argument >> (i * 8)) & 0xFF) / 255.0f;
+            return true;
+        case 0x0294: g_k.light_control = argument; return true;
+        case 0x0298: g_k.color_material = argument; return true;
+        case 0x029C: g_k.fog_mode = argument; return true;
+        case 0x03A4: g_k.normalization = argument != 0; return true;
+        case 0x03B4: g_k.material_alpha = as_float(argument); return true;
+        case 0x03BC: g_k.light_enable_mask = argument; return true;
         case 0x02A0: g_k.fog_gen_mode = argument; return true;
         case 0x02A4: g_k.fog = argument != 0; return true;
         case 0x0314: g_k.lighting = argument != 0; return true;
