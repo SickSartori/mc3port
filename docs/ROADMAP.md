@@ -141,6 +141,10 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
 - **Input**: `XInitDevices` non avvia lo stack USB (`hle_patches.cpp`); le sette funzioni XPP che il gioco usa per i
   controller sono redirette a XInput del PC (`input_hle.cpp`), con vibrazione, collegamento a caldo e tastiera come
   controller 1. Memory unit e cuffie Xbox Live restano assenti.
+- **Orologio a 733 MHz**: il gioco converte `rdtsc` in tempo supponendo la CPU dell'Xbox; sul PC il contatore va a
+  qualche GHz e il tempo del gioco scorreva 5-6 volte più veloce (ripetizione dei tasti nei menu velocissima, il
+  controller sembrava "troppo sensibile"). I quattro punti che leggono `rdtsc` per misurare il tempo sono rediretti
+  a un contatore a 733 MHz ricavato da `QueryPerformanceCounter` (`hle_patches.cpp`).
 - **Rete**: la scheda di rete (`0xFEF00000`) è memoria semplice e il PHY risponde "cavo scollegato"; la cifratura
   DES del traffico è un passaggio trasparente. Xbox Live e System Link non sono supportati.
 

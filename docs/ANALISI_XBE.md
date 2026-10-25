@@ -83,6 +83,12 @@ Fatti emersi facendo girare il gioco, che il kernel emulato deve rispettare:
   (`0x00C00303` = SCART, PAL-I, 50 e 60 Hz); la tabella delle modalità è a `0x421118`. In EEPROM il PAL 60 Hz è il
   bit `0x00400000` di `XC_VIDEO_FLAGS`. Se non trova una modalità, `CreateDevice` fallisce e il gioco mostra
   "Could not start graphics" (messaggio ereditato dalla versione PC dell'engine) ed esce.
+- **Tempo da `rdtsc`**: il gioco legge il contatore della CPU a `0x1A1BF0` (`rdtsc; ret`) e lo trasforma in
+  millisecondi a `0x1A1C00` dividendo per `733333` (`0xB3095`); `0x20E140` restituisce la metà bassa; la
+  `QueryPerformanceCounter` di XAPI (`0x32633B`) usa `rdtsc` e `QueryPerformanceFrequency` (`0x32634C`) restituisce
+  la costante `733333333`; D3D ha `rdtsc; ret` a `0x41B040`. Gli altri `rdtsc` (`0x3B3C5F`-`0x3B4ED6`) misurano
+  solo intervalli per statistiche. Il lettore dell'input (`0x848F0`) trasforma lo stato in una maschera di tasti
+  (`[obj+0x24]`, precedente in `[obj+0x30]`) con soglia `0x4AFD88` per i tasti analogici.
 - **Input (XPP)**: `XInitDevices` `0x43F0E7` (chiamata tramite `0x4409F0`), `XGetDeviceEnumerationStatus`
   `0x4411A2`, `XGetDevices` `0x4409F5`, `XGetDeviceChanges` `0x440A17`, `XInputOpen` `0x441D4D`, `XInputClose`
   `0x441DA3`, `XInputGetCapabilities` `0x441DAF` (il gioco riconosce il volante dal SubType `0x10`),
