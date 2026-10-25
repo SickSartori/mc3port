@@ -52,12 +52,19 @@ struct DrawState {
     bool stencil_test;
     uint32_t stencil_function, stencil_reference, stencil_read_mask, stencil_write_mask;
     uint32_t stencil_fail, stencil_depth_fail, stencil_pass;
+    // NV097_SET_CULL_FACE_ENABLE / SET_CULL_FACE (FRONT 0x404, BACK 0x405, FRONT_AND_BACK 0x408) / SET_FRONT_FACE
+    // (CW 0x900, CCW 0x901). The game relies on it for light volumes (headlights): without it the volume's front
+    // and back faces both count and the light fills a solid white ellipse.
+    bool cull_enable;
+    uint32_t cull_face, front_face;
 };
 
 bool renderer_start(HWND window);
 // Debugging: the BGRA pixel at (x, y) of the render target at `address` (reads back from the GPU: slow).
 // Returns false when there is no such target.
 bool renderer_probe(uint32_t address, uint32_t x, uint32_t y, uint8_t bgra[4]);
+// Debugging: saves the render target at `address` as <prefix>-<frame>.bmp (colour and alpha side by side).
+void renderer_dump_target(uint32_t address, const char* prefix);
 // Time spent producing vertices (vertex program / fixed function), for the statistics logged every 10 s.
 void renderer_note_vertex_work(uint64_t ticks, uint32_t vertices);
 void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color, uint32_t depth_stencil, int x0, int y0,

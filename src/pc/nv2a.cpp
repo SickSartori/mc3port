@@ -663,6 +663,7 @@ void window_thread(HANDLE ready) {
     window_class.lpfnWndProc = window_procedure;
     window_class.hInstance = GetModuleHandleW(nullptr);
     window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    window_class.hIcon = LoadIconW(window_class.hInstance, MAKEINTRESOURCEW(1));  // res/mc3.rc, in mc3.exe
     window_class.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     window_class.lpszClassName = L"mc3port";
     RegisterClassW(&window_class);

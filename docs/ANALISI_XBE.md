@@ -137,7 +137,10 @@ tramite vtable.
 | `0x3C28BF`/`0x3C2090`/`0x3C2074` | `SetFrequency`/`SetPitch`/`SetVolume` | `XAudioCalculatePitch`; volume meno headroom |
 | `0x3C2240`/`0x3C22D4` | `GetVoiceProperties` (buffer/stream) | legge i volumi dai registri della voce APU; XACT legge `DSVOICEPROPS` (`0x40F566`) e crasha se la struttura resta vuota |
 | `0x3C211C` | `SetMixBinVolumes` | coppie (mixbin, volume) |
-| `0x3C28F7`/`0x3C2F78` | `SetFormat`/`SetBufferData` | aggiorna il formato / imposta dati e dimensione |
+| `0x3C28F7`/`0x3C2938` | `SetMixBins` (buffer/stream) | Bink costruisce un `DSMIXBINS` sullo stack (`0x3AEF60`) |
+| `0x3C2F5C`/`0x3C2F98` | `SetFormat` (buffer/stream) | riceve un `WAVEFORMATEX` (XACT: PCM mono 48 kHz) |
+| `0x3C28DB`/`0x3C2933` | `SetOutputBuffer` | l'argomento è un'altra voce (`-0x1C`) |
+| `0x3C2F78` | `SetBufferData` | imposta dati e dimensione |
 
 Elenco completo, compresi gli stream e le quattro funzioni non identificate, in `src/pc/dsound_hle.cpp`.
 

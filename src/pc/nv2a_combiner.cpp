@@ -165,8 +165,11 @@ std::string texture_fetch(uint32_t mode, int stage) {
         case kModeNone: return "float4(0, 0, 0, 0)";
         case kModeProject2d:
         case kModeProject3d:
+            // saturate: float render targets (signed blending) may hold values outside 0..1, which a texture of
+            // the real hardware could not.
             return format(
-                "texture%d.Sample(sampler%d, input.t%d.xy / (input.t%d.w != 0 ? input.t%d.w : 1) * texture_scale[%d].xy)",
+                "saturate(texture%d.Sample(sampler%d, input.t%d.xy / (input.t%d.w != 0 ? input.t%d.w : 1) * "
+                "texture_scale[%d].xy))",
                 stage, stage, stage, stage, stage, stage);
         case kModePassthrough: return format("saturate(input.t%d)", stage);
         default: {

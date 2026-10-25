@@ -6,8 +6,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <thread>
+#include <vector>
 
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
@@ -37,6 +40,7 @@ struct MixStatistics {
     float peak = 0;
     uint32_t most_voices = 0;
     uint32_t completed_packets = 0;
+    uint32_t limited_samples = 0;  // softened by the limiter
 };
 MixStatistics g_statistics;
 
@@ -117,8 +121,9 @@ float decibels_to_gain(int32_t hundredths) {
     return std::pow(10.0f, static_cast<float>(hundredths) / 2000.0f);
 }
 
-// Left/right gain of each source channel, from the voice volume and its mix bins (0/4/6/8 left, 1/5/7/9 right,
-// 2 centre; LFE and effect sends are not mixed into the stereo output).
+// Left/right gain of each source channel, from the voice volume and its mix bins: the 5.1 speaker bins folded to
+// stereo (front 1, centre and back 0.5 per side; LFE and effect sends, whose effects are not emulated, left out).
+// Bink and XACT send each channel to all six speaker bins at full level; the plain sum was 2.7 times too loud.
 void channel_gains(const Voice& voice, float gains[2][2]) {
     std::memset(gains, 0, sizeof(float) * 4);
     const uint32_t channels = std::clamp<uint32_t>(voice.format.channels, 1, 2);
@@ -136,15 +141,36 @@ void channel_gains(const Voice& voice, float gains[2][2]) {
         const uint32_t channel = static_cast<uint32_t>(i) % channels;
         const float gain = decibels_to_gain(voice.volume + (bin < 32 ? voice.mix_bin_volumes[bin] : 0));
         switch (bin) {
-            case 0: case 4: case 6: case 8: gains[channel][0] += gain; break;
-            case 1: case 5: case 7: case 9: gains[channel][1] += gain; break;
-            case 2: gains[channel][0] += gain * 0.7071f; gains[channel][1] += gain * 0.7071f; break;
-            default: break;
+            case 0: gains[channel][0] += gain; break;                                      // front left
+            case 1: gains[channel][1] += gain; break;                                      // front right
+            case 2: gains[channel][0] += gain * 0.5f; gains[channel][1] += gain * 0.5f; break;  // centre
+            case 4: gains[channel][0] += gain * 0.5f; break;                               // back left
+            case 5: gains[channel][1] += gain * 0.5f; break;                               // back right
+            default: break;  // 3 LFE, 6+ effect sends
         }
     }
 }
 
 double step_for(const Voice& voice) { return std::pow(2.0, voice.pitch / 4096.0); }
+
+// Per-chunk gain ramp: from the previous chunk's gains to the new ones.
+struct GainRamp {
+    float start[2][2], delta[2][2];
+    GainRamp(Voice& voice, uint32_t frames) {
+        float target[2][2];
+        channel_gains(voice, target);
+        if (!voice.has_last_gains) std::memcpy(voice.last_gains, target, sizeof(target));
+        for (int c = 0; c < 2; ++c) {
+            for (int s = 0; s < 2; ++s) {
+                start[c][s] = voice.last_gains[c][s];
+                delta[c][s] = (target[c][s] - start[c][s]) / static_cast<float>(frames);
+            }
+        }
+        std::memcpy(voice.last_gains, target, sizeof(target));
+        voice.has_last_gains = true;
+    }
+    float at(uint32_t channel, uint32_t side, uint32_t n) const { return start[channel][side] + delta[channel][side] * n; }
+};
 
 // --- mixing ---
 
@@ -165,20 +191,25 @@ void mix_buffer_voice(Voice& voice, float* out, uint32_t frames) {
     loop_frames = std::max<uint32_t>(1, std::min(loop_frames, region_frames - loop_start));
     const uint32_t loop_end = loop_start + loop_frames;
 
-    float gains[2][2];
-    channel_gains(voice, gains);
+    const GainRamp gains(voice, frames);
     const uint32_t channels = std::clamp<uint32_t>(voice.format.channels, 1, 2);
     const double step = step_for(voice);
 
     for (uint32_t n = 0; n < frames; ++n) {
+        // Linear interpolation between this frame and the next one (which wraps to the loop start): picking the
+        // nearest frame aliases badly whenever the pitch is not exactly 1 (engines change it all the time).
         const uint32_t frame = static_cast<uint32_t>(voice.position);
+        const float fraction = static_cast<float>(voice.position - frame);
+        const uint32_t end = voice.looping ? loop_end : region_frames;
+        const uint32_t next = frame + 1 < end ? frame + 1 : (voice.looping ? loop_start : frame);
         for (uint32_t channel = 0; channel < channels; ++channel) {
-            const float sample = voice_sample(voice, region, region_bytes, frame, channel);
-            out[n * 2] += sample * gains[channel][0];
-            out[n * 2 + 1] += sample * gains[channel][1];
+            const float a = voice_sample(voice, region, region_bytes, frame, channel);
+            const float b = fraction > 0 ? voice_sample(voice, region, region_bytes, next, channel) : a;
+            const float sample = a + (b - a) * fraction;
+            out[n * 2] += sample * gains.at(channel, 0, n);
+            out[n * 2 + 1] += sample * gains.at(channel, 1, n);
         }
         voice.position += step;
-        const uint32_t end = voice.looping ? loop_end : region_frames;
         if (voice.position >= end) {
             if (voice.looping) {
                 voice.position = loop_start + std::fmod(voice.position - end, static_cast<double>(loop_frames));
@@ -192,8 +223,7 @@ void mix_buffer_voice(Voice& voice, float* out, uint32_t frames) {
 }
 
 void mix_stream_voice(Voice& voice, float* out, uint32_t frames) {
-    float gains[2][2];
-    channel_gains(voice, gains);
+    const GainRamp gains(voice, frames);
     const uint32_t channels = std::clamp<uint32_t>(voice.format.channels, 1, 2);
     const double step = step_for(voice);
 
@@ -203,10 +233,23 @@ void mix_stream_voice(Voice& voice, float* out, uint32_t frames) {
         const uint32_t packet_frames = bytes_to_frames(voice, current.packet.max_size);
         const uint32_t frame = current.consumed_frames;
         if (frame < packet_frames) {
+            const float fraction = static_cast<float>(voice.stream_fraction);
             for (uint32_t channel = 0; channel < channels; ++channel) {
-                const float sample = voice_sample(voice, data, current.packet.max_size, frame, channel);
-                out[n * 2] += sample * gains[channel][0];
-                out[n * 2 + 1] += sample * gains[channel][1];
+                const float a = voice_sample(voice, data, current.packet.max_size, frame, channel);
+                // The next frame, possibly the first of the next packet.
+                float b = a;
+                if (fraction > 0) {
+                    if (frame + 1 < packet_frames) {
+                        b = voice_sample(voice, data, current.packet.max_size, frame + 1, channel);
+                    } else if (voice.packets.size() > 1 && voice.format.format_tag != kFormatXboxAdpcm) {
+                        const StreamPacket& following = voice.packets[1];
+                        b = voice_sample(voice, guest<const uint8_t>(following.packet.buffer),
+                                         following.packet.max_size, 0, channel);
+                    }
+                }
+                const float sample = a + (b - a) * fraction;
+                out[n * 2] += sample * gains.at(channel, 0, n);
+                out[n * 2 + 1] += sample * gains.at(channel, 1, n);
             }
         }
         voice.stream_fraction += step;
@@ -235,23 +278,90 @@ void mix(float* out, uint32_t frames) {
             mix_buffer_voice(*voice, out, frames);
         }
     }
+    // Master level (the Xbox keeps headroom too), then a soft limiter instead of hard clipping: linear up to 0.8,
+    // a smooth knee above, so many voices at once round off instead of crackling.
+    constexpr float kMasterGain = 0.5f, kKnee = 0.8f;
     float peak = 0;
+    uint32_t limited = 0;
     for (uint32_t i = 0; i < frames * 2; ++i) {
-        out[i] = std::clamp(out[i], -1.0f, 1.0f);
-        peak = std::max(peak, std::abs(out[i]));
+        float x = out[i] * kMasterGain;
+        const float magnitude = std::abs(x);
+        if (magnitude > kKnee) {
+            x = std::copysign(kKnee + (1.0f - kKnee) * std::tanh((magnitude - kKnee) / (1.0f - kKnee)), x);
+            ++limited;
+        }
+        out[i] = x;
+        peak = std::max(peak, std::abs(x));
     }
+    g_statistics.limited_samples += limited;
     MixStatistics& statistics = g_statistics;
     ++statistics.chunks;
     if (peak > 0.001f) ++statistics.audible_chunks;
     statistics.peak = std::max(statistics.peak, peak);
     statistics.most_voices = std::max(statistics.most_voices, active);
     if (statistics.chunks == 1000) {  // every 10 s
-        log_line("audio: last 10 s: %u%% audible, peak %.2f, up to %u voices, %u stream packets completed, %zu voices",
-                 statistics.audible_chunks / 10, statistics.peak, statistics.most_voices, statistics.completed_packets,
-                 g_voices.size());
+        log_line("audio: last 10 s: %u%% audible, peak %.2f, %u samples limited, up to %u voices, %u stream packets "
+                 "completed, %zu voices",
+                 statistics.audible_chunks / 10, statistics.peak, statistics.limited_samples, statistics.most_voices,
+                 statistics.completed_packets, g_voices.size());
         statistics = MixStatistics{};
+        // MC3_AUDIO_VOICES=1: which voices are playing and how loud (for overlaps).
+        static const bool list_voices = GetEnvironmentVariableA("MC3_AUDIO_VOICES", nullptr, 0) != 0;
+        if (list_voices) {
+            for (const Voice* voice : g_voices) {
+                const bool active = voice->is_stream ? !voice->packets.empty() : voice->playing;
+                if (!active || voice->paused) continue;
+                float gains[2][2];
+                channel_gains(*voice, gains);
+                log_line("  voice %p %s ch %u vol %d pitch %d loop %d size %u pos %.0f gain L %.2f R %.2f bins %d",
+                         static_cast<const void*>(voice), voice->is_stream ? "stream" : "buffer", voice->format.channels,
+                         voice->volume, voice->pitch, voice->looping, voice->size, voice->position,
+                         gains[0][0] + gains[1][0], gains[0][1] + gains[1][1], voice->mix_bin_count);
+            }
+        }
     }
 }
+
+// MC3_AUDIO_DUMP=<seconds>: the first <seconds> of mixer output are written to audio.wav (16-bit stereo), to check
+// the sound without listening to it.
+class WavDump {
+public:
+    WavDump() {
+        char value[16] = {};
+        if (!GetEnvironmentVariableA("MC3_AUDIO_DUMP", value, sizeof(value))) return;
+        limit_ = static_cast<uint32_t>(std::atof(value) * kOutputRate);
+        file_ = std::fopen("audio.wav", "wb");
+        if (file_) write_header();
+    }
+    void add(const float* samples, uint32_t frames) {
+        if (!file_) return;
+        frames = std::min(frames, limit_ - written_);
+        std::vector<int16_t> pcm(frames * 2);
+        for (uint32_t i = 0; i < frames * 2; ++i) pcm[i] = static_cast<int16_t>(std::lround(samples[i] * 32767.0f));
+        std::fwrite(pcm.data(), sizeof(int16_t), pcm.size(), file_);
+        written_ += frames;
+        write_header();
+        if (written_ >= limit_) {
+            std::fclose(file_);
+            file_ = nullptr;
+            log_line("audio: audio.wav written (%u frames)", written_);
+        }
+    }
+
+private:
+    void write_header() {
+        const uint32_t data_bytes = written_ * 4;
+        const uint32_t header[11] = {0x46464952, 36 + data_bytes, 0x45564157, 0x20746D66, 16, 0x00020001,
+                                     kOutputRate, kOutputRate * 4, 0x00100004, 0x61746164, data_bytes};
+        const long position = std::ftell(file_);
+        std::fseek(file_, 0, SEEK_SET);
+        std::fwrite(header, sizeof(header), 1, file_);
+        std::fseek(file_, position < 44 ? 44 : position, SEEK_SET);
+    }
+
+    std::FILE* file_ = nullptr;
+    uint32_t limit_ = 0, written_ = 0;
+};
 
 // --- XAudio2 output ---
 
@@ -298,6 +408,7 @@ void output_thread(HANDLE ready, bool* ok) {
 
     std::vector<std::array<float, kFramesPerChunk * 2>> ring(kChunkRing);
     uint32_t next = 0;
+    WavDump dump;
     for (;;) {
         XAUDIO2_VOICE_STATE state;
         source->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
@@ -305,6 +416,7 @@ void output_thread(HANDLE ready, bool* ok) {
             auto& chunk = ring[next];
             next = (next + 1) % kChunkRing;
             mix(chunk.data(), kFramesPerChunk);
+            dump.add(chunk.data(), kFramesPerChunk);
             XAUDIO2_BUFFER buffer{};
             buffer.AudioBytes = kFramesPerChunk * 8;
             buffer.pAudioData = reinterpret_cast<const BYTE*>(chunk.data());

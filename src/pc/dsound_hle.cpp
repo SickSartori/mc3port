@@ -11,7 +11,9 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
+#include <string>
 #include <mutex>
 
 #include "pc/audio_mixer.h"
@@ -85,10 +87,19 @@ void apply_format(Voice& voice, uint32_t format_address) {
     voice.format = format_address ? *guest<XWaveFormat>(format_address) : kDefaultFormat;
     voice.pitch = pitch_for_rate(voice.format.samples_per_second);
     voice.decoded_block = -1;
+    static uint32_t logged = 0;
+    if (logged++ < 60) {
+        log_line("dsound: voice %p format tag %X, %u channels, %u Hz, %u bits, block %u", static_cast<void*>(&voice),
+                 voice.format.format_tag, voice.format.channels, voice.format.samples_per_second,
+                 voice.format.bits_per_sample, voice.format.block_align);
+    }
 }
 
 void apply_mix_bins(Voice& voice, uint32_t mix_bins_address, bool routing) {
     if (!mix_bins_address) return;
+    // A voice created without mix bins gets them from its first SetMixBinVolumes: XACT pans its voices that way,
+    // and without a routing they played at full level in the middle.
+    if (!routing && voice.mix_bin_count == 0) routing = true;
     const XDsMixBins& bins = *guest<XDsMixBins>(mix_bins_address);
     const uint32_t count = std::min<uint32_t>(bins.count, 8);
     for (uint32_t i = 0; i < count; ++i) {
@@ -98,6 +109,18 @@ void apply_mix_bins(Voice& voice, uint32_t mix_bins_address, bool routing) {
         if (bin < 32) voice.mix_bin_volumes[bin] = volume;
     }
     if (routing) voice.mix_bin_count = static_cast<int32_t>(count);
+    static uint32_t logged = 0;
+    if (logged++ < 40) {
+        std::string list;
+        for (uint32_t i = 0; i < count; ++i) {
+            char entry[32];
+            std::snprintf(entry, sizeof(entry), " %u:%d", guest<uint32_t>(bins.pairs)[i * 2],
+                          static_cast<int32_t>(guest<uint32_t>(bins.pairs)[i * 2 + 1]));
+            list += entry;
+        }
+        log_line("dsound: voice %p %s mix bins (%u channels):%s", static_cast<void*>(&voice),
+                 routing ? "routes to" : "volumes", voice.format.channels, list.c_str());
+    }
 }
 
 uint32_t buffer_play_cursor(const Voice& voice) {
@@ -273,7 +296,11 @@ HRESULT32 __stdcall DsDownloadEffectsImage(uint32_t, uint32_t, uint32_t size, ui
 
 HRESULT32 __stdcall DsSetEffectData(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) { return kOk; }
 HRESULT32 __stdcall DsEnableHeadphones(uint32_t, uint32_t) { return kOk; }
-HRESULT32 __stdcall DsSetMixBinHeadroom(uint32_t, uint32_t, uint32_t) { return kOk; }
+HRESULT32 __stdcall DsSetMixBinHeadroom(uint32_t, uint32_t bin, uint32_t headroom) {
+    static uint32_t logged = 0;
+    if (logged++ < 40) log_line("dsound: mix bin %u headroom %u", bin, headroom);
+    return kOk;
+}
 HRESULT32 __stdcall DsCommitDeferredSettings(uint32_t) { return kOk; }
 HRESULT32 __stdcall DsSetI3DL2Listener(uint32_t, uint32_t, uint32_t) { return kOk; }
 
@@ -286,6 +313,12 @@ HRESULT32 __stdcall DsCreateSoundBuffer(uint32_t, const XDsBufferDesc* desc, uin
     std::lock_guard<std::mutex> lock(audio_lock());
     auto* object = new DsObject{kBufferVtable, 1, create_voice(false)};
     Voice& voice = *object->voice;
+    static uint32_t logged = 0;
+    if (logged++ < 30) {
+        log_line("dsound: create buffer %p: size %u flags %08X bytes %u format %08X mix bins %08X input %08X",
+                 static_cast<void*>(&voice), desc->size, desc->flags, desc->buffer_bytes, desc->format, desc->mix_bins,
+                 desc->input_mix_bin);
+    }
     apply_format(voice, desc->format);
     if (desc->buffer_bytes) {
         voice.owned_data.assign(desc->buffer_bytes, 0);
@@ -349,6 +382,12 @@ HRESULT32 __stdcall VoiceGetVoiceProperties(uint32_t self, XDsVoiceProps* props)
     return kOk;
 }
 
+HRESULT32 __stdcall VoiceSetMixBins(uint32_t self, uint32_t mix_bins) {
+    std::lock_guard<std::mutex> lock(audio_lock());
+    apply_mix_bins(*voice_of(self), mix_bins, true);
+    return kOk;
+}
+
 HRESULT32 __stdcall VoiceSetMixBinVolumes(uint32_t self, uint32_t mix_bins) {
     std::lock_guard<std::mutex> lock(audio_lock());
     apply_mix_bins(*voice_of(self), mix_bins, false);
@@ -365,12 +404,15 @@ HRESULT32 __stdcall VoiceSetFormat(uint32_t self, uint32_t format) {
 HRESULT32 __stdcall VoiceSetLfo(uint32_t, uint32_t) { return kOk; }
 HRESULT32 __stdcall VoiceSetEnvelope(uint32_t, uint32_t) { return kOk; }
 HRESULT32 __stdcall VoiceSetFilter(uint32_t, uint32_t) { return kOk; }
-HRESULT32 __stdcall VoiceSetHeadroom(uint32_t, uint32_t) { return kOk; }
+HRESULT32 __stdcall VoiceSetHeadroom(uint32_t self, uint32_t headroom) {
+    static uint32_t logged = 0;
+    if (logged++ < 40) log_line("dsound: voice %p headroom %u", static_cast<void*>(voice_of(self)), headroom);
+    return kOk;
+}
 HRESULT32 __stdcall VoiceSetOutputBuffer(uint32_t, uint32_t) { return kOk; }
 
 HRESULT32 __stdcall VoiceUnidentified2a(uint32_t self, uint32_t a) { log_unidentified("voice 0x0C94", self, a); return kOk; }
 HRESULT32 __stdcall VoiceUnidentified2b(uint32_t self, uint32_t a) { log_unidentified("voice 0x0DC5", self, a); return kOk; }
-HRESULT32 __stdcall VoiceUnidentified2c(uint32_t self, uint32_t a) { log_unidentified("voice 0x2AD9", self, a); return kOk; }
 HRESULT32 __stdcall Voice3dParameters5(uint32_t self, uint32_t a, uint32_t, uint32_t, uint32_t) {
     log_unidentified("stream 3D 0x1627", self, a);
     return kOk;
@@ -470,6 +512,11 @@ HRESULT32 __stdcall BufferLock(uint32_t self, uint32_t offset, uint32_t bytes, u
     *bytes1 = first;
     if (pointer2) *pointer2 = first < bytes ? address_of(voice->data) : 0;
     if (bytes2) *bytes2 = bytes - first;
+    static uint32_t logged = 0;
+    if (logged++ < 40) {
+        log_line("dsound: lock voice %p offset %u bytes %u flags %X (play %u, size %u)", static_cast<void*>(voice),
+                 offset, bytes, flags, buffer_play_cursor(*voice), voice->size);
+    }
     return kOk;
 }
 
@@ -478,6 +525,12 @@ HRESULT32 __stdcall BufferUnlock(uint32_t, uint32_t, uint32_t, uint32_t, uint32_
 HRESULT32 __stdcall BufferSetBufferData(uint32_t self, uint32_t data, uint32_t bytes) {
     std::lock_guard<std::mutex> lock(audio_lock());
     Voice* voice = voice_of(self);
+    static uint32_t logged = 0;
+    if (logged++ < 30) {
+        log_line("dsound: set buffer data %p: data %08X bytes %u (format tag %X, %u ch, %u Hz)",
+                 static_cast<void*>(voice), data, bytes, voice->format.format_tag, voice->format.channels,
+                 voice->format.samples_per_second);
+    }
     voice->owned_data.clear();
     voice->data = data ? guest<uint8_t>(data) : nullptr;
     voice->size = data ? bytes : 0;
@@ -545,9 +598,9 @@ const Redirect kRedirects[] = {
     R(0x3C2278, VoiceUnidentified2b),
     R(0x3C28BF, VoiceSetFrequency),
     R(0x3C28DB, VoiceSetOutputBuffer),
-    R(0x3C28F7, VoiceSetFormat),
+    R(0x3C28F7, VoiceSetMixBins),  // Bink passes a DSMIXBINS here (count, pairs): not SetFormat
     R(0x3C2913, BufferSetPlayRegion),
-    R(0x3C2F5C, VoiceUnidentified2c),
+    R(0x3C2F5C, VoiceSetFormat),  // XACT's real formats (mono 48 kHz...): a WAVEFORMATEX, internal 0x2AD9
     R(0x3C2F78, BufferSetBufferData),
     // IDirectSoundStream (the XMediaObject methods go through the stream's vtable).
     R(0x3C2294, VoiceSetVolume),
@@ -564,8 +617,8 @@ const Redirect kRedirects[] = {
     R(0x3C22DE, VoiceUnidentified2b),
     R(0x3C22E3, Voice3dParameters5),
     R(0x3C2933, VoiceSetOutputBuffer),
-    R(0x3C2938, VoiceSetFormat),
-    R(0x3C2F98, VoiceUnidentified2c),
+    R(0x3C2938, VoiceSetMixBins),
+    R(0x3C2F98, VoiceSetFormat),
     R(0x3C2F9D, Voice3dParameters2),
 };
 

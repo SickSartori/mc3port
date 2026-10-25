@@ -1,7 +1,9 @@
 #include "pc/nv2a_kelvin.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <windows.h>
@@ -96,6 +98,11 @@ Kelvin g_k;
 std::set<uint32_t> g_logged;
 uint64_t g_draws = 0;
 int g_debug_draws = -1;  // MC3_DEBUG_DRAWS=<n>: describe the first n draws in the log
+bool g_debug_window_open = false;  // inside the MC3_DEBUG_FRAME_AT window (as of the previous draw)
+ULONGLONG g_window_start = 0, g_window_end = 0;
+bool g_draw_dumped = false;  // MC3_DUMP_DRAW done
+int g_probe_x = -1, g_probe_y = -1;
+uint32_t g_last_probe[2] = {0xFFFFFFFF, 0xFFFFFFFF};
 
 void log_once(uint32_t key, const char* message) {
     if (g_logged.insert(key).second) log_line("nv2a: %s", message);
@@ -579,39 +586,84 @@ void draw(uint32_t count, Fetch fetch) {
     triangles.reserve(order.size());
     for (uint32_t index : order) triangles.push_back(vertices[index]);
     prepare_draw_state();
+    // MC3_SKIP=<texture>[:<target>[:<blend destination factor>]] (hex, 0 = any): skip the matching draws, to find
+    // which one makes a visual defect. Texture addresses match by 4 KB page.
+    static const std::array<uint32_t, 3> skip = [] {
+        std::array<uint32_t, 3> s{~0u, 0, ~0u};
+        char value[64] = {};
+        if (GetEnvironmentVariableA("MC3_SKIP", value, sizeof(value))) {
+            unsigned texture = 0, target = 0, blend = ~0u;
+            const int fields = std::sscanf(value, "%x:%x:%x", &texture, &target, &blend);
+            s = {texture, fields >= 2 ? target : 0u, fields >= 3 ? blend : ~0u};
+        }
+        return s;
+    }();
+    if (skip[0] != ~0u) {
+        const bool texture_matches = skip[0] == 0 || (g_k.draw.textures[0].enabled &&
+                                                      (g_k.draw.textures[0].descriptor.address & ~0xFFFu) == (skip[0] & ~0xFFFu));
+        const bool target_matches = skip[1] == 0 || target.color_address == skip[1];
+        const bool blend_matches = skip[2] == ~0u || g_k.draw.blend_destination == skip[2];
+        if (texture_matches && target_matches && blend_matches) {
+            ++g_draws;
+            return;
+        }
+    }
+    // MC3_DUMP_DRAW=<texture>:<target>:<blend destination> (like MC3_SKIP): during the MC3_DEBUG_FRAME_AT window,
+    // the first matching draw saves its texture and its target before and after it (dump-*.bmp).
+    static const std::array<uint32_t, 3> dump_spec = [] {
+        std::array<uint32_t, 3> s{~0u, 0, ~0u};
+        char value[64] = {};
+        if (GetEnvironmentVariableA("MC3_DUMP_DRAW", value, sizeof(value))) {
+            unsigned texture = 0, target_address = 0, blend = ~0u;
+            const int fields = std::sscanf(value, "%x:%x:%x", &texture, &target_address, &blend);
+            s = {texture, fields >= 2 ? target_address : 0u, fields >= 3 ? blend : ~0u};
+        }
+        return s;
+    }();
+    const bool dump_now = !g_draw_dumped && dump_spec[0] != ~0u && g_debug_window_open &&
+                          (dump_spec[0] == 0 || (g_k.draw.textures[0].enabled &&
+                                                 (g_k.draw.textures[0].descriptor.address & ~0xFFFu) == (dump_spec[0] & ~0xFFFu))) &&
+                          (dump_spec[1] == 0 || target.color_address == dump_spec[1]) &&
+                          (dump_spec[2] == ~0u || g_k.draw.blend_destination == dump_spec[2]);
+    if (dump_now) {
+        g_draw_dumped = true;
+        log_line("dump draw %llu", static_cast<unsigned long long>(g_draws));
+        renderer_dump_target(g_k.draw.textures[0].descriptor.address, "dump-texture");
+        renderer_dump_target(target.color_address, "dump-before");
+    }
     renderer_draw(target, g_k.draw, triangles);
+    if (dump_now) renderer_dump_target(target.color_address, "dump-after");
     ++g_draws;
 
     // MC3_DEBUG_FRAME_AT=<seconds>: one line per draw during 1 s from that time (counted from the first draw), to
     // see what the frames are made of.
-    static ULONGLONG window_start = 0, window_end = 0;
-    if (!window_start) {
+    // (Globals, not statics: draw is a template, and each instantiation would get its own window.)
+    if (!g_window_start) {
         char value[16] = {};
         const ULONGLONG now = GetTickCount64();
-        window_start = GetEnvironmentVariableA("MC3_DEBUG_FRAME_AT", value, sizeof(value))
-                           ? now + static_cast<ULONGLONG>(std::atof(value) * 1000)
-                           : ~0ull;
-        window_end = window_start + 1000;
+        g_window_start = GetEnvironmentVariableA("MC3_DEBUG_FRAME_AT", value, sizeof(value))
+                             ? now + static_cast<ULONGLONG>(std::atof(value) * 1000)
+                             : ~0ull;
+        g_window_end = g_window_start + 1000;
     }
     const ULONGLONG now = GetTickCount64();
-    if (now >= window_start && now < window_end) {
+    g_debug_window_open = now >= g_window_start && now < g_window_end;
+    if (g_debug_window_open) {
         // MC3_DEBUG_PROBE=x,y: log the screen pixel there whenever a draw changes it.
-        static int probe_x = -1, probe_y = -1;
-        static uint32_t last_probe[2] = {0xFFFFFFFF, 0xFFFFFFFF};
-        if (probe_x < 0) {
+        if (g_probe_x < 0) {
             char value[32] = {};
             if (GetEnvironmentVariableA("MC3_DEBUG_PROBE", value, sizeof(value))) {
-                std::sscanf(value, "%d,%d", &probe_x, &probe_y);
+                std::sscanf(value, "%d,%d", &g_probe_x, &g_probe_y);
             } else {
-                probe_x = probe_y = 100000;
+                g_probe_x = g_probe_y = 100000;
             }
         }
         uint8_t pixel[4];
-        if (probe_x < 100000 &&
-            renderer_probe(target.color_address, static_cast<uint32_t>(probe_x), static_cast<uint32_t>(probe_y), pixel)) {
+        if (g_probe_x < 100000 && renderer_probe(target.color_address, static_cast<uint32_t>(g_probe_x),
+                                                 static_cast<uint32_t>(g_probe_y), pixel)) {
             uint32_t value;
             std::memcpy(&value, pixel, 4);
-            uint32_t& last = last_probe[target.color_address == 0x03B84000 ? 0 : 1];
+            uint32_t& last = g_last_probe[target.color_address == 0x03B84000 ? 0 : 1];
             if (value != last) {
                 log_line("frame probe %llu: surf %08X pixel BGRA %02X %02X %02X alpha %02X",
                          static_cast<unsigned long long>(g_draws), target.color_address, pixel[0], pixel[1], pixel[2],
@@ -638,7 +690,8 @@ void draw(uint32_t count, Fetch fetch) {
                  g_k.draw.textures[0].filter);
         log_line("frame draw %llu: %s prim %u n %u surf %08X | tex0 %s %08X fmt %08X | blend %d %X %X | z %d %X w %d | "
                  "atest %d %X ref %02X | mask %08X | clip (%.3g %.3g %.3g %.3g) d0 (%.2f %.2f %.2f %.2f) | comb %08X %08X %08X"
-                 " | stages %05X ctl %08X | alpha %08X %08X out %08X | stencil %d %X ref %02X rm %02X wm %02X ops %X %X %X",
+                 " | stages %05X ctl %08X | alpha %08X %08X out %08X | stencil %d %X ref %02X rm %02X wm %02X ops %X %X %X"
+                 " | cull %d %X front %X eq %X",
                  static_cast<unsigned long long>(g_draws), fixed_function ? "ff" : "vp", g_k.primitive, count,
                  target.color_address, d.textures[0].enabled ? "on" : "off", d.textures[0].descriptor.address,
                  d.textures[0].descriptor.format, d.blend_enable, d.blend_source, d.blend_destination, d.depth_test,
@@ -648,7 +701,8 @@ void draw(uint32_t count, Fetch fetch) {
                  v.diffuse[3], d.program.color_input[0], d.program.final0, d.program.final1, d.program.stage_program,
                  d.program.control, d.program.alpha_input[0], d.program.alpha_output[0], d.program.color_output[0],
                  d.stencil_test, d.stencil_function, d.stencil_reference, d.stencil_read_mask, d.stencil_write_mask,
-                 d.stencil_fail, d.stencil_depth_fail, d.stencil_pass);
+                 d.stencil_fail, d.stencil_depth_fail, d.stencil_pass, d.cull_enable, d.cull_face, d.front_face,
+                 d.blend_equation);
     }
 }
 
@@ -864,6 +918,9 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
         case 0x034C: unpack_color(argument, d.blend_color); return true;
         case 0x0350: d.blend_equation = argument; return true;
         case 0x0354: d.depth_function = argument; return true;
+        case 0x0308: d.cull_enable = argument != 0; return true;
+        case 0x039C: d.cull_face = argument; return true;
+        case 0x03A0: d.front_face = argument; return true;
         case 0x032C: d.stencil_test = argument != 0; return true;
         case 0x0360: d.stencil_write_mask = argument & 0xFF; return true;
         case 0x0364: d.stencil_function = argument; return true;

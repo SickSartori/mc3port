@@ -65,6 +65,7 @@ struct Target {
     ComPtr<ID3D11RenderTargetView> rtv;
     ComPtr<ID3D11ShaderResourceView> srv;
     uint32_t width = 0, height = 0;
+    DXGI_FORMAT format = DXGI_FORMAT_B8G8R8A8_UNORM;  // R16G16B16A16_FLOAT once a signed blend equation is used
 };
 
 struct DepthTarget {
@@ -91,7 +92,33 @@ ComPtr<ID3D11Buffer> g_vertex_buffer;
 uint32_t g_vertex_capacity = 0;
 uint32_t g_vertex_used = 0;  // bytes of the ring buffer written since the last DISCARD
 ComPtr<ID3D11Buffer> g_constants;
-ComPtr<ID3D11RasterizerState> g_rasterizer;
+ComPtr<ID3D11RasterizerState> g_rasterizer;  // no culling (clears, copies)
+std::map<std::pair<D3D11_CULL_MODE, bool>, ComPtr<ID3D11RasterizerState>> g_cull_rasterizers;
+
+// MC3_FLIP_WINDING=1 inverts how NV2A's front-face winding maps onto D3D11 (for checking the convention).
+const bool g_flip_winding = GetEnvironmentVariableW(L"MC3_FLIP_WINDING", nullptr, 0) != 0;
+
+ID3D11RasterizerState* rasterizer_for(const DrawState& state) {
+    if (!state.cull_enable) return g_rasterizer.Get();
+    constexpr uint32_t kCullFront = 0x404, kCullBack = 0x405, kFrontCcw = 0x901;
+    const D3D11_CULL_MODE mode = state.cull_face == kCullFront  ? D3D11_CULL_FRONT
+                                 : state.cull_face == kCullBack ? D3D11_CULL_BACK
+                                                                : D3D11_CULL_NONE;  // FRONT_AND_BACK: see below
+    // Positions keep NV2A's screen orientation (y down) through clip space and the viewport, so the winding the
+    // game states is the winding D3D11 sees.
+    const bool front_ccw = (state.front_face == kFrontCcw) != g_flip_winding;
+    ComPtr<ID3D11RasterizerState>& cached = g_cull_rasterizers[{mode, front_ccw}];
+    if (!cached) {
+        D3D11_RASTERIZER_DESC desc{};
+        desc.FillMode = D3D11_FILL_SOLID;
+        desc.CullMode = mode;
+        desc.FrontCounterClockwise = front_ccw;
+        desc.DepthClipEnable = TRUE;
+        desc.ScissorEnable = TRUE;
+        g_device->CreateRasterizerState(&desc, &cached);
+    }
+    return cached.Get();
+}
 ComPtr<ID3D11Buffer> g_surface_constants;  // vertex shader: pixel-to-clip scale of the current target
 uint32_t g_surface_scale_width = 0, g_surface_scale_height = 0;
 ComPtr<ID3D11VertexShader> g_clear_vertex_shader;
@@ -191,10 +218,11 @@ Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     desc.Height = height;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.Format = target.format;
     desc.SampleDesc.Count = 1;
     desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
     Target grown{};
+    grown.format = target.format;
     if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &grown.texture))) return nullptr;
     g_device->CreateRenderTargetView(grown.texture.Get(), nullptr, &grown.rtv);
     g_device->CreateShaderResourceView(grown.texture.Get(), nullptr, &grown.srv);
@@ -207,6 +235,51 @@ Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     target = grown;
     log_line("renderer: render target %ux%u at %08X", width, height, address);
     return &target;
+}
+
+ComPtr<ID3D11VertexShader> g_copy_vertex_shader;
+ComPtr<ID3D11PixelShader> g_copy_pixel_shader;
+
+// Switches a render target to a float format (keeping its contents), for the Xbox's signed blend equations: on
+// UNORM a subtraction below zero would clamp and lose the count.
+void make_float_target(Target& target, uint32_t address) {
+    if (target.format == DXGI_FORMAT_R16G16B16A16_FLOAT || !g_copy_pixel_shader) return;
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = target.width;
+    desc.Height = target.height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    desc.SampleDesc.Count = 1;
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+    Target converted{};
+    converted.format = desc.Format;
+    converted.width = target.width;
+    converted.height = target.height;
+    if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &converted.texture))) return;
+    g_device->CreateRenderTargetView(converted.texture.Get(), nullptr, &converted.rtv);
+    g_device->CreateShaderResourceView(converted.texture.Get(), nullptr, &converted.srv);
+    // Copy the contents with a full-surface triangle (CopyResource needs the same format).
+    ID3D11RenderTargetView* rtv = converted.rtv.Get();
+    g_context->OMSetRenderTargets(1, &rtv, nullptr);
+    g_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+    g_context->OMSetDepthStencilState(nullptr, 0);
+    const D3D11_VIEWPORT viewport{0, 0, static_cast<float>(target.width), static_cast<float>(target.height), 0, 1};
+    g_context->RSSetViewports(1, &viewport);
+    const D3D11_RECT all{0, 0, static_cast<LONG>(target.width), static_cast<LONG>(target.height)};
+    g_context->RSSetScissorRects(1, &all);
+    g_context->RSSetState(g_rasterizer.Get());
+    g_context->IASetInputLayout(nullptr);
+    g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_context->VSSetShader(g_copy_vertex_shader.Get(), nullptr, 0);
+    g_context->PSSetShader(g_copy_pixel_shader.Get(), nullptr, 0);
+    ID3D11ShaderResourceView* source = target.srv.Get();
+    g_context->PSSetShaderResources(0, 1, &source);
+    g_context->Draw(3, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    g_context->PSSetShaderResources(0, 1, &none);
+    target = converted;
+    log_line("renderer: render target at %08X switched to float (signed blending)", address);
 }
 
 // Depth buffers must match their render target's size exactly in D3D11: one per address and size.
@@ -263,6 +336,10 @@ D3D11_BLEND_OP blend_operation(uint32_t gl) {
     switch (gl) {
         case 0x800A: return D3D11_BLEND_OP_SUBTRACT;
         case 0x800B: return D3D11_BLEND_OP_REV_SUBTRACT;
+        // Xbox "signed" equations (D3DBLENDOP_REVSUBTRACTSIGNED / ADDSIGNED): the result may go below zero and come
+        // back (light volumes count faces this way). They are drawn into a float target, which does not clamp.
+        case 0xF005: return D3D11_BLEND_OP_REV_SUBTRACT;
+        case 0xF006: return D3D11_BLEND_OP_ADD;
         case 0x8007: return D3D11_BLEND_OP_MIN;
         case 0x8008: return D3D11_BLEND_OP_MAX;
         default: return D3D11_BLEND_OP_ADD;
@@ -583,6 +660,14 @@ bool renderer_start(HWND window) {
         g_device->CreateVertexShader(clear_vs->GetBufferPointer(), clear_vs->GetBufferSize(), nullptr, &g_clear_vertex_shader);
         g_device->CreatePixelShader(clear_ps->GetBufferPointer(), clear_ps->GetBufferSize(), nullptr, &g_clear_pixel_shader);
     }
+    constexpr char kCopyPixelShader[] =
+        "Texture2D source : register(t0);\n"
+        "float4 main(float4 position : SV_Position) : SV_Target { return source.Load(int3(position.xy, 0)); }\n";
+    ComPtr<ID3DBlob> copy_ps = compile(kCopyPixelShader, sizeof(kCopyPixelShader) - 1, "ps_5_0", "copy pixel");
+    if (copy_ps && g_clear_vertex_shader) {
+        g_copy_vertex_shader = g_clear_vertex_shader;
+        g_device->CreatePixelShader(copy_ps->GetBufferPointer(), copy_ps->GetBufferSize(), nullptr, &g_copy_pixel_shader);
+    }
     D3D11_BUFFER_DESC surface_constants{};
     surface_constants.ByteWidth = 16;
     surface_constants.Usage = D3D11_USAGE_DEFAULT;
@@ -663,6 +748,8 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
 
 void renderer_draw(const SurfaceState& surface, const DrawState& state, const std::vector<RenderVertex>& triangles) {
     if (!g_device || triangles.empty() || !surface.width || !surface.height) return;
+    // Culling both faces draws nothing.
+    if (state.cull_enable && state.cull_face == 0x408) return;
     ++g_stats.draws;
     const uint64_t draw_start = ticks();
     struct Account {
@@ -671,6 +758,9 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     } account{draw_start};
     Target* target = get_target(surface.color_address, surface.width, surface.height);
     if (!target) return;
+    if (state.blend_enable && (state.blend_equation == 0xF005 || state.blend_equation == 0xF006)) {
+        make_float_target(*target, surface.color_address);
+    }
     ID3D11PixelShader* shader = pixel_shader(state.program);
     if (!shader) return;
     DepthTarget* depth = (surface.zeta_address && (state.depth_test || state.depth_write || state.stencil_test))
@@ -735,7 +825,7 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
                              static_cast<LONG>(surface.clip_x + surface.clip_width),
                              static_cast<LONG>(surface.clip_y + surface.clip_height)};
     g_context->RSSetScissorRects(1, &scissor);
-    g_context->RSSetState(g_rasterizer.Get());
+    g_context->RSSetState(rasterizer_for(state));
     g_context->OMSetBlendState(blend_state(state), state.blend_color, 0xFFFFFFFF);
     g_context->OMSetDepthStencilState(depth_state(state), state.stencil_reference);
 
@@ -776,6 +866,11 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     g_context->PSSetShader(shader, nullptr, 0);
     g_context->Draw(static_cast<UINT>(triangles.size()), first_vertex);
     part(4);
+}
+
+void renderer_dump_target(uint32_t address, const char* prefix) {
+    const auto found = g_targets.find(address);
+    if (found != g_targets.end()) dump_frame(found->second.texture.Get(), prefix);
 }
 
 bool renderer_probe(uint32_t address, uint32_t x, uint32_t y, uint8_t bgra[4]) {

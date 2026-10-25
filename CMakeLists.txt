@@ -58,7 +58,7 @@ if(WIN32)
     # Launcher: linked at the XBE base (0x10000) so Windows reserves the game's address range for us.
     # It has no CRT; runtime checks and security cookies would pull one in.
     string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
-    add_executable(mc3 src/pc/launcher.c)
+    add_executable(mc3 src/pc/launcher.c res/mc3.rc)
     target_compile_options(mc3 PRIVATE /GS-)
     target_link_libraries(mc3 PRIVATE kernel32)
     target_link_options(mc3 PRIVATE

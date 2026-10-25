@@ -94,9 +94,16 @@ circa 24 fps dopo le correzioni del radar, da controllare).
 - La mappa grande e trasparente al centro è quella del gioco: si apre e si chiude con la croce direzionale; BACK
   apre il "Sistema di navigazione".
 
-Da sistemare nelle migliorie grafiche (non bloccano il gioco): ellisse bianca sotto l'auto in gara (da indagare: il
-buffer del bagliore `02725E80`/`0277FF00` sommato allo schermo e la luce dei fari, texture DXT5 `02852400`), bump
-mapping (modalità texture `6`), cube map, punti e linee, culling; vertici ancora calcolati sulla CPU. Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
+- **Culling** (`0x308`, `0x39C`, `0x3A0`): il verso delle facce si conserva fino a D3D11 (le coordinate restano in
+  pixel con y verso il basso), quindi CW/CCW passano così come sono.
+- **Fusione "con segno"** (`F005` REVSUBTRACT_SIGNED, `F006` ADD_SIGNED): il gioco conta le facce dei volumi di
+  luce dei fari nell'alfa (prima sottrae le facce anteriori, poi somma quelle posteriori). Su UNORM la sottrazione
+  si fermava a zero e restava un'ellisse bianca piena; la superficie che li usa diventa R16G16B16A16_FLOAT.
+- **Velocità**: vertici in un buffer ad anello e conversione pixel->clip nel vertex shader (menu 42-60 fps, città
+  47-52 fps).
+
+Da sistemare nelle migliorie grafiche (non bloccano il gioco): bump mapping (modalità texture `6`), cube map, punti
+e linee; vertici ancora calcolati sulla CPU. Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
 thread aspetta su un handle di file, cosa che il kernel emulato non supporta ancora.
 
 ### Audio
@@ -106,6 +113,15 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
 
 - **Cursori**: il cursore di scrittura sta 32 campioni (un frame dell'APU) davanti a quello di riproduzione. Con
   10 ms di anticipo Bink, all'avvio dei video, riempiva di silenzio in un ciclo che non finiva più.
+- **Funzioni corrette** (ottobre 2026): `0x3C28F7`/`0x3C2938` sono `SetMixBins` (Bink passa un `DSMIXBINS`), non
+  `SetFormat`; il vero `SetFormat` è `0x3C2F5C`/`0x3C2F98` (interna `0x2AD9`, XACT imposta lì i formati mono). Con
+  i formati sbagliati video ed effetti suonavano come rumore.
+- **Uscita**: i 6 mixbin degli altoparlanti ridotti a stereo (anteriori 1, centrale e posteriori 0,5, LFE ed effetti
+  esclusi), volume generale 0,5 e limitatore morbido; interpolazione lineare nel ricampionamento e rampa del volume
+  in ogni blocco da 10 ms (niente click quando il gioco cambia volume e tono del motore). Una voce senza mixbin
+  prende quelli del suo primo `SetMixBinVolumes`.
+- **Da fare**: audio 3D (posizione delle sorgenti calcolata da DirectSound): alcune voci di XACT suonano ancora al
+  centro e si sommano; urti e suoni sovrapposti da controllare.
 - **Mixer software** (`audio_mixer.cpp`): emula le voci dell'APU leggendo i campioni direttamente dalla memoria del
   gioco (i ring buffer di Bink funzionano così come sono), con regioni di play/loop, pitch Xbox (4096 per ottava,
   0 = 48 kHz), volumi in centesimi di dB, mixbin verso lo stereo, PCM 8/16 bit e ADPCM Xbox, pacchetti degli stream

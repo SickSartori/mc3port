@@ -83,6 +83,11 @@ struct Voice {
     // Decoding cache for ADPCM: the block last decoded.
     int64_t decoded_block = -1;
     std::vector<int16_t> decoded;  // 64 samples per channel, interleaved
+
+    // Gains used at the end of the previous chunk: volume changes ramp from them instead of jumping (a jump every
+    // 10 ms is an audible click when the game moves volumes continuously, as it does for engines).
+    float last_gains[2][2] = {};
+    bool has_last_gains = false;
 };
 
 // All voices and the device. Everything below requires audio_lock() held, except start_audio_output().
