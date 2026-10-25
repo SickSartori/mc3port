@@ -11,6 +11,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -480,8 +481,48 @@ HRESULT32 __stdcall VoiceSetEnvelope(uint32_t self, const XDsEnvelopeDesc* desc)
 }
 
 // LFO, filter and headroom shape the sound on the APU; not emulated yet.
-HRESULT32 __stdcall VoiceSetLfo(uint32_t, uint32_t) { return kOk; }
-HRESULT32 __stdcall VoiceSetFilter(uint32_t, uint32_t) { return kOk; }  // MC3 never sets one
+HRESULT32 __stdcall VoiceSetLfo(uint32_t self, uint32_t desc) {
+    static uint32_t logged = 0;
+    if (desc && logged++ < 40) {
+        const uint32_t* d = guest<uint32_t>(desc);
+        log_line("dsound: voice %p LFO (not emulated) %08X %08X %08X %08X %08X %08X", static_cast<void*>(voice_of(self)),
+                 d[0], d[1], d[2], d[3], d[4], d[5]);
+    }
+    return kOk;
+}
+// DSFILTERDESC: mode (0 bypass, 1 DLS2 low-pass, 2 parametric EQ), Q index, then two coefficients per channel. In
+// DLS2 mode they are what XAudioCalculateCutoff/Resonance give (XACT 0x410431/0x41048F): 4096 log2(2 sin(pi fc /
+// 48000)) as a signed 16-bit value, and 32768 / Q. The parametric EQ is not emulated yet (the sound plays unfiltered).
+struct XDsFilterDesc {
+    uint32_t mode;
+    uint32_t q_coefficient;
+    uint32_t coefficients[4];
+};
+
+HRESULT32 __stdcall VoiceSetFilter(uint32_t self, const XDsFilterDesc* desc) {
+    constexpr uint32_t kModeDls2 = 1;
+    if (!desc) return kOk;
+    std::lock_guard<std::mutex> lock(audio_lock());
+    Voice* voice = voice_of(self);
+    VoiceFilter& filter = voice->filter;
+    const bool was_enabled = filter.enabled;
+    filter.enabled = desc->mode == kModeDls2;
+    for (uint32_t channel = 0; channel < 2 && filter.enabled; ++channel) {
+        const auto cutoff = static_cast<int16_t>(desc->coefficients[channel * 2] & 0xFFFF);
+        filter.frequency[channel] = std::min(1.0f, std::exp2(cutoff / 4096.0f));
+        filter.damping[channel] = std::clamp((desc->coefficients[channel * 2 + 1] & 0xFFFF) / 32768.0f, 0.05f, 2.0f);
+        if (!was_enabled) filter.low[channel] = filter.band[channel] = 0;
+    }
+    static uint32_t logged = 0;
+    if (logged++ < 40) {
+        log_line("dsound: voice %p filter mode %u q %u coefficients %04X %04X %04X %04X (cutoff %.0f Hz)",
+                 static_cast<void*>(voice), desc->mode, desc->q_coefficient, desc->coefficients[0] & 0xFFFF,
+                 desc->coefficients[1] & 0xFFFF, desc->coefficients[2] & 0xFFFF, desc->coefficients[3] & 0xFFFF,
+                 std::asin(std::min(1.0f, std::exp2(static_cast<int16_t>(desc->coefficients[0] & 0xFFFF) / 4096.0f)) /
+                           2) * 48000 / 3.14159265f);
+    }
+    return kOk;
+}
 HRESULT32 __stdcall VoiceSetHeadroom(uint32_t self, uint32_t headroom) {
     static uint32_t logged = 0;
     if (logged++ < 40) log_line("dsound: voice %p headroom %u", static_cast<void*>(voice_of(self)), headroom);
@@ -622,6 +663,21 @@ HRESULT32 __stdcall BufferSetBufferData(uint32_t self, uint32_t data, uint32_t b
         log_line("dsound: set buffer data %p: data %08X bytes %u (format tag %X, %u ch, %u Hz)",
                  static_cast<void*>(voice), data, bytes, voice->format.format_tag, voice->format.channels,
                  voice->format.samples_per_second);
+    }
+    // MC3_DUMP_BUFFER=<bytes>: the raw data of buffers of that size go to buffer-<size>-<address>.bin, once each.
+    static const uint32_t dump_size = [] {
+        char value[16] = {};
+        return GetEnvironmentVariableA("MC3_DUMP_BUFFER", value, sizeof(value)) ? std::strtoul(value, nullptr, 10) : 0ul;
+    }();
+    static std::vector<uint32_t> dumped;
+    if (data && bytes == dump_size && std::find(dumped.begin(), dumped.end(), data) == dumped.end()) {
+        dumped.push_back(data);
+        char name[64];
+        std::snprintf(name, sizeof(name), "buffer-%u-%08X.bin", bytes, data);
+        if (FILE* file = std::fopen(name, "wb")) {
+            std::fwrite(guest<uint8_t>(data), 1, bytes, file);
+            std::fclose(file);
+        }
     }
     voice->owned_data.clear();
     voice->data = data ? guest<uint8_t>(data) : nullptr;

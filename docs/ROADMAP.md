@@ -103,8 +103,9 @@ circa 24 fps dopo le correzioni del radar, da controllare).
   47-52 fps).
 
 Da sistemare nelle migliorie grafiche (non bloccano il gioco): bump mapping (modalità texture `6`), cube map, punti
-e linee; vertici ancora calcolati sulla CPU. Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
-thread aspetta su un handle di file, cosa che il kernel emulato non supporta ancora.
+e linee; vertici ancora calcolati sulla CPU. Opzione per ridurre o spegnere la sfocatura radiale da velocità
+(effetto del gioco originale, molto forte ad alta velocità e con il nitro: da confrontare con l'Xbox prima di
+toccarla).
 
 ### Audio
 

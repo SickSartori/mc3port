@@ -155,6 +155,20 @@ void channel_gains(const Voice& voice, float gains[2][2]) {
 
 double step_for(const Voice& voice) { return std::pow(2.0, voice.pitch / 4096.0); }
 
+// One output frame of the voice's DLS2 low-pass (Chamberlin state-variable filter) on one source channel.
+float filtered(Voice& voice, uint32_t channel, float sample) {
+    VoiceFilter& filter = voice.filter;
+    if (!filter.enabled) return sample;
+    float& low = filter.low[channel];
+    float& band = filter.band[channel];
+    low += filter.frequency[channel] * band;
+    const float high = sample - low - filter.damping[channel] * band;
+    band += filter.frequency[channel] * high;
+    if (std::abs(low) < 1e-20f) low = 0;  // no denormals once the sound has died away
+    if (std::abs(band) < 1e-20f) band = 0;
+    return low;
+}
+
 // --- amplitude envelope ---
 
 constexpr uint32_t kShortestRelease = 240;  // 5 ms: a release of 0 still must not click
@@ -267,7 +281,7 @@ void mix_buffer_voice(Voice& voice, float* out, uint32_t frames) {
         for (uint32_t channel = 0; channel < channels; ++channel) {
             const float a = voice_sample(voice, region, region_bytes, frame, channel);
             const float b = fraction > 0 ? voice_sample(voice, region, region_bytes, next, channel) : a;
-            const float sample = a + (b - a) * fraction;
+            const float sample = filtered(voice, channel, a + (b - a) * fraction);
             out[n * 2] += sample * gains.at(channel, 0, n);
             out[n * 2 + 1] += sample * gains.at(channel, 1, n);
         }
@@ -309,7 +323,7 @@ void mix_stream_voice(Voice& voice, float* out, uint32_t frames) {
                                          following.packet.max_size, 0, channel);
                     }
                 }
-                const float sample = a + (b - a) * fraction;
+                const float sample = filtered(voice, channel, a + (b - a) * fraction);
                 out[n * 2] += sample * gains.at(channel, 0, n);
                 out[n * 2 + 1] += sample * gains.at(channel, 1, n);
             }

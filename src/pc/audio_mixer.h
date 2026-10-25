@@ -60,6 +60,15 @@ struct Envelope {
 };
 enum class EnvelopeStage : uint8_t { kOff, kDelay, kAttack, kHold, kDecay, kSustain, kRelease, kDone };
 
+// DSFILTERDESC in DLS2 mode: a resonant low-pass, run like the APU's as a state-variable filter at 48 kHz on each
+// source channel. XACT sets it on sounds that need it (the river water in Tokyo played unfiltered, as noise).
+struct VoiceFilter {
+    bool enabled = false;
+    float frequency[2] = {1, 1};  // 2 sin(pi fc / 48000)
+    float damping[2] = {1, 1};    // 1 / Q
+    float low[2] = {}, band[2] = {};
+};
+
 struct Voice {
     bool is_stream = false;
     XWaveFormat format{};
@@ -104,6 +113,8 @@ struct Voice {
     // 10 ms is an audible click when the game moves volumes continuously, as it does for engines).
     float last_gains[2][2] = {};
     bool has_last_gains = false;
+
+    VoiceFilter filter;
 
     Envelope envelope;
     EnvelopeStage envelope_stage = EnvelopeStage::kOff;  // kOff: full level
