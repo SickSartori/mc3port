@@ -41,12 +41,17 @@ if(WIN32)
         src/pc/log.cpp
         src/pc/mmio.cpp
         src/pc/nv2a.cpp
+        src/pc/nv2a_combiner.cpp
+        src/pc/nv2a_kelvin.cpp
+        src/pc/nv2a_texture.cpp
+        src/pc/nv2a_vsh.cpp
         src/pc/physical_memory.cpp
         src/pc/privileged.cpp
+        src/pc/renderer_d3d11.cpp
         src/pc/runtime.cpp
         src/pc/xbox_thread.cpp
     )
-    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2)
+    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
     # Launcher: linked at the XBE base (0x10000) so Windows reserves the game's address range for us.

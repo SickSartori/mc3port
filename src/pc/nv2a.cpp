@@ -2,7 +2,9 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <chrono>
 #include <cstring>
 #include <map>
@@ -13,6 +15,8 @@
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
 #include "pc/mmio.h"
+#include "pc/nv2a_kelvin.h"
+#include "pc/renderer_d3d11.h"
 #include "pc/physical_memory.h"
 
 namespace mc3::pc {
@@ -45,8 +49,20 @@ constexpr uint32_t kPfbCstatus = 0x10020C;  // RAM size
 constexpr uint32_t kPfbWbc = 0x100410;      // write-back cache control
 constexpr uint32_t kPfbWbcFlush = 1u << 16;
 constexpr uint32_t kPgraphIntr = 0x400100;
+constexpr uint32_t kPgraphIntrError = 1u << 20;  // software method trap (NO_OPERATION with an argument)
+constexpr uint32_t kPgraphNsource = 0x400108;
+constexpr uint32_t kPgraphNsourceNotification = 1;
 constexpr uint32_t kPgraphIntrEn = 0x400140;
 constexpr uint32_t kPgraphStatus = 0x400700;
+constexpr uint32_t kPgraphTrappedAddr = 0x400704;  // method 0x1FFF, subchannel 0x70000, channel 0x1F00000
+constexpr uint32_t kPgraphTrappedDataLow = 0x400708;
+constexpr uint32_t kPgraphSurface = 0x400710;  // flip counters: WRITE_3D 0x700000, READ_3D 0x7000000, MODULO 0x70000000
+constexpr uint32_t kPgraphIncrement = 0x40071C;
+constexpr uint32_t kPgraphIncrementRead3d = 1u << 1;
+// Written by the NV044 pattern object. D3D uses colour 0 as a progress marker: it puts a SET_MONOCHROME_COLOR0
+// in the push buffer (push buffer address and a counter) and polls the register to know how far the GPU got.
+constexpr uint32_t kPgraphPatternColor0 = 0x400B10;
+constexpr uint32_t kPgraphPatternColor1 = 0x400B14;
 constexpr uint32_t kPcrtcIntr0 = 0x600100;
 constexpr uint32_t kPcrtcIntrEn0 = 0x600140;
 constexpr uint32_t kPcrtcIntrVblank = 1;
@@ -71,44 +87,35 @@ constexpr uint32_t kChipId = 0x02A000A2;  // NV2A revision A2, the retail chip
 // --- Kelvin (NV097) methods handled so far ---
 constexpr uint32_t kSetObject = 0x0000;
 constexpr uint32_t kSetReference = 0x0050;
-constexpr uint32_t kSetContextDmaColor = 0x0194;
-constexpr uint32_t kSetContextDmaZeta = 0x0198;
+constexpr uint32_t kNoOperation = 0x0100;
+constexpr uint32_t kSetFlipRead = 0x0120;
+constexpr uint32_t kSetFlipWrite = 0x0124;
+constexpr uint32_t kSetFlipModulo = 0x0128;
+constexpr uint32_t kFlipIncrementWrite = 0x012C;
+constexpr uint32_t kFlipStall = 0x0130;
 constexpr uint32_t kSetContextDmaSemaphore = 0x01A4;
-constexpr uint32_t kSetContextDmaReport = 0x01A8;
-constexpr uint32_t kSetSurfaceClipHorizontal = 0x0200;
-constexpr uint32_t kSetSurfaceClipVertical = 0x0204;
-constexpr uint32_t kSetSurfaceFormat = 0x0208;
-constexpr uint32_t kSetSurfacePitch = 0x020C;
-constexpr uint32_t kSetSurfaceColorOffset = 0x0210;
 constexpr uint32_t kSetSemaphoreOffset = 0x1D6C;
 constexpr uint32_t kBackEndWriteSemaphoreRelease = 0x1D70;
-constexpr uint32_t kSetColorClearValue = 0x1D90;
-constexpr uint32_t kClearSurface = 0x1D94;
-constexpr uint32_t kSetClearRectHorizontal = 0x1D98;
-constexpr uint32_t kSetClearRectVertical = 0x1D9C;
 
 // Register file. Only the GPU emulation touches it directly; the game goes through the MMIO traps.
 std::vector<uint32_t> g_registers(kNv2aRegisterSize / 4);
 std::mutex g_register_mutex;
 HANDLE g_put_written = nullptr;
+HANDLE g_gpu_resume = nullptr;       // the CPU acknowledged a trap or advanced the flip read counter
+HANDLE g_interrupt_request = nullptr;  // the GPU raised an interrupt; the interrupt thread runs the ISR
+std::atomic<uint32_t> g_front_buffer{0};  // PCRTC_START: what the video output scans out
 
 uint32_t& reg(uint32_t offset) { return g_registers[offset / 4]; }
 
+// FIFO-level state; the 3D class itself lives in nv2a_kelvin.cpp.
 struct Kelvin {
-    uint32_t dma_color = 0;  // base addresses of the bound DMA objects
-    uint32_t dma_zeta = 0;
-    uint32_t dma_semaphore = 0;
-    uint32_t dma_report = 0;
-    uint32_t surface_clip_horizontal = 0;
-    uint32_t surface_clip_vertical = 0;
-    uint32_t surface_format = 0;
-    uint32_t surface_pitch = 0;
-    uint32_t surface_color_offset = 0;
+    uint32_t dma_semaphore = 0;  // base address of the semaphore DMA object
     uint32_t semaphore_offset = 0;
-    uint32_t color_clear_value = 0;
-    uint32_t clear_rect_horizontal = 0;
-    uint32_t clear_rect_vertical = 0;
 };
+constexpr uint32_t kClassKelvin = 0x97;
+uint8_t g_subchannel_class[8] = {};
+bool g_renderer_ready = false;
+std::atomic<bool> g_present_requested{false};
 
 struct DisplayMode {
     uint32_t mode = 0;
@@ -135,6 +142,8 @@ HWND g_window = nullptr;
 std::atomic<uint64_t> g_frames{0};
 std::map<uint32_t, uint32_t> g_unknown_methods;  // (subchannel << 16 | method) -> count
 int g_trace_budget = 0;                          // MC3_TRACE_PB=<n>: log the first n methods
+uint64_t g_trace_after_frame = 0;                // MC3_TRACE_PB_AFTER=<vblanks>: start tracing later
+std::map<uint32_t, uint32_t> g_method_counts;    // (subchannel << 16 | method) -> count, MC3_GPU_STATS=1
 
 // --- time ---
 
@@ -193,9 +202,25 @@ void write_register(uint32_t offset, uint32_t value) {
         case kPbusIntr0:
         case kPfifoIntr0:
         case kPtimerIntr0:
-        case kPgraphIntr:
         case kPcrtcIntr0:
             reg(offset) &= ~value;  // write 1 to clear
+            return;
+        case kPgraphIntr:
+            reg(offset) &= ~value;
+            if (value & kPgraphIntrError) SetEvent(g_gpu_resume);  // the trapped software method is handled
+            return;
+        case kPgraphIncrement:
+            if (value & kPgraphIncrementRead3d) {
+                const uint32_t surface = reg(kPgraphSurface);
+                const uint32_t modulo = std::max<uint32_t>(1, (surface >> 28) & 7);
+                const uint32_t read = (((surface >> 24) & 7) + 1) % modulo;
+                reg(kPgraphSurface) = (surface & ~0x07000000u) | (read << 24);
+                SetEvent(g_gpu_resume);
+            }
+            return;
+        case kPcrtcStart:
+            reg(offset) = value;
+            g_front_buffer = value;
             return;
         case kPmcIntr0:
             return;  // a summary of the other registers
@@ -283,69 +308,211 @@ uint32_t dma_base(uint32_t handle) {
 
 // --- methods ---
 
-void clear_surface(uint32_t flags) {
-    constexpr uint32_t kClearColorMask = 0xF0;
-    if (!(flags & kClearColorMask)) return;
-    const uint32_t x0 = g_kelvin.clear_rect_horizontal & 0xFFFF;
-    const uint32_t x1 = g_kelvin.clear_rect_horizontal >> 16;
-    const uint32_t y0 = g_kelvin.clear_rect_vertical & 0xFFFF;
-    const uint32_t y1 = g_kelvin.clear_rect_vertical >> 16;
-    const uint32_t pitch = g_kelvin.surface_pitch & 0xFFFF;
-    const uint32_t color_format = g_kelvin.surface_format & 0xF;
-    const uint32_t bytes_per_pixel = (color_format == 0x3 || color_format == 0x1 || color_format == 0x2) ? 2 : 4;
-    if (pitch == 0 || x1 < x0 || y1 < y0) return;
-    for (uint32_t y = y0; y <= y1; ++y) {
-        const uint32_t row_address = g_kelvin.dma_color + g_kelvin.surface_color_offset + y * pitch;
-        uint8_t* row = physical_pointer(row_address);
-        if (!row || !physical_pointer(row_address + (x1 + 1) * bytes_per_pixel)) break;
-        for (uint32_t x = x0; x <= x1; ++x) {
-            if (bytes_per_pixel == 4) {
-                reinterpret_cast<uint32_t*>(row)[x] = g_kelvin.color_clear_value;
-            } else {
-                reinterpret_cast<uint16_t*>(row)[x] = static_cast<uint16_t>(g_kelvin.color_clear_value);
-            }
+// --- statistics (MC3_GPU_STATS=1) ---
+
+bool g_collect_statistics = false;
+
+void log_method_statistics() {
+    std::vector<std::pair<uint32_t, uint32_t>> sorted(g_method_counts.begin(), g_method_counts.end());
+    std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+    log_line("nv2a: methods in the last 10 s (%zu distinct):", sorted.size());
+    for (size_t i = 0; i < sorted.size() && i < 80; i += 4) {
+        char line[256] = {};
+        size_t used = 0;
+        for (size_t j = i; j < i + 4 && j < sorted.size(); ++j) {
+            used += std::snprintf(line + used, sizeof(line) - used, "  [%u] %04X x%-7u", sorted[j].first >> 16,
+                                  sorted[j].first & 0xFFFF, sorted[j].second);
         }
+        log_line("%s", line);
+    }
+    g_method_counts.clear();
+}
+
+// --- presentation ---
+
+DisplayMode current_display() {
+    std::lock_guard<std::mutex> lock(g_display_mutex);
+    return g_display;
+}
+
+// On the GPU thread: shows the front buffer if the vertical blank asked for it.
+void service_present() {
+    if (!g_present_requested.exchange(false)) return;
+    const DisplayMode display = current_display();
+    const uint32_t front = g_front_buffer ? g_front_buffer.load() : display.frame_buffer;
+    if (!front || !display.pitch) return;
+    renderer_present(front & 0x0FFFFFFF, display.pitch / 4, 480, display.pitch);
+}
+
+// --- traps and flips: the GPU waits for the CPU ---
+
+void set_flip_field_locked(uint32_t shift, uint32_t value) {
+    reg(kPgraphSurface) = (reg(kPgraphSurface) & ~(7u << shift)) | ((value & 7) << shift);
+}
+
+void set_flip_field(uint32_t shift, uint32_t value) {
+    std::lock_guard<std::mutex> lock(g_register_mutex);
+    set_flip_field_locked(shift, value);
+}
+
+// NO_OPERATION with an argument is the driver's software method: the GPU stops and interrupts the CPU, whose ISR
+// reads the trapped method and data, does the work (callbacks, fences) and acknowledges by clearing the interrupt.
+void trap_software_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
+    {
+        std::lock_guard<std::mutex> lock(g_register_mutex);
+        if (!(reg(kPgraphIntrEn) & kPgraphIntrError)) return;  // nobody would acknowledge it
+        reg(kPgraphTrappedAddr) = (subchannel << 16) | method;
+        reg(kPgraphTrappedDataLow) = argument;
+        reg(kPgraphNsource) = kPgraphNsourceNotification;
+        reg(kPgraphIntr) |= kPgraphIntrError;
+    }
+    SetEvent(g_interrupt_request);
+    for (int waited = 0;; waited += 5) {
+        {
+            std::lock_guard<std::mutex> lock(g_register_mutex);
+            if (!(reg(kPgraphIntr) & kPgraphIntrError)) return;
+        }
+        WaitForSingleObject(g_gpu_resume, 5);
+        service_present();
+        if (waited == 2000) log_line("nv2a: software method %04X(%08X) not acknowledged after 2 s", method, argument);
+    }
+}
+
+// FLIP_STALL: wait until the buffer about to be rendered into is no longer the one on screen, i.e. until the
+// vertical blank ISR has advanced the read counter (NV_PGRAPH_INCREMENT) past it.
+void flip_stall() {
+    for (int waited = 0;; waited += 5) {
+        {
+            std::lock_guard<std::mutex> lock(g_register_mutex);
+            const uint32_t surface = reg(kPgraphSurface);
+            if (((surface >> 20) & 7) != ((surface >> 24) & 7)) return;
+        }
+        WaitForSingleObject(g_gpu_resume, 5);
+        service_present();
+        if (waited == 2000) log_line("nv2a: FLIP_STALL still waiting after 2 s");
+    }
+}
+
+// --- 2D: NV062 (surface 2D) and NV09F (image blit) ---
+
+constexpr uint32_t kClassPattern = 0x44;
+constexpr uint32_t kClassSurface2d = 0x62;
+constexpr uint32_t kClassImageBlit = 0x9F;
+
+struct TwoD {
+    uint32_t source_dma = 0, destination_dma = 0;  // base addresses
+    uint32_t color_format = 0, pitch = 0, source_offset = 0, destination_offset = 0;
+    uint32_t operation = 3, point_in = 0, point_out = 0;
+} g_2d;
+
+uint32_t bytes_per_pixel_2d(uint32_t color_format) {
+    switch (color_format) {
+        case 0x01: return 1;                        // Y8
+        case 0x04: return 2;                        // R5G6B5
+        case 0x06: case 0x07: case 0x0A: case 0x0B: return 4;  // X8R8G8B8, A8R8G8B8, Y32
+        default: return 0;
+    }
+}
+
+bool surface2d_method(uint32_t method, uint32_t argument) {
+    switch (method) {
+        case 0x0184: g_2d.source_dma = dma_base(argument); return true;
+        case 0x0188: g_2d.destination_dma = dma_base(argument); return true;
+        case 0x0300: g_2d.color_format = argument; return true;
+        case 0x0304: g_2d.pitch = argument; return true;
+        case 0x0308: g_2d.source_offset = argument; return true;
+        case 0x030C: g_2d.destination_offset = argument; return true;
+        default: return false;
+    }
+}
+
+bool pattern_method(uint32_t method, uint32_t argument) {
+    if (method != 0x0310 && method != 0x0314) return false;  // SET_MONOCHROME_COLOR0/1
+    std::lock_guard<std::mutex> lock(g_register_mutex);
+    reg(method == 0x0310 ? kPgraphPatternColor0 : kPgraphPatternColor1) = argument;
+    return true;
+}
+
+bool image_blit_method(uint32_t method, uint32_t argument) {
+    switch (method) {
+        case 0x019C: return true;  // SET_CONTEXT_SURFACES: there is only one surface 2D object
+        case 0x02FC: g_2d.operation = argument; return true;
+        case 0x0300: g_2d.point_in = argument; return true;
+        case 0x0304: g_2d.point_out = argument; return true;
+        case 0x0308: {  // SIZE: does the copy
+            const uint32_t bytes = bytes_per_pixel_2d(g_2d.color_format);
+            if (g_2d.operation != 3 || !bytes) {
+                log_line("nv2a: image blit operation %u, colour format %X not supported yet", g_2d.operation,
+                         g_2d.color_format);
+                return true;
+            }
+            BlitRequest blit{};
+            blit.source = (g_2d.source_dma + g_2d.source_offset) & 0x0FFFFFFF;
+            blit.destination = (g_2d.destination_dma + g_2d.destination_offset) & 0x0FFFFFFF;
+            blit.source_pitch = g_2d.pitch & 0xFFFF;
+            blit.destination_pitch = g_2d.pitch >> 16;
+            blit.bytes_per_pixel = bytes;
+            blit.source_x = g_2d.point_in & 0xFFFF;
+            blit.source_y = g_2d.point_in >> 16;
+            blit.destination_x = g_2d.point_out & 0xFFFF;
+            blit.destination_y = g_2d.point_out >> 16;
+            blit.width = argument & 0xFFFF;
+            blit.height = argument >> 16;
+            renderer_blit(blit);
+            return true;
+        }
+        default: return false;
     }
 }
 
 void execute_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
-    if (g_trace_budget > 0) {
+    if (g_collect_statistics) ++g_method_counts[(subchannel << 16) | method];
+    if (g_trace_budget > 0 && g_frames >= g_trace_after_frame) {
         --g_trace_budget;
         log_line("nv2a: [%u] %04X = %08X", subchannel, method, argument);
     }
     switch (method) {
-        case kSetObject:
-            lookup_object(argument);  // logs the class bound to this subchannel
+        case kSetObject: {
+            const GpuObject* object = lookup_object(argument);
+            g_subchannel_class[subchannel & 7] = object ? object->class_id : 0;
             return;
-        case kSetContextDmaColor: g_kelvin.dma_color = dma_base(argument); return;
-        case kSetContextDmaZeta: g_kelvin.dma_zeta = dma_base(argument); return;
+        }
         case kSetContextDmaSemaphore: g_kelvin.dma_semaphore = dma_base(argument); return;
-        case kSetContextDmaReport: g_kelvin.dma_report = dma_base(argument); return;
         case kSetReference: {
             std::lock_guard<std::mutex> lock(g_register_mutex);
             reg(kUserRef) = argument;
             return;
         }
-        case kSetSurfaceClipHorizontal: g_kelvin.surface_clip_horizontal = argument; return;
-        case kSetSurfaceClipVertical: g_kelvin.surface_clip_vertical = argument; return;
-        case kSetSurfaceFormat: g_kelvin.surface_format = argument; return;
-        case kSetSurfacePitch: g_kelvin.surface_pitch = argument; return;
-        case kSetSurfaceColorOffset: g_kelvin.surface_color_offset = argument; return;
+        case kNoOperation:
+            if (argument) trap_software_method(subchannel, method, argument);
+            return;
+        case kSetFlipRead: set_flip_field(24, argument); return;
+        case kSetFlipWrite: set_flip_field(20, argument); return;
+        case kSetFlipModulo: set_flip_field(28, argument); return;
+        case kFlipIncrementWrite: {
+            std::lock_guard<std::mutex> lock(g_register_mutex);
+            const uint32_t surface = reg(kPgraphSurface);
+            const uint32_t modulo = std::max<uint32_t>(1, (surface >> 28) & 7);
+            set_flip_field_locked(20, (((surface >> 20) & 7) + 1) % modulo);
+            return;
+        }
+        case kFlipStall: flip_stall(); return;
         case kSetSemaphoreOffset: g_kelvin.semaphore_offset = argument; return;
         case kBackEndWriteSemaphoreRelease:
             if (uint8_t* semaphore = physical_pointer(g_kelvin.dma_semaphore + g_kelvin.semaphore_offset)) {
                 *reinterpret_cast<volatile uint32_t*>(semaphore) = argument;
             }
             return;
-        case kSetColorClearValue: g_kelvin.color_clear_value = argument; return;
-        case kSetClearRectHorizontal: g_kelvin.clear_rect_horizontal = argument; return;
-        case kSetClearRectVertical: g_kelvin.clear_rect_vertical = argument; return;
-        case kClearSurface: clear_surface(argument); return;
         default: {
+            const uint8_t class_id = g_subchannel_class[subchannel & 7];
+            if (class_id == kClassKelvin && kelvin_method(method, argument)) return;
+            if (class_id == kClassSurface2d && surface2d_method(method, argument)) return;
+            if (class_id == kClassImageBlit && image_blit_method(method, argument)) return;
+            if (class_id == kClassPattern && pattern_method(method, argument)) return;
             uint32_t& count = g_unknown_methods[(subchannel << 16) | method];
             if (count++ == 0) {
-                log_line("nv2a: method %04X on subchannel %u not handled (first argument %08X)", method, subchannel,
-                         argument);
+                log_line("nv2a: method %04X on subchannel %u (class %02X) not handled (first argument %08X)", method,
+                         subchannel, class_id, argument);
             }
             return;
         }
@@ -373,7 +540,9 @@ void run_push_buffer(uint32_t put) {
             --s.method_count;
             continue;
         }
-        if (g_trace_budget > 0 && (word & 3)) log_line("nv2a: %08X: control %08X", get - 4, word);
+        if (g_trace_budget > 0 && g_frames >= g_trace_after_frame && (word & 3)) {
+            log_line("nv2a: %08X: control %08X", get - 4, word);
+        }
         if ((word & 0xE0000003) == 0x20000000) {  // old-style jump
             get = word & 0x1FFFFFFF;
         } else if ((word & 3) == 1) {  // jump
@@ -402,9 +571,11 @@ void run_push_buffer(uint32_t put) {
 void gpu_thread() {
     // Above the game's threads: on one core the GPU must be able to preempt a thread spinning on a register.
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    g_renderer_ready = renderer_start(g_window);
     bool started = false;
     for (;;) {
         WaitForSingleObject(g_put_written, 5);
+        service_present();
         uint32_t put = 0;
         {
             std::lock_guard<std::mutex> lock(g_register_mutex);
@@ -415,6 +586,11 @@ void gpu_thread() {
             started = true;
         }
         if (started && put != g_push.get) run_push_buffer(put);
+        static ULONGLONG last_statistics = GetTickCount64();
+        if (g_collect_statistics && GetTickCount64() - last_statistics >= 10000) {
+            last_statistics = GetTickCount64();
+            log_method_statistics();
+        }
     }
 }
 
@@ -494,7 +670,9 @@ void present_front_buffer() {
     ReleaseDC(g_window, dc);
 }
 
-void vblank_thread() {
+// Runs the GPU's interrupt service routine for the vertical blank (60 Hz) and whenever the GPU raises an
+// interrupt (software method traps). One thread delivers all of them, like the single interrupt line.
+void interrupt_thread() {
     // The interrupt service routine is game code: it needs an Xbox thread context like any game thread.
     constexpr uint32_t kTlsAreaSize = 0x100;
     attach_xbox_thread_context(XbeTlsTemplate{}, kTlsAreaSize);
@@ -505,22 +683,41 @@ void vblank_thread() {
     const auto period = std::chrono::nanoseconds(1000000000 / 60);
     auto next = Clock::now() + period;
     for (;;) {
-        std::this_thread::sleep_until(next);
-        next += period;
+        const auto now = Clock::now();
+        const DWORD wait = now >= next ? 0 : static_cast<DWORD>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(next - now).count() + 1);
+        WaitForSingleObject(g_interrupt_request, wait);
+        const bool vblank = Clock::now() >= next;
 
         bool raise = false;
         {
             std::lock_guard<std::mutex> lock(g_register_mutex);
-            reg(kPcrtcIntr0) |= kPcrtcIntrVblank;
-            raise = (pending_interrupts() & kPmcPcrtc) && reg(kPmcIntrEn0);
+            if (vblank) reg(kPcrtcIntr0) |= kPcrtcIntrVblank;
+            raise = pending_interrupts() && reg(kPmcIntrEn0);
         }
         if (raise && !interrupts_disabled) trigger_interrupt(kGpuBusInterruptLevel);
+        if (!vblank) continue;
+        next += period;
+        if (Clock::now() > next + period * 4) next = Clock::now() + period;  // do not try to catch up
 
-        present_front_buffer();
+        if (g_renderer_ready) {
+            g_present_requested = true;
+            SetEvent(g_put_written);  // wake the GPU thread to present
+        } else {
+            present_front_buffer();
+        }
         if (++g_frames % 600 == 0) {
             log_line("nv2a: %llu vblanks, push buffer GET %08X, front buffer %08X",
                      static_cast<unsigned long long>(g_frames.load()), g_push.get.load(), reg(kPcrtcStart));
         }
+        // Hang detector without an extra thread (which changes the scheduling): the push buffer has not moved for
+        // 10 s, so log once where the game threads are.
+        static uint32_t last_get = 0;
+        static uint32_t still_frames = 0;
+        const uint32_t get = g_push.get.load();
+        still_frames = (get == last_get) ? still_frames + 1 : 0;
+        last_get = get;
+        if (still_frames == 600) log_game_threads("nv2a: push buffer idle for 10 s");
     }
 }
 
@@ -537,7 +734,11 @@ bool start_nv2a() {
     }
     wchar_t trace[16] = {};
     if (GetEnvironmentVariableW(L"MC3_TRACE_PB", trace, 16)) g_trace_budget = _wtoi(trace);
+    if (GetEnvironmentVariableW(L"MC3_TRACE_PB_AFTER", trace, 16)) g_trace_after_frame = _wtoi(trace);
+    g_collect_statistics = GetEnvironmentVariableW(L"MC3_GPU_STATS", nullptr, 0) != 0;
     g_put_written = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    g_gpu_resume = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    g_interrupt_request = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     reg(kPmcBoot0) = kChipId;
     reg(kPbusPciNv0) = 0x02A010DE;  // NVIDIA, NV2A
     reg(kPbusPciNv2) = 0x030000A2;  // VGA controller, revision A2
@@ -547,8 +748,9 @@ bool start_nv2a() {
     std::thread(window_thread, ready).detach();
     WaitForSingleObject(ready, 5000);
     CloseHandle(ready);
+    kelvin_initialise(&dma_base);
     std::thread(gpu_thread).detach();
-    start_game_code_thread(vblank_thread);
+    start_game_code_thread(interrupt_thread);
     log_line("nv2a: registers at %08X, window %p", kNv2aRegisterBase, static_cast<void*>(g_window));
     return true;
 }

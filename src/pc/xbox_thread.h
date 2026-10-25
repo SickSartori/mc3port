@@ -59,6 +59,9 @@ uint8_t current_irql();
 // the game's code): the quickest way to see what a hung game is waiting for.
 void start_thread_watchdog(uint32_t code_begin, uint32_t code_end);
 
+// Logs every game thread once (what the watchdog prints), from any thread.
+void log_game_threads(const char* reason);
+
 // Shared by every thread: the fields of KPROCESS the game reads through KTHREAD.ApcState.Process.
 uint8_t* xbox_process();
 

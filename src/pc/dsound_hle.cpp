@@ -322,9 +322,30 @@ HRESULT32 __stdcall VoiceSetFrequency(uint32_t self, uint32_t frequency) {
     return kOk;
 }
 
-HRESULT32 __stdcall VoiceSetMixBins(uint32_t self, uint32_t mix_bins) {
+// DSVOICEPROPS: what the voice is actually playing with (XACT reads it back to adjust volumes).
+struct XDsVoiceProps {
+    uint32_t mix_bin_count;
+    struct {
+        uint32_t mix_bin;
+        int32_t volume;
+    } mix_bins[8];
+    int32_t pitch;
+    int32_t i3dl2_direct_volume;
+    int32_t i3dl2_room_volume;
+};
+
+HRESULT32 __stdcall VoiceGetVoiceProperties(uint32_t self, XDsVoiceProps* props) {
     std::lock_guard<std::mutex> lock(audio_lock());
-    apply_mix_bins(*voice_of(self), mix_bins, true);
+    const Voice* voice = voice_of(self);
+    std::memset(props, 0, sizeof(*props));
+    props->mix_bin_count = static_cast<uint32_t>(std::clamp(voice->mix_bin_count, 0, 8));
+    for (uint32_t i = 0; i < props->mix_bin_count; ++i) {
+        const uint32_t bin = voice->mix_bins[i];
+        props->mix_bins[i].mix_bin = bin;
+        props->mix_bins[i].volume = std::max(-10000, voice->volume + (bin < 32 ? voice->mix_bin_volumes[bin] : 0));
+    }
+    props->pitch = voice->pitch;
+    props->i3dl2_direct_volume = props->i3dl2_room_volume = -10000;
     return kOk;
 }
 
@@ -518,7 +539,7 @@ const Redirect kRedirects[] = {
     R(0x3C21D4, BufferGetCurrentPosition),
     R(0x3C21F4, BufferSetCurrentPosition),
     R(0x3C2210, BufferLock),
-    R(0x3C2240, VoiceSetMixBins),
+    R(0x3C2240, VoiceGetVoiceProperties),
     R(0x3C225C, VoiceUnidentified2a),
     R(0x3C2278, VoiceUnidentified2b),
     R(0x3C28BF, VoiceSetFrequency),
@@ -537,7 +558,7 @@ const Redirect kRedirects[] = {
     R(0x3C22B2, VoiceSetMixBinVolumes),
     R(0x3C22B7, StreamPause),
     R(0x3C22BC, StreamFlushEx),
-    R(0x3C22D4, VoiceSetMixBins),
+    R(0x3C22D4, VoiceGetVoiceProperties),
     R(0x3C22D9, VoiceUnidentified2a),
     R(0x3C22DE, VoiceUnidentified2b),
     R(0x3C22E3, Voice3dParameters5),

@@ -25,7 +25,7 @@ Il codice del gioco è x86 a 32 bit, come il PC: non va tradotto, va solo "ospit
 | 0 | Analisi disco/XBE, struttura progetto, build CMake | fatto |
 | 1 | Launcher a 0x10000, mappatura XBE, patch `fs:`, thunk del kernel con stub che registrano la prima chiamata mancante | fatto |
 | 2 | Kernel: memoria, thread, sincronizzazione, file (`D:\` letto direttamente dalla ISO), tempo | fatto per l'avvio: il gioco arriva all'inizializzazione grafica. Restano 23 funzioni mai chiamate finora (driver `Io*`, crittografia `Xc*` per salvataggi e online) |
-| 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco; poi rendering su D3D11/Vulkan | in corso: `CreateDevice` riesce, il push buffer scorre, mancano disegno e presentazione |
+| 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco; poi rendering su D3D11/Vulkan | in corso: video Bink, schermata legale e schermata del titolo visibili su D3D11; mancano illuminazione fixed-function, texgen sferici/cube map, bump mapping, punti e linee |
 | 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | audio fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2); input da fare |
 | 5 | Miglioramenti: risoluzione, widescreen, 60 fps, caricamenti | da fare |
 
@@ -40,10 +40,20 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
   test, cmp, or, and) e ripete sul modello dei registri (interrupt write-1-to-clear, timer, FIFO sempre inattiva,
   PUT che sveglia il thread GPU). La RAM d'istanza (`0xFD700000`) è memoria normale.
 - **Push buffer**: salti, chiamate, metodi; oggetti risolti tramite RAMHT; semafori e reference per i fence.
-- **Vblank** a 60 Hz verso l'ISR del driver; finestra Win32 che mostrerà il front buffer (`PCRTC_START`).
+- **Vblank** a 60 Hz verso l'ISR del driver; la finestra Win32 mostra il front buffer (`PCRTC_START`).
+- **Rendering** (`nv2a_kelvin.cpp` -> `renderer_d3d11.cpp`): i vertici passano dal vertex program NV2A interpretato
+  sulla CPU (`nv2a_vsh.cpp`) oppure dalla pipeline fixed-function (matrice composita, offset del viewport, texgen
+  lineari, matrici delle texture, nebbia); i register combiner diventano un pixel shader HLSL generato
+  (`nv2a_combiner.cpp`); le texture swizzled, lineari e DXT sono decodificate da `nv2a_texture.cpp`. Le texture
+  lineari usano coordinate in texel (come le rectangle texture) e vengono normalizzate nello shader. Ogni superficie
+  di rendering è una render target D3D11; il blit 2D (`0x9F`/`0x62`) copia fra render target.
+- **Marcatore di avanzamento**: D3D mette nel push buffer `SET_MONOCHROME_COLOR0` dell'oggetto pattern (`0x44`), che
+  scrive `PGRAPH 0x400B10`, e lo legge per sapere fin dove è arrivata la GPU. Senza, il D3D del gioco si blocca a
+  caso (su un contatore a 5 bit), anche durante i video.
+- **Rilevatore di blocchi**: se il push buffer resta fermo 10 s, il log riporta dove sono tutti i thread del gioco.
 
-Prossimi passi della fase 3: tradurre i metodi Kelvin (stati, vertex/pixel shader, texture swizzled, draw) in
-chiamate D3D11 e presentare i frame. Fino ad allora la finestra resta nera.
+Prossimi passi della fase 3: illuminazione fixed-function (luci, materiali), texgen sfera/riflessione, cube map,
+bump mapping, punti e linee; poi verificare i menu e la guida vera e propria.
 
 ### Audio
 

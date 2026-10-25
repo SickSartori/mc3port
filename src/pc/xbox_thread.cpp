@@ -154,7 +154,54 @@ void start_game_code_thread(std::function<void()> body) {
     }
 }
 
+uint32_t g_code_begin = 0, g_code_end = 0;
+
+void log_game_threads(const char* reason) {
+    std::vector<XboxThreadContext*> threads;
+    {
+        std::lock_guard<std::mutex> lock(g_threads_mutex);
+        threads = g_threads;
+    }
+    log_line("%s: %zu Xbox threads", reason, threads.size());
+    for (XboxThreadContext* context : threads) {
+        if (context == current_xbox_thread()) continue;  // cannot suspend itself
+        if (WaitForSingleObject(context->windows_thread, 0) == WAIT_OBJECT_0) continue;  // exited
+        if (SuspendThread(context->windows_thread) == static_cast<DWORD>(-1)) continue;
+        CONTEXT registers{};
+        registers.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+        const bool ok = GetThreadContext(context->windows_thread, &registers) != 0;
+        std::string trace;
+        if (ok) {
+            const auto* stack = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(registers.Esp));
+            MEMORY_BASIC_INFORMATION info{};
+            VirtualQuery(stack, &info, sizeof(info));
+            const auto* region_end =
+                reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(info.BaseAddress) + info.RegionSize);
+            int found = 0;
+            for (int i = 0; stack + i < region_end && i < 4096 && found < 10; ++i) {
+                if (stack[i] >= g_code_begin && stack[i] < g_code_end) {
+                    char entry[16];
+                    std::snprintf(entry, sizeof(entry), " %08X", stack[i]);
+                    trace += entry;
+                    ++found;
+                }
+            }
+        }
+        const int priority = GetThreadPriority(context->windows_thread);
+        ResumeThread(context->windows_thread);
+        if (ok) {
+            log_line("  thread %u: priority %d eip %08lX irql %u eax %08lX ebx %08lX ecx %08lX edx %08lX esi %08lX "
+                     "edi %08lX ebp %08lX, stack:%s",
+                     context->thread_id, priority, registers.Eip, context->kpcr[kKpcrIrql], registers.Eax,
+                     registers.Ebx, registers.Ecx, registers.Edx, registers.Esi, registers.Edi, registers.Ebp,
+                     trace.c_str());
+        }
+    }
+}
+
 void start_thread_watchdog(uint32_t code_begin, uint32_t code_end) {
+    g_code_begin = code_begin;
+    g_code_end = code_end;
     wchar_t value[16] = {};
     if (!GetEnvironmentVariableW(L"MC3_WATCHDOG", value, 16)) return;
     const DWORD period = static_cast<DWORD>(_wtoi(value)) * 1000;
@@ -162,43 +209,7 @@ void start_thread_watchdog(uint32_t code_begin, uint32_t code_end) {
     std::thread([=] {
         for (;;) {
             Sleep(period);
-            std::vector<XboxThreadContext*> threads;
-            {
-                std::lock_guard<std::mutex> lock(g_threads_mutex);
-                threads = g_threads;
-            }
-            log_line("watchdog: %zu Xbox threads", threads.size());
-            for (XboxThreadContext* context : threads) {
-                if (WaitForSingleObject(context->windows_thread, 0) == WAIT_OBJECT_0) continue;  // exited
-                if (SuspendThread(context->windows_thread) == static_cast<DWORD>(-1)) continue;
-                CONTEXT registers{};
-                registers.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
-                const bool ok = GetThreadContext(context->windows_thread, &registers) != 0;
-                std::string trace;
-                if (ok) {
-                    const auto* stack = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(registers.Esp));
-                    MEMORY_BASIC_INFORMATION info{};
-                    VirtualQuery(stack, &info, sizeof(info));
-                    const auto* region_end = reinterpret_cast<const uint32_t*>(
-                        static_cast<const uint8_t*>(info.BaseAddress) + info.RegionSize);
-                    int found = 0;
-                    for (int i = 0; stack + i < region_end && i < 4096 && found < 10; ++i) {
-                        if (stack[i] >= code_begin && stack[i] < code_end) {
-                            char entry[16];
-                            std::snprintf(entry, sizeof(entry), " %08X", stack[i]);
-                            trace += entry;
-                            ++found;
-                        }
-                    }
-                }
-                ResumeThread(context->windows_thread);
-                if (ok) {
-                    log_line("  thread %u: eip %08lX irql %u eax %08lX ebx %08lX ecx %08lX edx %08lX esi %08lX edi %08lX "
-                             "ebp %08lX, stack:%s",
-                             context->thread_id, registers.Eip, context->kpcr[kKpcrIrql], registers.Eax, registers.Ebx,
-                             registers.Ecx, registers.Edx, registers.Esi, registers.Edi, registers.Ebp, trace.c_str());
-                }
-            }
+            log_game_threads("watchdog");
         }
     }).detach();
 }

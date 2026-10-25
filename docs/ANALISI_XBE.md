@@ -87,6 +87,11 @@ Fatti emersi facendo girare il gioco, che il kernel emulato deve rispettare:
   `0x4411A2`, `XGetDevices` `0x4409F5`, `XInputOpen` `0x441D4D`, tipo gamepad `0x43E994`; sequenza nel gioco a
   `0x84B40`.
 - **Errore fatale del gioco**: `0x19070` (`exit(1)` con messaggio).
+- **Avanzamento della GPU**: D3D legge `PGRAPH 0x400B10` (`PATT_COLOR0`) a `0x41629B` e ci attende a `0x416300`
+  (bit 2-6 = contatore); il valore arriva dal metodo `0x310` dell'oggetto `0x44` sul subchannel 5.
+- **Sequenza a schermo**: `rockstar.bik`, `sdlogo.bik`, `mc3intro.bik` (video lineari `X8R8G8B8` 640x480, coordinate
+  in texel), poi `flash\legal_it_x.xbck` e `flash\bg_savegame.xbck` disegnati in fixed-function, con un blit 2D fra i
+  due buffer.
 - **Audio**: DirectSound aspetta `0xFE820010 ≥ 0x20` e il codec AC97 pronto (`0xFEC0012C` bit 8); XACT si ferma a
   `0x408FFC`.
 
@@ -112,7 +117,8 @@ tramite vtable.
 | `0x3C21D4`/`0x3C21F4`/`0x3C21B8` | `GetCurrentPosition`/`SetCurrentPosition`/`GetStatus` | Bink, cursori e stato |
 | `0x3C2913`/`0x3C2198` | `SetPlayRegion`/`SetLoopRegion` | controlli su dimensione buffer / regione di play |
 | `0x3C28BF`/`0x3C2090`/`0x3C2074` | `SetFrequency`/`SetPitch`/`SetVolume` | `XAudioCalculatePitch`; volume meno headroom |
-| `0x3C2240`/`0x3C211C` | `SetMixBins`/`SetMixBinVolumes` | coppie (mixbin, volume) |
+| `0x3C2240`/`0x3C22D4` | `GetVoiceProperties` (buffer/stream) | legge i volumi dai registri della voce APU; XACT legge `DSVOICEPROPS` (`0x40F566`) e crasha se la struttura resta vuota |
+| `0x3C211C` | `SetMixBinVolumes` | coppie (mixbin, volume) |
 | `0x3C28F7`/`0x3C2F78` | `SetFormat`/`SetBufferData` | aggiorna il formato / imposta dati e dimensione |
 
 Elenco completo, compresi gli stream e le quattro funzioni non identificate, in `src/pc/dsound_hle.cpp`.
