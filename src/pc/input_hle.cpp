@@ -192,9 +192,8 @@ void press(XboxGamepad& pad, const std::string& button) {
     else if (button == "sr") pad.thumb_lx = 32767;
 }
 
-// Controller 1 without a pad: the keyboard (only while the game window is in front) and the test script.
-bool virtual_pad(XboxGamepad& pad) {
-    pad = {};
+// The test script's presses, on controller 1 (added to a real pad's state when one is connected).
+void apply_script(XboxGamepad& pad) {
     if (!g_script.empty()) {
         const ULONGLONG now = GetTickCount64() - g_start_ms;
         for (ScriptedPress& entry : g_script) {
@@ -213,6 +212,12 @@ bool virtual_pad(XboxGamepad& pad) {
             }
         }
     }
+}
+
+// Controller 1 without a pad: the keyboard (only while the game window is in front) and the test script.
+bool virtual_pad(XboxGamepad& pad) {
+    pad = {};
+    apply_script(pad);
     if (game_has_focus()) {
         if (key(VK_UP)) pad.buttons |= kDpadUp;
         if (key(VK_DOWN)) pad.buttons |= kDpadDown;
@@ -265,6 +270,7 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
         if (!g_host_connected[index]) g_next_scan_ms[index] = now + 1000;
         if (g_host_connected[index]) {
             pad = from_xinput(state.Gamepad);
+            if (index == 0) apply_script(pad);
             return true;
         }
     }
