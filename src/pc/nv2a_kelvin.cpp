@@ -115,14 +115,24 @@ SurfaceState surface() {
     SurfaceState s{};
     s.color_address = g_k.dma_color + g_k.color_offset;
     s.zeta_address = (g_k.surface_format & 0xF0) ? g_k.dma_zeta + g_k.zeta_offset : 0;
-    s.width = g_k.clip_horizontal >> 16;
-    s.height = g_k.clip_vertical >> 16;
+    // The clip only limits where draws write (the HUD's radar shrinks it to its own square); pixel coordinates
+    // are relative to the whole surface.
+    s.clip_x = g_k.clip_horizontal & 0xFFFF;
+    s.clip_width = g_k.clip_horizontal >> 16;
+    s.clip_y = g_k.clip_vertical & 0xFFFF;
+    s.clip_height = g_k.clip_vertical >> 16;
     constexpr uint32_t kSurfaceSwizzled = 2;
     if (((g_k.surface_format >> 8) & 0xF) == kSurfaceSwizzled) {
-        // A swizzled surface is a whole power-of-two texture (log2 sizes in the format); the clip only limits
-        // where this draw writes, and the texture's coordinates are relative to its full size.
+        // A swizzled surface is a whole power-of-two texture (log2 sizes in the format).
         s.width = 1u << ((g_k.surface_format >> 16) & 0xF);
         s.height = 1u << ((g_k.surface_format >> 24) & 0xF);
+    } else {
+        // A linear one is as wide as its pitch; its height is not stated, the clip's bottom is the best bound.
+        const uint32_t color_format = g_k.surface_format & 0xF;
+        const uint32_t bytes_per_pixel = color_format <= 3 || color_format == 0xA ? 2 : color_format == 9 ? 1 : 4;
+        const uint32_t pitch = g_k.surface_pitch & 0xFFFF;
+        s.width = std::max(pitch / bytes_per_pixel, s.clip_x + s.clip_width);
+        s.height = s.clip_y + s.clip_height;
     }
     return s;
 }
@@ -219,13 +229,13 @@ void append_triangles(uint32_t primitive, uint32_t count, std::vector<uint32_t>&
     }
 }
 
-// Screen-space position from the vertex program to D3D11 clip space.
-RenderVertex to_render_vertex(const Vec4* o, float width, float height) {
+// Screen-space position from the vertex program (pixels) to the renderer's form: pixels times w, depth 0..1.
+RenderVertex to_render_vertex(const Vec4* o) {
     RenderVertex v{};
     float w = o[kOutPosition][3];
     if (!std::isfinite(w) || std::fabs(w) < 5.42101e-20f) w = w < 0 ? -5.42101e-20f : 5.42101e-20f;
-    const float x = 2.0f * o[kOutPosition][0] / width - 1.0f;
-    const float y = 1.0f - 2.0f * o[kOutPosition][1] / height;
+    const float x = o[kOutPosition][0];
+    const float y = o[kOutPosition][1];
     const float z = g_k.clip_max != 0 ? o[kOutPosition][2] / g_k.clip_max : o[kOutPosition][2];
     v.position[0] = x * w;
     v.position[1] = y * w;
@@ -504,7 +514,7 @@ void draw(uint32_t count, Fetch fetch) {
             g_k.vertex_program.execute(inputs, g_k.constants, outputs);
         }
         outputs[kOutFog][0] = fog_factor(outputs[kOutFog][0]);
-        vertices[i] = to_render_vertex(outputs, static_cast<float>(target.width), static_cast<float>(target.height));
+        vertices[i] = to_render_vertex(outputs);
     }
     QueryPerformanceCounter(&vertex_end);
     renderer_note_vertex_work(static_cast<uint64_t>(vertex_end.QuadPart - vertex_start.QuadPart), count);
@@ -585,11 +595,50 @@ void draw(uint32_t count, Fetch fetch) {
     }
     const ULONGLONG now = GetTickCount64();
     if (now >= window_start && now < window_end) {
+        // MC3_DEBUG_PROBE=x,y: log the screen pixel there whenever a draw changes it.
+        static int probe_x = -1, probe_y = -1;
+        static uint32_t last_probe[2] = {0xFFFFFFFF, 0xFFFFFFFF};
+        if (probe_x < 0) {
+            char value[32] = {};
+            if (GetEnvironmentVariableA("MC3_DEBUG_PROBE", value, sizeof(value))) {
+                std::sscanf(value, "%d,%d", &probe_x, &probe_y);
+            } else {
+                probe_x = probe_y = 100000;
+            }
+        }
+        uint8_t pixel[4];
+        if (probe_x < 100000 &&
+            renderer_probe(target.color_address, static_cast<uint32_t>(probe_x), static_cast<uint32_t>(probe_y), pixel)) {
+            uint32_t value;
+            std::memcpy(&value, pixel, 4);
+            uint32_t& last = last_probe[target.color_address == 0x03B84000 ? 0 : 1];
+            if (value != last) {
+                log_line("frame probe %llu: surf %08X pixel BGRA %02X %02X %02X alpha %02X",
+                         static_cast<unsigned long long>(g_draws), target.color_address, pixel[0], pixel[1], pixel[2],
+                         pixel[3]);
+                last = value;
+            }
+        }
         const DrawState& d = g_k.draw;
         const RenderVertex& v = vertices[0];
+        // Screen rectangle covered by the vertices (pixels of the target surface).
+        float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f, u0 = 1e9f, v0 = 1e9f, u1 = -1e9f, v1 = -1e9f;
+        for (const RenderVertex& p : vertices) {
+            u0 = std::min(u0, p.texture[0][0]), v0 = std::min(v0, p.texture[0][1]);
+            u1 = std::max(u1, p.texture[0][0]), v1 = std::max(v1, p.texture[0][1]);
+            if (p.position[3] <= 0) continue;
+            const float x = p.position[0] / p.position[3];
+            const float y = p.position[1] / p.position[3];
+            x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x), y1 = std::max(y1, y);
+        }
+        log_line("frame rect %llu: %.0f %.0f %.0f %.0f uv %.3f %.3f %.3f %.3f texmatrix %d texgen %X address %08X "
+                 "filter %08X",
+                 static_cast<unsigned long long>(g_draws), x0, y0, x1, y1, u0, v0, u1, v1,
+                 g_k.texture_matrix_enable[0], g_k.texgen[0][0], g_k.draw.textures[0].address_mode,
+                 g_k.draw.textures[0].filter);
         log_line("frame draw %llu: %s prim %u n %u surf %08X | tex0 %s %08X fmt %08X | blend %d %X %X | z %d %X w %d | "
                  "atest %d %X ref %02X | mask %08X | clip (%.3g %.3g %.3g %.3g) d0 (%.2f %.2f %.2f %.2f) | comb %08X %08X %08X"
-                 " | stages %05X ctl %08X",
+                 " | stages %05X ctl %08X | alpha %08X %08X out %08X | stencil %d %X ref %02X rm %02X wm %02X ops %X %X %X",
                  static_cast<unsigned long long>(g_draws), fixed_function ? "ff" : "vp", g_k.primitive, count,
                  target.color_address, d.textures[0].enabled ? "on" : "off", d.textures[0].descriptor.address,
                  d.textures[0].descriptor.format, d.blend_enable, d.blend_source, d.blend_destination, d.depth_test,
@@ -597,7 +646,9 @@ void draw(uint32_t count, Fetch fetch) {
                  d.color_mask, v.position[0] / v.position[3], v.position[1] / v.position[3],
                  v.position[2] / v.position[3], v.position[3], v.diffuse[0], v.diffuse[1], v.diffuse[2],
                  v.diffuse[3], d.program.color_input[0], d.program.final0, d.program.final1, d.program.stage_program,
-                 d.program.control);
+                 d.program.control, d.program.alpha_input[0], d.program.alpha_output[0], d.program.color_output[0],
+                 d.stencil_test, d.stencil_function, d.stencil_reference, d.stencil_read_mask, d.stencil_write_mask,
+                 d.stencil_fail, d.stencil_depth_fail, d.stencil_pass);
     }
 }
 
@@ -813,6 +864,15 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
         case 0x034C: unpack_color(argument, d.blend_color); return true;
         case 0x0350: d.blend_equation = argument; return true;
         case 0x0354: d.depth_function = argument; return true;
+        case 0x032C: d.stencil_test = argument != 0; return true;
+        case 0x0360: d.stencil_write_mask = argument & 0xFF; return true;
+        case 0x0364: d.stencil_function = argument; return true;
+        case 0x0368: d.stencil_reference = argument & 0xFF; return true;
+        case 0x036C: d.stencil_read_mask = argument & 0xFF; return true;
+        case 0x0370: d.stencil_fail = argument; return true;
+        case 0x0374: d.stencil_depth_fail = argument; return true;
+        case 0x0378: d.stencil_pass = argument; return true;
+        case 0x037C: return true;  // SET_SHADE_MODE: Gouraud is what D3D11 does
         case 0x0358: d.color_mask = argument; return true;
         case 0x035C: d.depth_write = argument != 0; return true;
         case 0x0394: g_k.clip_min = as_float(argument); return true;
@@ -852,6 +912,14 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
         case 0x1D98: g_k.clear_horizontal = argument; return true;
         case 0x1D9C: g_k.clear_vertical = argument; return true;
         case 0x1D94:  // CLEAR_SURFACE
+            {
+                static std::set<uint64_t> seen;
+                const uint64_t key = (static_cast<uint64_t>(argument) << 32) | g_k.color_clear;
+                if (seen.size() < 64 && seen.insert(key).second) {
+                    log_line("nv2a: clear flags %02X colour %08X zeta %08X surface %08X", argument, g_k.color_clear,
+                             g_k.zstencil_clear, surface().color_address);
+                }
+            }
             renderer_clear(surface(), argument, g_k.color_clear, g_k.zstencil_clear, g_k.clear_horizontal & 0xFFFF,
                            g_k.clear_vertical & 0xFFFF, g_k.clear_horizontal >> 16, g_k.clear_vertical >> 16);
             return true;

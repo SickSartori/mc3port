@@ -69,7 +69,9 @@ Variabili d'ambiente:
 | `MC3_DUMP_FRAMES=<n>` | salva un frame presentato ogni `n` come `frame-NNNNN.bmp` nella cartella di lavoro |
 | `MC3_DEBUG_DRAWS=<n>` | descrive nel log i primi `n` draw (vertici, combiner, texture, stati); con `MC3_DEBUG_DRAWS_FF=1` solo quelli fixed-function |
 | `MC3_DUMP_TARGET=<indirizzo hex>` | con ogni frame salvato, anche la render target a quell'indirizzo fisico (`target-NNNNN.bmp`) |
-| `MC3_DEBUG_FRAME_AT=<s>` | una riga per draw durante 1 s, a partire da `s` secondi dopo il primo draw |
+| `MC3_DEBUG_FRAME_AT=<s>` | una riga per draw durante 1 s, a partire da `s` secondi dopo il primo draw (rettangolo a schermo, coordinate di texture, stati) |
+| `MC3_DEBUG_PROBE=<x>,<y>` | con il precedente, registra il pixel (x, y) ogni volta che un draw lo cambia |
+| `MC3_DUMP_TEXTURE=<indirizzo hex>` | salva le texture decodificate di quella pagina di 4 KB come `texture-<indirizzo>.bmp` (con l'alfa) |
 | `MC3_GPU_STATS=1` | ogni 10 s, i metodi GPU più usati |
 | `MC3_INPUT_SCRIPT=<s>:<pulsante>,<da>-<a>:<pulsante>,...` | preme (0,2 s) o tiene premuti pulsanti del controller 1 a quei secondi dall'avvio, per i test (`start back a b x y black white up down left right lt rt`, `sl`/`sr` per sterzare) |
 | `MC3_TRACE_WAITS=1` | registra le attese del kernel che durano più di 5 s, con gli ultimi eventi segnalati |

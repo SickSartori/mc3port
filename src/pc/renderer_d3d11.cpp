@@ -88,6 +88,10 @@ ComPtr<ID3D11Buffer> g_vertex_buffer;
 uint32_t g_vertex_capacity = 0;
 ComPtr<ID3D11Buffer> g_constants;
 ComPtr<ID3D11RasterizerState> g_rasterizer;
+ComPtr<ID3D11VertexShader> g_clear_vertex_shader;
+ComPtr<ID3D11PixelShader> g_clear_pixel_shader;
+ComPtr<ID3D11Buffer> g_clear_constants;
+std::map<uint32_t, ComPtr<ID3D11BlendState>> g_clear_blend_states;  // by write mask
 ComPtr<ID3D11Texture2D> g_upload;  // guest framebuffers that were never rendered to
 uint32_t g_upload_width = 0, g_upload_height = 0;
 
@@ -96,7 +100,9 @@ std::unordered_map<uint64_t, DepthTarget> g_depth_targets;
 std::unordered_map<uint64_t, ComPtr<ID3D11PixelShader>> g_pixel_shaders;
 std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>, CachedTexture> g_textures;
 std::map<std::tuple<bool, uint32_t, uint32_t, uint32_t, uint32_t>, ComPtr<ID3D11BlendState>> g_blend_states;
-std::map<std::tuple<bool, uint32_t, bool>, ComPtr<ID3D11DepthStencilState>> g_depth_states;
+std::map<std::tuple<bool, uint32_t, bool, bool, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>,
+         ComPtr<ID3D11DepthStencilState>>
+    g_depth_states;
 std::map<std::pair<uint32_t, uint32_t>, ComPtr<ID3D11SamplerState>> g_samplers;
 
 // Statistics, logged every 10 s from renderer_present: where the GPU thread's time goes.
@@ -272,8 +278,23 @@ ID3D11BlendState* blend_state(const DrawState& state) {
     return cached.Get();
 }
 
+D3D11_STENCIL_OP stencil_operation(uint32_t gl) {
+    switch (gl) {
+        case 0x0000: return D3D11_STENCIL_OP_ZERO;
+        case 0x1E01: return D3D11_STENCIL_OP_REPLACE;
+        case 0x1E02: return D3D11_STENCIL_OP_INCR_SAT;
+        case 0x1E03: return D3D11_STENCIL_OP_DECR_SAT;
+        case 0x150A: return D3D11_STENCIL_OP_INVERT;
+        case 0x8507: return D3D11_STENCIL_OP_INCR;
+        case 0x8508: return D3D11_STENCIL_OP_DECR;
+        default: return D3D11_STENCIL_OP_KEEP;  // 0x1E00
+    }
+}
+
 ID3D11DepthStencilState* depth_state(const DrawState& state) {
-    const auto key = std::make_tuple(state.depth_test, state.depth_function, state.depth_write);
+    const auto key = std::make_tuple(state.depth_test, state.depth_function, state.depth_write, state.stencil_test,
+                                     state.stencil_function, state.stencil_read_mask, state.stencil_write_mask,
+                                     state.stencil_fail, state.stencil_depth_fail, state.stencil_pass);
     ComPtr<ID3D11DepthStencilState>& cached = g_depth_states[key];
     if (cached) return cached.Get();
     D3D11_DEPTH_STENCIL_DESC desc{};
@@ -281,6 +302,15 @@ ID3D11DepthStencilState* depth_state(const DrawState& state) {
     desc.DepthWriteMask = state.depth_write ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
     desc.DepthFunc = state.depth_test ? static_cast<D3D11_COMPARISON_FUNC>((state.depth_function & 7) + 1)
                                       : D3D11_COMPARISON_ALWAYS;
+    desc.StencilEnable = state.stencil_test;
+    desc.StencilReadMask = static_cast<UINT8>(state.stencil_read_mask);
+    desc.StencilWriteMask = static_cast<UINT8>(state.stencil_write_mask);
+    D3D11_DEPTH_STENCILOP_DESC face{};
+    face.StencilFailOp = stencil_operation(state.stencil_fail);
+    face.StencilDepthFailOp = stencil_operation(state.stencil_depth_fail);
+    face.StencilPassOp = stencil_operation(state.stencil_pass);
+    face.StencilFunc = static_cast<D3D11_COMPARISON_FUNC>((state.stencil_function & 7) + 1);
+    desc.FrontFace = desc.BackFace = face;
     g_device->CreateDepthStencilState(&desc, &cached);
     return cached.Get();
 }
@@ -360,6 +390,32 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
     } account{upload_start};
     const TextureImage image = decode_texture(d);
     if (image.layout == TextureLayout::Unsupported) return nullptr;
+    // MC3_DUMP_TEXTURE=<hex address>: save the textures in that 4 KB page once decoded (BGRA with alpha) as
+    // texture-<address>.bmp (resources move a little between runs).
+    static const uint32_t dump_texture = [] {
+        char value[16] = {};
+        return GetEnvironmentVariableA("MC3_DUMP_TEXTURE", value, sizeof(value)) ? std::strtoul(value, nullptr, 16) : 0u;
+    }();
+    if (dump_texture && (d.address & ~0xFFFu) == (dump_texture & ~0xFFFu) && image.layout == TextureLayout::Bgra8) {
+        char name[64];
+        std::snprintf(name, sizeof(name), "texture-%08X.bmp", d.address);
+        if (FILE* file = std::fopen(name, "wb")) {
+            BITMAPFILEHEADER header{};
+            BITMAPINFOHEADER info{};
+            header.bfType = 0x4D42;
+            header.bfOffBits = sizeof(header) + sizeof(info);
+            header.bfSize = header.bfOffBits + image.width * 4 * image.height;
+            info.biSize = sizeof(info);
+            info.biWidth = static_cast<LONG>(image.width);
+            info.biHeight = -static_cast<LONG>(image.height);
+            info.biPlanes = 1;
+            info.biBitCount = 32;
+            std::fwrite(&header, sizeof(header), 1, file);
+            std::fwrite(&info, sizeof(info), 1, file);
+            std::fwrite(image.data.data(), 1, image.data.size(), file);
+            std::fclose(file);
+        }
+    }
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = image.width;
     desc.Height = image.height;
@@ -499,10 +555,32 @@ bool renderer_start(HWND window) {
     constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     g_device->CreateBuffer(&constants, nullptr, &g_constants);
 
+    // Clears of only some colour channels: a full-surface triangle with the clear colour, written through a mask.
+    constexpr char kClearVertexShader[] =
+        "float4 main(uint id : SV_VertexID) : SV_Position {\n"
+        "    float2 p = float2((id << 1) & 2, id & 2);\n"
+        "    return float4(p * float2(2, -2) + float2(-1, 1), 0, 1);\n"
+        "}\n";
+    constexpr char kClearPixelShader[] =
+        "cbuffer Clear : register(b1) { float4 colour; };\n"
+        "float4 main() : SV_Target { return colour; }\n";
+    ComPtr<ID3DBlob> clear_vs = compile(kClearVertexShader, sizeof(kClearVertexShader) - 1, "vs_5_0", "clear vertex");
+    ComPtr<ID3DBlob> clear_ps = compile(kClearPixelShader, sizeof(kClearPixelShader) - 1, "ps_5_0", "clear pixel");
+    if (clear_vs && clear_ps) {
+        g_device->CreateVertexShader(clear_vs->GetBufferPointer(), clear_vs->GetBufferSize(), nullptr, &g_clear_vertex_shader);
+        g_device->CreatePixelShader(clear_ps->GetBufferPointer(), clear_ps->GetBufferSize(), nullptr, &g_clear_pixel_shader);
+    }
+    D3D11_BUFFER_DESC clear_constants{};
+    clear_constants.ByteWidth = 16;
+    clear_constants.Usage = D3D11_USAGE_DEFAULT;
+    clear_constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    g_device->CreateBuffer(&clear_constants, nullptr, &g_clear_constants);
+
     D3D11_RASTERIZER_DESC raster{};
     raster.FillMode = D3D11_FILL_SOLID;
     raster.CullMode = D3D11_CULL_NONE;  // winding is not translated yet: draw both faces
     raster.DepthClipEnable = TRUE;
+    raster.ScissorEnable = TRUE;  // the surface clip
     g_device->CreateRasterizerState(&raster, &g_rasterizer);
     char dump[16] = {};
     if (GetEnvironmentVariableA("MC3_DUMP_FRAMES", dump, sizeof(dump))) g_dump_every = std::strtoul(dump, nullptr, 10);
@@ -514,16 +592,49 @@ bool renderer_start(HWND window) {
 void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color, uint32_t depth_stencil, int x0, int y0,
                     int x1, int y1) {
     if (!g_device || !surface.width || !surface.height) return;
-    if (flags & 0xF0) {
-        if (Target* target = get_target(surface.color_address, surface.width, surface.height)) {
-            float rgba[4];
-            unpack_color(color, rgba);
-            const D3D11_RECT rect{x0, y0, x1 + 1, y1 + 1};
-            g_context1->ClearView(target->rtv.Get(), rgba, &rect, 1);
+    Target* target = get_target(surface.color_address, surface.width, surface.height);
+    if (!target) return;
+    // NV097_CLEAR_SURFACE: R 0x10, G 0x20, B 0x40, A 0x80 map onto D3D11's write-mask bits.
+    const uint32_t channels = (flags >> 4) & 0xF;
+    if (channels == 0xF) {
+        float rgba[4];
+        unpack_color(color, rgba);
+        const D3D11_RECT rect{x0, y0, x1 + 1, y1 + 1};
+        g_context1->ClearView(target->rtv.Get(), rgba, &rect, 1);
+    } else if (channels && g_clear_pixel_shader) {
+        // Some channels only (the HUD clears alpha alone to reuse it as a mask).
+        float rgba[4];
+        unpack_color(color, rgba);
+        g_context->UpdateSubresource(g_clear_constants.Get(), 0, nullptr, rgba, 0, 0);
+        ComPtr<ID3D11BlendState>& blend = g_clear_blend_states[channels];
+        if (!blend) {
+            D3D11_BLEND_DESC desc{};
+            desc.RenderTarget[0].SrcBlend = desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+            desc.RenderTarget[0].DestBlend = desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+            desc.RenderTarget[0].BlendOp = desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+            desc.RenderTarget[0].RenderTargetWriteMask = static_cast<UINT8>(channels);
+            g_device->CreateBlendState(&desc, &blend);
         }
+        ID3D11RenderTargetView* rtv = target->rtv.Get();
+        g_context->OMSetRenderTargets(1, &rtv, nullptr);
+        g_context->OMSetBlendState(blend.Get(), nullptr, 0xFFFFFFFF);
+        g_context->OMSetDepthStencilState(nullptr, 0);
+        const D3D11_VIEWPORT viewport{0, 0, static_cast<float>(target->width), static_cast<float>(target->height), 0, 1};
+        g_context->RSSetViewports(1, &viewport);
+        const D3D11_RECT rect{x0, y0, x1 + 1, y1 + 1};
+        g_context->RSSetScissorRects(1, &rect);
+        g_context->RSSetState(g_rasterizer.Get());
+        g_context->IASetInputLayout(nullptr);
+        g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        g_context->VSSetShader(g_clear_vertex_shader.Get(), nullptr, 0);
+        g_context->PSSetShader(g_clear_pixel_shader.Get(), nullptr, 0);
+        ID3D11Buffer* constants = g_clear_constants.Get();
+        g_context->PSSetConstantBuffers(1, 1, &constants);
+        g_context->Draw(3, 0);
     }
     if ((flags & 0x3) && surface.zeta_address) {
-        if (DepthTarget* depth = get_depth_target(surface.zeta_address, surface.width, surface.height)) {
+        // The depth buffer has its colour target's size (D3D11 requires it when both are bound).
+        if (DepthTarget* depth = get_depth_target(surface.zeta_address, target->width, target->height)) {
             const float z = static_cast<float>(depth_stencil >> 8) / 16777215.0f;
             g_context->ClearDepthStencilView(depth->dsv.Get(),
                                              ((flags & 1) ? D3D11_CLEAR_DEPTH : 0) | ((flags & 2) ? D3D11_CLEAR_STENCIL : 0),
@@ -544,7 +655,7 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     if (!target) return;
     ID3D11PixelShader* shader = pixel_shader(state.program);
     if (!shader) return;
-    DepthTarget* depth = (surface.zeta_address && (state.depth_test || state.depth_write))
+    DepthTarget* depth = (surface.zeta_address && (state.depth_test || state.depth_write || state.stencil_test))
                              ? get_depth_target(surface.zeta_address, target->width, target->height)
                              : nullptr;
 
@@ -561,7 +672,15 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     }
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (FAILED(g_context->Map(g_vertex_buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) return;
-    std::memcpy(mapped.pData, triangles.data(), bytes);
+    // Pixels (times w) to clip space, over the render target's real size.
+    const float scale_x = 2.0f / target->width, scale_y = 2.0f / target->height;
+    auto* out = static_cast<RenderVertex*>(mapped.pData);
+    for (size_t i = 0; i < triangles.size(); ++i) {
+        out[i] = triangles[i];
+        const float w = triangles[i].position[3];
+        out[i].position[0] = triangles[i].position[0] * scale_x - w;
+        out[i].position[1] = w - triangles[i].position[1] * scale_y;
+    }
     g_context->Unmap(g_vertex_buffer.Get(), 0);
 
     ID3D11RenderTargetView* rtv = target->rtv.Get();
@@ -569,13 +688,27 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     ID3D11ShaderResourceView* none[4] = {};
     g_context->PSSetShaderResources(0, 4, none);
     g_context->OMSetRenderTargets(1, &rtv, depth ? depth->dsv.Get() : nullptr);
-    const D3D11_VIEWPORT viewport{0, 0, static_cast<float>(surface.width), static_cast<float>(surface.height), 0, 1};
+    const D3D11_VIEWPORT viewport{0, 0, static_cast<float>(target->width), static_cast<float>(target->height), 0, 1};
     g_context->RSSetViewports(1, &viewport);
+    const D3D11_RECT scissor{static_cast<LONG>(surface.clip_x), static_cast<LONG>(surface.clip_y),
+                             static_cast<LONG>(surface.clip_x + surface.clip_width),
+                             static_cast<LONG>(surface.clip_y + surface.clip_height)};
+    g_context->RSSetScissorRects(1, &scissor);
     g_context->RSSetState(g_rasterizer.Get());
     g_context->OMSetBlendState(blend_state(state), state.blend_color, 0xFFFFFFFF);
-    g_context->OMSetDepthStencilState(depth_state(state), 0);
+    g_context->OMSetDepthStencilState(depth_state(state), state.stencil_reference);
 
-    g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &state.constants, 0, 0);
+    // A linear texture is addressed in texels; when it is one of our render targets, its real width (from the
+    // surface pitch) can be larger than the texture's rectangle, so normalise by the render target's size.
+    CombinerConstants constants_data = state.constants;
+    for (int i = 0; i < 4; ++i) {
+        if (!state.textures[i].enabled || !texture_is_linear(state.textures[i].descriptor)) continue;
+        const auto rendered = g_targets.find(state.textures[i].descriptor.address);
+        if (rendered == g_targets.end()) continue;
+        constants_data.texture_scale[i][0] = 1.0f / rendered->second.width;
+        constants_data.texture_scale[i][1] = 1.0f / rendered->second.height;
+    }
+    g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
     ID3D11Buffer* constants = g_constants.Get();
     g_context->PSSetConstantBuffers(0, 1, &constants);
 
@@ -599,6 +732,29 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     g_context->VSSetShader(g_vertex_shader.Get(), nullptr, 0);
     g_context->PSSetShader(shader, nullptr, 0);
     g_context->Draw(static_cast<UINT>(triangles.size()), 0);
+}
+
+bool renderer_probe(uint32_t address, uint32_t x, uint32_t y, uint8_t bgra[4]) {
+    const auto found = g_targets.find(address);
+    if (found == g_targets.end() || x >= found->second.width || y >= found->second.height) return false;
+    static ComPtr<ID3D11Texture2D> staging;
+    if (!staging) {
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = desc.Height = 1;
+        desc.MipLevels = desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_STAGING;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &staging))) return false;
+    }
+    const D3D11_BOX box{x, y, 0, x + 1, y + 1, 1};
+    g_context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, found->second.texture.Get(), 0, &box);
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    if (FAILED(g_context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return false;
+    std::memcpy(bgra, mapped.pData, 4);
+    g_context->Unmap(staging.Get(), 0);
+    return true;
 }
 
 void renderer_note_vertex_work(uint64_t elapsed, uint32_t vertices) {

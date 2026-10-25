@@ -73,9 +73,17 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
 
 Stato: si arriva alla prima gara e si guida (35 fps in città nella build Release).
 
-Da sistemare nelle migliorie grafiche (non bloccano il gioco): ellisse bianca sotto l'auto in gara, quadrato nero
-in basso a sinistra, mappa in trasparenza al centro, bump mapping (modalità texture `6`), cube map, punti e linee,
-culling; vertici ancora calcolati sulla CPU (circa 1,5 milioni al secondo). Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
+- **Coordinate e clip**: i vertici arrivano in pixel della superficie intera e il renderer li converte con la
+  dimensione vera della render target (larghezza dal pitch); il clip della superficie è uno scissor. Il radar
+  restringe il clip a 256 pixel: prima la sua mappa finiva ingrandita al centro.
+- **Stencil** (`0x32C`, `0x360`-`0x378`) e **pulizie per canale** (`CLEAR_SURFACE` 0x10/0x20/0x40/0x80): l'HUD pulisce
+  solo l'alfa e lo usa come maschera (`DST_ALPHA`) per il cerchio del radar.
+- La mappa grande e trasparente al centro è quella del gioco: si apre e si chiude con la croce direzionale; BACK
+  apre il "Sistema di navigazione".
+
+Da sistemare nelle migliorie grafiche (non bloccano il gioco): ellisse bianca sotto l'auto in gara (da indagare: il
+buffer del bagliore `02725E80`/`0277FF00` sommato allo schermo e la luce dei fari, texture DXT5 `02852400`), bump
+mapping (modalità texture `6`), cube map, punti e linee, culling; vertici ancora calcolati sulla CPU. Dopo il garage il gioco va in crash nel decoder della musica (WMA/XACT, `0x15979`), e un
 thread aspetta su un handle di file, cosa che il kernel emulato non supporta ancora.
 
 ### Audio

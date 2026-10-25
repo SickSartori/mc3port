@@ -12,7 +12,8 @@
 
 namespace mc3::pc {
 
-// A vertex after the NV2A vertex program, position already in clip space for D3D11.
+// A vertex after the NV2A vertex program. The position is in pixels of the target surface, times w (x * w,
+// y * w, z * w, w); the renderer maps it to clip space with the surface's real size.
 struct RenderVertex {
     float position[4];
     float diffuse[4];
@@ -24,8 +25,9 @@ struct RenderVertex {
 struct SurfaceState {
     uint32_t color_address;  // physical
     uint32_t zeta_address;   // physical, 0 if none
-    uint32_t width;
+    uint32_t width;          // the whole surface: what pixel coordinates are relative to
     uint32_t height;
+    uint32_t clip_x, clip_y, clip_width, clip_height;  // where draws may write (NV097_SET_SURFACE_CLIP_*)
 };
 
 struct TextureStage {
@@ -46,9 +48,16 @@ struct DrawState {
     uint32_t depth_function;  // 0x200 + compare
     bool depth_write;
     uint32_t color_mask;  // NV097_SET_COLOR_MASK
+    // NV097_SET_STENCIL_*: OpenGL compare functions (0x200 + n) and operations (KEEP 0x1E00, REPLACE 0x1E01...).
+    bool stencil_test;
+    uint32_t stencil_function, stencil_reference, stencil_read_mask, stencil_write_mask;
+    uint32_t stencil_fail, stencil_depth_fail, stencil_pass;
 };
 
 bool renderer_start(HWND window);
+// Debugging: the BGRA pixel at (x, y) of the render target at `address` (reads back from the GPU: slow).
+// Returns false when there is no such target.
+bool renderer_probe(uint32_t address, uint32_t x, uint32_t y, uint8_t bgra[4]);
 // Time spent producing vertices (vertex program / fixed function), for the statistics logged every 10 s.
 void renderer_note_vertex_work(uint64_t ticks, uint32_t vertices);
 void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color, uint32_t depth_stencil, int x0, int y0,
