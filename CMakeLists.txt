@@ -29,6 +29,7 @@ if(WIN32)
         src/pc/dsound_hle.cpp
         src/pc/exec_memory.cpp
         src/pc/fs_patch.cpp
+        src/pc/game_disc.cpp
         src/pc/handles.cpp
         src/pc/hle_patches.cpp
         src/pc/input_hle.cpp
@@ -53,7 +54,7 @@ if(WIN32)
         src/pc/settings.cpp
         src/pc/xbox_thread.cpp
     )
-    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi)
+    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 
     # Launcher: linked at the XBE base (0x10000) so Windows reserves the game's address range for us.

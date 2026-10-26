@@ -9,6 +9,7 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "pc/log.h"
 
@@ -18,27 +19,38 @@ namespace {
 struct Setting {
     const char* key;
     float value;          // default
-    const char* comment;  // written above the key in a new file (Italian: the file is for the player)
+    const char* comment;  // written above the key in a new file
 };
 
 const Setting kSettings[] = {
-    {"frame_rate", 30, "Fotogrammi al secondo del gioco: 30 come l'Xbox, 60 piu' fluido (serve un PC che regga il doppio del lavoro)."},
-    {"widescreen", 1, "Schermo panoramico 16:9: 1 = il gioco usa la sua modalita' panoramica (piu' campo visivo, niente bande nere), 0 = 4:3 come un televisore classico."},
-    {"gpu_vertices", 1, "Calcolo dei vertici sulla scheda video: 1 = si' (piu' veloce), 0 = sul processore come prima."},
-    {"render_scale", 2, "Risoluzione interna: 1 = come l'Xbox (640x480), 2 = 1280x960, 3, 4. Piu' alta = bordi piu' lisci."},
-    {"anisotropy", 16, "Filtro anisotropico delle texture: 1 = spento, fino a 16."},
-    {"effects", 1, "Effetti moderni: 1 = attivi, 0 = immagine originale (F10 li accende e spegne durante il gioco)."},
-    {"sharpen", 0.5f, "Nitidezza adattiva: 0 = spenta, 1 = massima."},
-    {"bloom", 0.35f, "Bagliore delle luci (fari, insegne, lampioni): 0 = spento, 1 = forte."},
-    {"bloom_threshold", 0.7f, "Da quale luminosita' una zona produce bagliore: 0 = tutto, 1 = solo il bianco pieno."},
-    {"saturation", 1.12f, "Saturazione dei colori: 1 = originale, piu' alta = colori piu' vivi."},
-    {"contrast", 1.06f, "Contrasto: 1 = originale."},
-    {"vignette", 0.15f, "Leggero scurimento dei bordi dell'immagine: 0 = spento."},
-    {"ambient_occlusion", 0.6f, "Ombreggiatura ambientale (angoli e contatti piu' scuri): 0 = spenta, 1 = forte."},
-    {"ambient_occlusion_radius", 1, "Ampiezza dell'ombreggiatura ambientale: 0.5 = stretta, 2 = larga."},
+    {"frame_rate", 30, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work)."},
+    {"widescreen", 1, "16:9 widescreen: 1 = the game's own widescreen mode (wider view, no black bars), 0 = 4:3 like a classic TV."},
+    {"gpu_vertices", 1, "Vertex processing on the graphics card: 1 = yes (faster), 0 = on the processor."},
+    {"render_scale", 2, "Internal resolution: 1 = like the Xbox (640x480), 2 = 1280x960, 3, 4. Higher = smoother edges."},
+    {"anisotropy", 16, "Anisotropic texture filtering: 1 = off, up to 16."},
+    {"effects", 1, "Modern effects: 1 = on, 0 = original picture (F10 toggles them while playing)."},
+    {"sharpen", 0.5f, "Adaptive sharpening: 0 = off, 1 = strongest."},
+    {"bloom", 0.35f, "Glow around lights (headlights, signs, street lamps): 0 = off, 1 = strong."},
+    {"bloom_threshold", 0.7f, "How bright an area must be to glow: 0 = everything, 1 = pure white only."},
+    {"saturation", 1.12f, "Colour saturation: 1 = original, higher = more vivid."},
+    {"contrast", 1.06f, "Contrast: 1 = original."},
+    {"vignette", 0.15f, "Slight darkening of the picture's edges: 0 = off."},
+    {"ambient_occlusion", 0.6f, "Ambient occlusion (darker corners and contact areas): 0 = off, 1 = strong."},
+    {"ambient_occlusion_radius", 1, "Ambient occlusion size: 0.5 = tight, 2 = wide."},
 };
 
+struct TextSetting {
+    const char* key;
+    const char* comment;
+};
+
+const TextSetting kTextSettings[] = {
+    {"disc_image", "Your Midnight Club 3: DUB Edition Remix disc image (.iso). Filled in when you choose it; empty = ask."},
+};
+
+std::filesystem::path g_file;
 std::map<std::string, float> g_values;
+std::map<std::string, std::string> g_texts;
 
 std::string environment_name(const char* key) {
     std::string name = "MC3_";
@@ -46,11 +58,25 @@ std::string environment_name(const char* key) {
     return name;
 }
 
+std::string trim(std::string text) {
+    text.erase(0, text.find_first_not_of(" \t"));
+    text.erase(text.find_last_not_of(" \t\r") + 1);
+    return text;
+}
+
+// "key = value": the key, or empty for comments and other lines.
+std::string line_key(const std::string& line) {
+    if (line.empty() || line[0] == '#') return {};
+    const size_t equals = line.find('=');
+    return equals == std::string::npos ? std::string() : trim(line.substr(0, equals));
+}
+
 void write_defaults(const std::filesystem::path& file) {
     std::ofstream out(file);
     if (!out) return;
-    out << "# Impostazioni di mc3port. Modifica i valori e riavvia il gioco.\n"
-           "# Ogni voce si puo' anche dare come variabile d'ambiente MC3_<NOME> (per esempio MC3_BLOOM=0).\n\n";
+    out << "# mc3port settings. Change the values, then restart the game.\n"
+           "# Any key can also be given as an environment variable MC3_<KEY> (for example MC3_BLOOM=0).\n\n";
+    for (const TextSetting& s : kTextSettings) out << "# " << s.comment << "\n" << s.key << " =\n\n";
     for (const Setting& s : kSettings) {
         char value[32];
         std::snprintf(value, sizeof(value), "%g", s.value);
@@ -61,6 +87,7 @@ void write_defaults(const std::filesystem::path& file) {
 }  // namespace
 
 void settings_load(const std::filesystem::path& file) {
+    g_file = file;
     for (const Setting& s : kSettings) g_values[s.key] = s.value;
     if (!std::filesystem::exists(file)) {
         write_defaults(file);
@@ -69,14 +96,16 @@ void settings_load(const std::filesystem::path& file) {
     std::ifstream in(file);
     std::string line;
     while (std::getline(in, line)) {
-        const size_t hash = line.find('#');
-        if (hash != std::string::npos) line.resize(hash);
-        const size_t equals = line.find('=');
-        if (equals == std::string::npos) continue;
-        std::string key = line.substr(0, equals);
-        key.erase(0, key.find_first_not_of(" \t"));
-        key.erase(key.find_last_not_of(" \t\r") + 1);
-        if (g_values.count(key)) g_values[key] = static_cast<float>(std::atof(line.c_str() + equals + 1));
+        const std::string key = line_key(line);
+        if (key.empty()) continue;
+        const std::string value = trim(line.substr(line.find('=') + 1));
+        if (g_values.count(key)) {
+            g_values[key] = static_cast<float>(std::atof(value.c_str()));  // stops at a trailing # comment
+        } else {
+            for (const TextSetting& s : kTextSettings) {
+                if (key == s.key) g_texts[key] = value;  // whole line: paths may contain '#'
+            }
+        }
     }
     for (auto& [key, value] : g_values) {
         char text[32] = {};
@@ -94,6 +123,36 @@ float setting(const char* key) {
         if (std::strcmp(s.key, key) == 0) return s.value;
     }
     return 0;
+}
+
+std::string setting_text(const char* key) {
+    const auto found = g_texts.find(key);
+    return found != g_texts.end() ? found->second : std::string();
+}
+
+void setting_save_text(const char* key, const std::string& value) {
+    g_texts[key] = value;
+    std::vector<std::string> lines;
+    {
+        std::ifstream in(g_file);
+        for (std::string line; std::getline(in, line);) lines.push_back(line);
+    }
+    bool replaced = false;
+    for (std::string& line : lines) {
+        if (line_key(line) == key) {
+            line = std::string(key) + " = " + value;
+            replaced = true;
+        }
+    }
+    if (!replaced) {
+        for (const TextSetting& s : kTextSettings) {
+            if (std::strcmp(s.key, key) == 0) lines.insert(lines.end(), {"", std::string("# ") + s.comment});
+        }
+        lines.push_back(std::string(key) + " = " + value);
+    }
+    std::ofstream out(g_file, std::ios::trunc);
+    for (const std::string& line : lines) out << line << "\n";
+    if (!out) log_line("settings: could not write %s", g_file.string().c_str());
 }
 
 }  // namespace mc3::pc

@@ -22,6 +22,7 @@
 #include "pc/exec_memory.h"
 #include "pc/dsound_hle.h"
 #include "pc/fs_patch.h"
+#include "pc/game_disc.h"
 #include "pc/hle_patches.h"
 #include "pc/input_hle.h"
 #include "pc/kernel.h"
@@ -80,27 +81,6 @@ std::filesystem::path module_directory() {
     wchar_t path[MAX_PATH * 4];
     const DWORD length = GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
     return std::filesystem::path(std::wstring(path, length)).parent_path();
-}
-
-// First command-line argument, else the first .iso next to mc3.exe or in the working directory.
-std::filesystem::path find_disc_image(const std::filesystem::path& exe_directory) {
-    int argc = 0;
-    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    std::filesystem::path result;
-    if (argv && argc > 1) result = argv[1];
-    LocalFree(argv);
-    if (!result.empty()) return result;
-
-    std::error_code ignored;
-    for (const std::filesystem::path& directory : {exe_directory, std::filesystem::current_path(ignored)}) {
-        for (const auto& item : std::filesystem::directory_iterator(directory, ignored)) {
-            std::wstring extension = item.path().extension().wstring();
-            std::transform(extension.begin(), extension.end(), extension.begin(),
-                           [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-            if (item.is_regular_file(ignored) && extension == L".iso") return item.path();
-        }
-    }
-    return {};
 }
 
 void log_xbe(const Xbe& xbe) {
@@ -386,19 +366,17 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
         fatal("launcher reservation %08X+%08lX is not inside its own image", address_of(reserved), reserved_size);
     }
 
-    const std::filesystem::path disc_path = find_disc_image(exe_directory);
-    if (disc_path.empty()) fatal("Usage: mc3.exe <disc image .iso>\n\nNo .iso found next to mc3.exe.");
-    const std::u8string disc_path_utf8 = disc_path.u8string();
-    log_line("disc image: %s", reinterpret_cast<const char*>(disc_path_utf8.c_str()));
+    std::optional<GameDisc> disc = open_game_disc(exe_directory);
+    if (!disc) {
+        log_line("no game disc: exiting");
+        ExitProcess(0);
+    }
+    log_line("disc image: %s", reinterpret_cast<const char*>(disc->path.u8string().c_str()));
+    g_disc = std::move(disc->image);
+    g_xbe = std::move(disc->xbe);
+    log_xbe(*g_xbe);
 
     std::string error;
-    g_disc = XdvdfsImage::open(disc_path, &error);
-    if (!g_disc) fatal("%s", error.c_str());
-    const std::optional<XdvdfsImage::Entry> xbe_entry = g_disc->find("default.xbe");
-    if (!xbe_entry) fatal("default.xbe not found on the disc");
-    g_xbe = Xbe::parse(g_disc->read_all(*xbe_entry), &error);
-    if (!g_xbe) fatal("default.xbe: %s", error.c_str());
-    log_xbe(*g_xbe);
 
     nv2a_load_icons();  // the exe's resources, before the XBE overwrites them
     map_xbe(*g_xbe, host);
