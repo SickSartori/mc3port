@@ -63,6 +63,238 @@ PSInput main(VSInput i) {
 }
 )";
 
+// The fixed-function transform on the GPU: the same computations as read_attribute, transform_fixed_function,
+// light_vertex, fog_factor and to_render_vertex in nv2a_kelvin.cpp (keep them in step), reading the guest's vertex
+// bytes as they are.
+constexpr char kFixedFunctionVertexShader[] = R"(
+struct PSInput {
+    float4 position : SV_Position;
+    float4 d0 : COLOR0;
+    float4 d1 : COLOR1;
+    float4 t0 : TEXCOORD0;
+    float4 t1 : TEXCOORD1;
+    float4 t2 : TEXCOORD2;
+    float4 t3 : TEXCOORD3;
+    float fog : FOG;
+};
+cbuffer Surface : register(b0) { float4 scale; };
+cbuffer FixedFunction : register(b1) {
+    float4 composite[4];
+    float4 model_view[4];
+    float4 inverse_model_view[4];
+    float4 texture_matrix[16];
+    float4 texgen_plane[16];
+    int4 texgen_mode[4];
+    float4 attribute_default[16];
+    int4 attribute_layout[16];  // byte offset of vertex 0, stride, format, from the data
+    float4 light[64];
+    float4 viewport_offset;
+    float4 eye_position;
+    float4 scene_ambient;
+    float4 material_emission;
+    float4 specular_params[2];
+    float4 fog_plane;
+    float4 fog_params;
+    uint4 settings;  // flags, colour material, light enable mask, fog generation mode
+    uint fog_mode;
+    uint texture_matrix_mask;
+    uint padding;
+    float clip_max;
+};
+cbuffer Draw : register(b2) { uint first; };  // byte offset of this draw's vertex data (changes every draw)
+ByteAddressBuffer vertex_data : register(t0);
+
+static const uint kLighting = 1, kSpecular = 2, kFog = 4, kNormalize = 8, kSeparateSpecular = 16, kLocalEye = 32;
+
+uint load32(uint address) {  // attributes are not always 4-byte aligned (3 shorts)
+    const uint aligned = address & ~3u, shift = (address & 3u) * 8;
+    const uint low = vertex_data.Load(aligned);
+    return shift ? (low >> shift) | (vertex_data.Load(aligned + 4) << (32 - shift)) : low;
+}
+float signed_bits(uint value, uint bits) {
+    const int shifted = (int)(value << (32 - bits)) >> (32 - bits);
+    return max(-1, shifted / (float)((1 << (bits - 1)) - 1));
+}
+float4 attribute(uint vertex, uint a) {
+    const int4 l = attribute_layout[a];
+    if (l.w == 0) return attribute_default[a];
+    const uint address = (uint)((int)first + l.x + (int)vertex * l.y);
+    const uint type = l.z & 15, size = (l.z >> 4) & 15;
+    float4 decoded = float4(0, 0, 0, 1);
+    if (type == 0 || type == 4) {  // UB_D3D (B G R A in memory), UB_OGL
+        const uint w = load32(address);
+        decoded = float4(w & 255, (w >> 8) & 255, (w >> 16) & 255, w >> 24) / 255;
+        if (type == 0 && size >= 4) return decoded.zyxw;
+    } else if (type == 1 || type == 5) {  // S1 (normalised), S32K
+        const uint w0 = load32(address), w1 = size > 2 ? load32(address + 4) : 0;
+        decoded = float4((int)(w0 << 16) >> 16, (int)w0 >> 16, (int)(w1 << 16) >> 16, (int)w1 >> 16);
+        if (type == 1) decoded = max(-1, decoded / 32767);
+    } else if (type == 2) {  // F
+        [unroll] for (uint i = 0; i < 4; ++i) decoded[i] = i < size ? asfloat(load32(address + i * 4)) : 0;
+    } else if (type == 6) {  // CMP: 11, 11, 10 signed bits
+        const uint p = load32(address);
+        return float4(signed_bits(p & 0x7FF, 11), signed_bits((p >> 11) & 0x7FF, 11), signed_bits(p >> 22, 10), 1);
+    } else {
+        return float4(0, 0, 0, 1);
+    }
+    float4 v = float4(0, 0, 0, 1);
+    [unroll] for (uint i = 0; i < 4; ++i) if (i < size) v[i] = decoded[i];
+    return v;
+}
+float4 rows4(float4 r0, float4 r1, float4 r2, float4 r3, float4 v) {
+    return float4(dot(r0, v), dot(r1, v), dot(r2, v), dot(r3, v));
+}
+float light_value(uint i, uint k) { return light[i * 8 + k / 4][k % 4]; }
+float3 light_vector(uint i, uint k) { return float3(light_value(i, k), light_value(i, k + 1), light_value(i, k + 2)); }
+float specular_value(uint k) { return specular_params[k / 4][k % 4]; }
+float3 safe_normalize(float3 v) { const float l = length(v); return l > 0 ? v / l : v; }
+
+float fog_factor(float distance) {
+    if ((settings.x & kFog) == 0) return 1;
+    const uint mode = fog_mode;
+    if (isinf(distance)) return mode == 0x801 || mode == 0x803 ? 0 : 1;
+    float factor = 1;
+    if (mode == 0x2601 || mode == 0x804) factor = fog_params.x + distance * fog_params.y - 1;
+    else if (mode == 0x800 || mode == 0x802) factor = fog_params.x + exp2(distance * fog_params.y * 16) - 1.5;
+    else if (mode == 0x801 || mode == 0x803) factor = fog_params.x + exp2(-distance * distance * fog_params.y * fog_params.y * 32) - 1.5;
+    if (mode == 0x802 || mode == 0x803 || mode == 0x804) factor = abs(factor);
+    return isnan(factor) ? 1 : factor;
+}
+
+PSInput main(uint vertex : SV_VertexID) {
+    const float4 position = attribute(vertex, 0);
+    const float4 normal_in = attribute(vertex, 2);
+    const float4 diffuse = attribute(vertex, 3);
+    const float4 specular = attribute(vertex, 4);
+    const float4 eye = rows4(model_view[0], model_view[1], model_view[2], model_view[3], position);
+    const float4 p = rows4(composite[0], composite[1], composite[2], composite[3], position);
+    float w = p.w;
+    if (!isfinite(w) || abs(w) < 5.42101e-20) w = w < 0 ? -5.42101e-20 : 5.42101e-20;
+    const float3 screen = float3(p.x / w + viewport_offset.x, p.y / w + viewport_offset.y, p.z / w);
+
+    float4 out_diffuse, out_specular;
+    if (settings.x & kLighting) {
+        const uint material = settings.y;
+        const uint emission_source = material & 3, ambient_source = (material >> 2) & 3,
+                   diffuse_source = (material >> 4) & 3, specular_source = (material >> 6) & 3;
+        const float3 emission_factor = material_emission.xyz;
+        float3 front;
+        if (emission_source == 0 || ambient_source == 0) {
+            front = scene_ambient.xyz;
+            if (emission_source != 0) front += (emission_source == 1 ? diffuse.rgb : specular.rgb) * emission_factor;
+            if (ambient_source != 0) front += (ambient_source == 1 ? diffuse.rgb : specular.rgb) * emission_factor;
+        } else {
+            front = (emission_source == 1 ? diffuse.rgb : specular.rgb) +
+                    (ambient_source == 1 ? diffuse.rgb : specular.rgb) * emission_factor;
+        }
+        const float alpha = diffuse_source == 0 ? material_emission.w : diffuse_source == 1 ? diffuse.a : specular.a;
+        float3 lit_specular = 0;
+        float3 normal = rows4(inverse_model_view[0], inverse_model_view[1], inverse_model_view[2],
+                              inverse_model_view[3], float4(normal_in.xyz, 0)).xyz;
+        if (settings.x & kNormalize) normal = safe_normalize(normal);
+        const float ew = eye.w != 0 ? eye.w : 1;
+        const float3 eye_point = eye.xyz / ew;
+        const bool local_eye = (settings.x & kLocalEye) != 0;
+        const float3 to_eye = safe_normalize(eye_position.xyz - eye_point);
+        [loop] for (uint i = 0; i < 8; ++i) {
+            const uint type = (settings.z >> (i * 2)) & 3;
+            if (type == 0) continue;
+            float attenuation = 1;
+            float3 direction, half_vector;
+            if (type == 1) {
+                direction = safe_normalize(light_vector(i, 13));
+                half_vector = local_eye ? safe_normalize(direction + to_eye) : light_vector(i, 10);
+            } else {
+                const float3 to_light = light_vector(i, 23) - eye_point;
+                const float d = length(to_light);
+                if (d > light_value(i, 9)) continue;
+                direction = safe_normalize(to_light);
+                const float denominator = light_value(i, 26) + light_value(i, 27) * d + light_value(i, 28) * d * d;
+                attenuation = denominator != 0 ? 1 / denominator : 1;
+                half_vector = safe_normalize(direction + (local_eye ? to_eye : float3(0, 0, 0)));
+                if (type == 3) {
+                    const float cosine = light_value(i, 19) * direction.x + light_value(i, 20) * direction.y +
+                                         light_value(i, 21) * direction.z + light_value(i, 22);
+                    float spot = 1;
+                    if (cosine <= 0) {
+                        spot = 0;
+                    } else if (cosine < 1 && cosine > -light_value(i, 16)) {
+                        const float denom = light_value(i, 17) * cosine + light_value(i, 18);
+                        spot = denom != 0 ? saturate((cosine + light_value(i, 16)) / denom) : 1;
+                    }
+                    attenuation *= spot;
+                }
+            }
+            const float n_dot_l = max(0, dot(normal, direction));
+            const float n_dot_h = max(0, dot(normal, half_vector));
+            float power = 0;
+            if (n_dot_l > 0 && n_dot_h > -specular_value(0)) {
+                const float denominator = specular_value(1) * n_dot_h + specular_value(2);
+                power = denominator == 0 ? 10000 : denominator > 0 ? clamp((n_dot_h + specular_value(0)) / denominator, 0, 10000) : 0;
+            }
+            front += light_vector(i, 0) * attenuation;
+            float3 diffuse_term = light_vector(i, 3) * (attenuation * n_dot_l);
+            if (diffuse_source != 0) diffuse_term *= diffuse_source == 1 ? diffuse.rgb : specular.rgb;
+            front += diffuse_term;
+            float3 specular_term = light_vector(i, 6) * (attenuation * power);
+            if (specular_source != 0) specular_term *= specular_source == 1 ? diffuse.rgb : specular.rgb;
+            lit_specular += specular_term;
+        }
+        out_diffuse = float4(front, alpha);
+        if ((settings.x & kSpecular) == 0) {
+            out_specular = float4(0, 0, 0, 1);
+        } else if (settings.x & kSeparateSpecular) {
+            out_specular = float4(lit_specular, specular.a);
+        } else {
+            out_diffuse = float4(front + lit_specular, alpha);
+            out_specular = specular;
+        }
+    } else {
+        out_diffuse = diffuse;
+        out_specular = (settings.x & kSpecular) ? specular : float4(0, 0, 0, 1);
+    }
+
+    float4 textures[4];
+    [unroll] for (uint stage = 0; stage < 4; ++stage) {
+        float4 t = attribute(vertex, 9 + stage);
+        [unroll] for (uint c = 0; c < 4; ++c) {
+            const int mode = texgen_mode[stage][c];
+            if (mode == 1) t[c] = dot(texgen_plane[stage * 4 + c], eye);
+            else if (mode == 2) t[c] = dot(texgen_plane[stage * 4 + c], position);
+        }
+        if (texture_matrix_mask & (1u << stage)) {
+            t = rows4(texture_matrix[stage * 4], texture_matrix[stage * 4 + 1], texture_matrix[stage * 4 + 2],
+                      texture_matrix[stage * 4 + 3], t);
+        }
+        textures[stage] = t;
+    }
+
+    float fog = 0;
+    if (settings.x & kFog) {
+        const float planar = dot(fog_plane.xyz, eye.xyz) + fog_plane.w;
+        const uint generation = settings.w;
+        if (generation == 0) fog = saturate(specular.a);
+        else if (generation == 1) fog = length(eye.xyz);
+        else if (generation == 2) fog = planar;
+        else if (generation == 3) fog = abs(planar);
+        else if (generation == 6) fog = attribute(vertex, 5).x;
+    }
+
+    // to_render_vertex, then pixels to clip space like the main vertex shader.
+    const float z = clip_max != 0 ? screen.z / clip_max : screen.z;
+    PSInput o;
+    o.position = float4(screen.x * w * scale.x - w, w - screen.y * w * scale.y, z * w, w);
+    o.d0 = out_diffuse;
+    o.d1 = out_specular;
+    o.t0 = textures[0];
+    o.t1 = textures[1];
+    o.t2 = textures[2];
+    o.t3 = textures[3];
+    o.fog = fog_factor(fog);
+    return o;
+}
+)";
+
 struct Target {
     ComPtr<ID3D11Texture2D> texture;
     ComPtr<ID3D11RenderTargetView> rtv;
@@ -92,6 +324,9 @@ ComPtr<IDXGISwapChain1> g_swap_chain;
 uint32_t g_swap_width = 0, g_swap_height = 0;
 ComPtr<ID3D11VertexShader> g_vertex_shader;
 ComPtr<ID3D11InputLayout> g_input_layout;
+ComPtr<ID3D11VertexShader> g_fixed_function_vertex_shader;  // null: the transform stays on the CPU
+ComPtr<ID3D11Buffer> g_fixed_function_constants;
+ComPtr<ID3D11Buffer> g_fixed_function_draw_constants;  // where the draw's vertex data starts
 ComPtr<ID3D11Buffer> g_vertex_buffer;
 uint32_t g_vertex_capacity = 0;
 uint32_t g_vertex_used = 0;  // bytes of the ring buffer written since the last DISCARD
@@ -1057,6 +1292,25 @@ bool renderer_start(HWND window) {
     static_assert(sizeof(RenderVertex) == 116);
     g_device->CreateInputLayout(layout, 8, vs->GetBufferPointer(), vs->GetBufferSize(), &g_input_layout);
 
+    if (ComPtr<ID3DBlob> ff = compile(kFixedFunctionVertexShader, sizeof(kFixedFunctionVertexShader) - 1, "vs_5_0",
+                                      "fixed-function vertex")) {
+        g_device->CreateVertexShader(ff->GetBufferPointer(), ff->GetBufferSize(), nullptr, &g_fixed_function_vertex_shader);
+    }
+    D3D11_BUFFER_DESC transform_constants{};
+    transform_constants.ByteWidth = sizeof(FixedFunctionConstants);
+    transform_constants.Usage = D3D11_USAGE_DEFAULT;
+    transform_constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    g_device->CreateBuffer(&transform_constants, nullptr, &g_fixed_function_constants);
+    transform_constants.ByteWidth = 16;
+    g_device->CreateBuffer(&transform_constants, nullptr, &g_fixed_function_draw_constants);
+    // Writing to a buffer the vertex shader reads, without waiting (NO_OVERWRITE), needs this feature.
+    D3D11_FEATURE_DATA_D3D11_OPTIONS options{};
+    g_device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof(options));
+    if (!options.MapNoOverwriteOnDynamicBufferSRV) {
+        log_line("renderer: no NO_OVERWRITE on shader-read buffers: fixed-function transform stays on the CPU");
+        g_fixed_function_vertex_shader.Reset();
+    }
+
     D3D11_BUFFER_DESC constants{};
     constants.ByteWidth = sizeof(CombinerConstants);
     constants.Usage = D3D11_USAGE_DEFAULT;
@@ -1249,23 +1503,28 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
     }
 }
 
-void renderer_draw(const SurfaceState& surface, const DrawState& state, const std::vector<RenderVertex>& triangles) {
-    if (!g_device || triangles.empty() || !surface.width || !surface.height) return;
+namespace {
+
+// What every draw needs before its vertices: the target (grown or switched to float as needed), the depth buffer,
+// the pixel shader, and the ambient occlusion pass when the 3D scene ends.
+struct PreparedDraw {
+    Target* target = nullptr;
+    DepthTarget* depth = nullptr;
+    ID3D11PixelShader* shader = nullptr;
+};
+
+bool prepare_draw(const SurfaceState& surface, const DrawState& state, PreparedDraw& draw) {
+    if (!g_device || !surface.width || !surface.height) return false;
     // Culling both faces draws nothing.
-    if (state.cull_enable && state.cull_face == 0x408) return;
+    if (state.cull_enable && state.cull_face == 0x408) return false;
     ++g_stats.draws;
-    const uint64_t draw_start = ticks();
-    struct Account {
-        uint64_t start;
-        ~Account() { g_stats.draw_ticks += ticks() - start; }
-    } account{draw_start};
     Target* target = get_target(surface.color_address, surface.width, surface.height);
-    if (!target) return;
+    if (!target) return false;
     if (state.blend_enable && (state.blend_equation == 0xF005 || state.blend_equation == 0xF006)) {
         make_float_target(*target, surface.color_address);
     }
     ID3D11PixelShader* shader = pixel_shader(state.program);
-    if (!shader) return;
+    if (!shader) return false;
     DepthTarget* depth = (surface.zeta_address && (state.depth_test || state.depth_write || state.stencil_test))
                              ? get_depth_target(surface.zeta_address, target->width, target->height)
                              : nullptr;
@@ -1285,7 +1544,165 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
             }
         }
     }
+    draw = PreparedDraw{target, depth, shader};
+    return true;
+}
 
+// Render target, viewport, scissor, raster, blend, depth state, combiner constants, textures and samplers.
+void bind_draw_state(const SurfaceState& surface, const DrawState& state, const PreparedDraw& draw) {
+    Target* target = draw.target;
+    if (g_surface_scale_width != target->width || g_surface_scale_height != target->height) {
+        const float scale[4] = {2.0f / target->width, 2.0f / target->height, 0, 0};
+        g_context->UpdateSubresource(g_surface_constants.Get(), 0, nullptr, scale, 0, 0);
+        g_surface_scale_width = target->width;
+        g_surface_scale_height = target->height;
+    }
+    ID3D11Buffer* surface_constants = g_surface_constants.Get();
+    g_context->VSSetConstantBuffers(0, 1, &surface_constants);
+
+    ID3D11RenderTargetView* rtv = target->rtv.Get();
+    // A surface can be both the target and a texture of the same draw; unbind it from the pixel shader first.
+    ID3D11ShaderResourceView* none[4] = {};
+    g_context->PSSetShaderResources(0, 4, none);
+    g_context->OMSetRenderTargets(1, &rtv, draw.depth ? draw.depth->dsv.Get() : nullptr);
+    const D3D11_VIEWPORT viewport{0, 0, scaled_float(target->width), scaled_float(target->height), 0, 1};
+    g_context->RSSetViewports(1, &viewport);
+    const D3D11_RECT scissor{scaled(surface.clip_x), scaled(surface.clip_y), scaled(surface.clip_x + surface.clip_width),
+                             scaled(surface.clip_y + surface.clip_height)};
+    g_context->RSSetScissorRects(1, &scissor);
+    g_context->RSSetState(rasterizer_for(state));
+    g_context->OMSetBlendState(blend_state(state), state.blend_color, 0xFFFFFFFF);
+    g_context->OMSetDepthStencilState(depth_state(state), state.stencil_reference);
+
+    // A linear texture is addressed in texels; when it is one of our render targets, its real width (from the
+    // surface pitch) can be larger than the texture's rectangle, so normalise by the render target's size.
+    CombinerConstants constants_data = state.constants;
+    for (int i = 0; i < 4; ++i) {
+        if (!state.textures[i].enabled || !texture_is_linear(state.textures[i].descriptor)) continue;
+        const auto rendered = g_targets.find(state.textures[i].descriptor.address);
+        if (rendered == g_targets.end()) continue;
+        constants_data.texture_scale[i][0] = 1.0f / rendered->second.width;
+        constants_data.texture_scale[i][1] = 1.0f / rendered->second.height;
+    }
+    g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
+    ID3D11Buffer* constants = g_constants.Get();
+    g_context->PSSetConstantBuffers(0, 1, &constants);
+
+    ID3D11ShaderResourceView* views[4] = {};
+    ID3D11SamplerState* samplers[4] = {};
+    refresh_write_tracking();
+    for (int i = 0; i < 4; ++i) {
+        if (!state.textures[i].enabled) continue;
+        views[i] = texture_view(state.textures[i]);
+        samplers[i] = sampler(state.textures[i]);
+        if (views[i] == target->srv.Get()) views[i] = nullptr;  // feedback loop
+    }
+    g_context->PSSetShaderResources(0, 4, views);
+    g_context->PSSetSamplers(0, 4, samplers);
+    g_context->PSSetShader(draw.shader, nullptr, 0);
+}
+
+// Appends `bytes` to a dynamic ring buffer: written without waiting (NO_OVERWRITE), renamed (DISCARD) only when
+// full. Returns the byte offset, or ~0u on failure. The buffer grows (and is recreated) when too small.
+struct RingBuffer {
+    ComPtr<ID3D11Buffer> buffer;
+    ComPtr<ID3D11ShaderResourceView> view;  // raw (byte address) view, for buffers the vertex shader reads
+    uint32_t capacity = 0, used = 0;
+};
+
+uint32_t ring_append(RingBuffer& ring, const void* data, uint32_t bytes, UINT bind, uint32_t element) {
+    constexpr uint32_t kMinimumRing = 8u << 20;
+    if (bytes > ring.capacity) {
+        ring.capacity = std::max({bytes, ring.capacity * 2, kMinimumRing});
+        ring.capacity -= ring.capacity % element;
+        D3D11_BUFFER_DESC desc{};
+        desc.ByteWidth = ring.capacity;
+        desc.Usage = D3D11_USAGE_DYNAMIC;
+        desc.BindFlags = bind;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (bind & D3D11_BIND_SHADER_RESOURCE) desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+        ring.buffer.Reset();
+        ring.view.Reset();
+        if (FAILED(g_device->CreateBuffer(&desc, nullptr, &ring.buffer))) return ~0u;
+        if (bind & D3D11_BIND_SHADER_RESOURCE) {
+            D3D11_SHADER_RESOURCE_VIEW_DESC view{};
+            view.Format = DXGI_FORMAT_R32_TYPELESS;
+            view.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+            view.BufferEx.NumElements = ring.capacity / 4;
+            view.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
+            if (FAILED(g_device->CreateShaderResourceView(ring.buffer.Get(), &view, &ring.view))) return ~0u;
+        }
+        ring.used = ring.capacity;  // forces a DISCARD below
+    }
+    ring.used = (ring.used + element - 1) / element * element;
+    const bool wrap = ring.used + bytes > ring.capacity;
+    if (wrap) ring.used = 0;
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    if (FAILED(g_context->Map(ring.buffer.Get(), 0, wrap ? D3D11_MAP_WRITE_DISCARD : D3D11_MAP_WRITE_NO_OVERWRITE, 0,
+                              &mapped))) {
+        return ~0u;
+    }
+    std::memcpy(static_cast<uint8_t*>(mapped.pData) + ring.used, data, bytes);
+    g_context->Unmap(ring.buffer.Get(), 0);
+    const uint32_t offset = ring.used;
+    ring.used += bytes;
+    return offset;
+}
+
+RingBuffer g_attribute_ring, g_index_ring;
+FixedFunctionConstants g_fixed_function_uploaded{};
+bool g_fixed_function_valid = false;
+
+}  // namespace
+
+bool renderer_has_fixed_function() { return g_fixed_function_vertex_shader != nullptr; }
+
+void renderer_draw_fixed_function(const SurfaceState& surface, const DrawState& state,
+                                  const FixedFunctionConstants& constants, const void* vertex_data,
+                                  uint32_t vertex_bytes, const std::vector<uint32_t>& indices) {
+    if (indices.empty() || !g_fixed_function_vertex_shader) return;
+    const uint64_t draw_start = ticks();
+    PreparedDraw draw;
+    if (!prepare_draw(surface, state, draw)) return;
+    uint32_t first = 0;
+    if (vertex_bytes) {
+        first = ring_append(g_attribute_ring, vertex_data, vertex_bytes, D3D11_BIND_SHADER_RESOURCE, 4);
+        if (first == ~0u) return;
+    }
+    const uint32_t index_offset = ring_append(g_index_ring, indices.data(), static_cast<uint32_t>(indices.size() * 4),
+                                              D3D11_BIND_INDEX_BUFFER, 4);
+    if (index_offset == ~0u) return;
+    // The transform state changes far less often than draws: uploaded only when different.
+    if (!g_fixed_function_valid || std::memcmp(&constants, &g_fixed_function_uploaded, sizeof(constants)) != 0) {
+        g_context->UpdateSubresource(g_fixed_function_constants.Get(), 0, nullptr, &constants, 0, 0);
+        g_fixed_function_uploaded = constants;
+        g_fixed_function_valid = true;
+    }
+    const uint32_t draw_constants[4] = {first, 0, 0, 0};
+    g_context->UpdateSubresource(g_fixed_function_draw_constants.Get(), 0, nullptr, draw_constants, 0, 0);
+    g_stats.part_ticks[1] += ticks() - draw_start;
+    bind_draw_state(surface, state, draw);
+    ID3D11Buffer* transform[2] = {g_fixed_function_constants.Get(), g_fixed_function_draw_constants.Get()};
+    g_context->VSSetConstantBuffers(1, 2, transform);
+    ID3D11ShaderResourceView* view = g_attribute_ring.view.Get();
+    g_context->VSSetShaderResources(0, 1, &view);
+    g_context->IASetInputLayout(nullptr);
+    g_context->IASetIndexBuffer(g_index_ring.buffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+    g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_context->VSSetShader(g_fixed_function_vertex_shader.Get(), nullptr, 0);
+    g_context->DrawIndexed(static_cast<UINT>(indices.size()), index_offset / 4, 0);
+    g_stats.draw_ticks += ticks() - draw_start;
+}
+
+void renderer_draw(const SurfaceState& surface, const DrawState& state, const std::vector<RenderVertex>& triangles) {
+    if (triangles.empty()) return;
+    const uint64_t draw_start = ticks();
+    struct Account {
+        uint64_t start;
+        ~Account() { g_stats.draw_ticks += ticks() - start; }
+    } account{draw_start};
+    PreparedDraw draw;
+    if (!prepare_draw(surface, state, draw)) return;
     uint64_t mark = ticks();
     const auto part = [&mark](int index) {
         const uint64_t now = ticks();
@@ -1323,56 +1740,8 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     std::memcpy(static_cast<uint8_t*>(mapped.pData) + g_vertex_used, triangles.data(), bytes);
     g_context->Unmap(g_vertex_buffer.Get(), 0);
     g_vertex_used += bytes;
-    if (g_surface_scale_width != target->width || g_surface_scale_height != target->height) {
-        const float scale[4] = {2.0f / target->width, 2.0f / target->height, 0, 0};
-        g_context->UpdateSubresource(g_surface_constants.Get(), 0, nullptr, scale, 0, 0);
-        g_surface_scale_width = target->width;
-        g_surface_scale_height = target->height;
-    }
-    ID3D11Buffer* surface_constants = g_surface_constants.Get();
-    g_context->VSSetConstantBuffers(0, 1, &surface_constants);
     part(1);
-
-    ID3D11RenderTargetView* rtv = target->rtv.Get();
-    // A surface can be both the target and a texture of the same draw; unbind it from the pixel shader first.
-    ID3D11ShaderResourceView* none[4] = {};
-    g_context->PSSetShaderResources(0, 4, none);
-    g_context->OMSetRenderTargets(1, &rtv, depth ? depth->dsv.Get() : nullptr);
-    const D3D11_VIEWPORT viewport{0, 0, scaled_float(target->width), scaled_float(target->height), 0, 1};
-    g_context->RSSetViewports(1, &viewport);
-    const D3D11_RECT scissor{scaled(surface.clip_x), scaled(surface.clip_y), scaled(surface.clip_x + surface.clip_width),
-                             scaled(surface.clip_y + surface.clip_height)};
-    g_context->RSSetScissorRects(1, &scissor);
-    g_context->RSSetState(rasterizer_for(state));
-    g_context->OMSetBlendState(blend_state(state), state.blend_color, 0xFFFFFFFF);
-    g_context->OMSetDepthStencilState(depth_state(state), state.stencil_reference);
-
-    // A linear texture is addressed in texels; when it is one of our render targets, its real width (from the
-    // surface pitch) can be larger than the texture's rectangle, so normalise by the render target's size.
-    CombinerConstants constants_data = state.constants;
-    for (int i = 0; i < 4; ++i) {
-        if (!state.textures[i].enabled || !texture_is_linear(state.textures[i].descriptor)) continue;
-        const auto rendered = g_targets.find(state.textures[i].descriptor.address);
-        if (rendered == g_targets.end()) continue;
-        constants_data.texture_scale[i][0] = 1.0f / rendered->second.width;
-        constants_data.texture_scale[i][1] = 1.0f / rendered->second.height;
-    }
-    g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
-    ID3D11Buffer* constants = g_constants.Get();
-    g_context->PSSetConstantBuffers(0, 1, &constants);
-    part(2);
-
-    ID3D11ShaderResourceView* views[4] = {};
-    ID3D11SamplerState* samplers[4] = {};
-    refresh_write_tracking();
-    for (int i = 0; i < 4; ++i) {
-        if (!state.textures[i].enabled) continue;
-        views[i] = texture_view(state.textures[i]);
-        samplers[i] = sampler(state.textures[i]);
-        if (views[i] == target->srv.Get()) views[i] = nullptr;  // feedback loop
-    }
-    g_context->PSSetShaderResources(0, 4, views);
-    g_context->PSSetSamplers(0, 4, samplers);
+    bind_draw_state(surface, state, draw);
     part(3);
 
     const UINT stride = sizeof(RenderVertex), offset = 0;
@@ -1381,7 +1750,6 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     g_context->IASetInputLayout(g_input_layout.Get());
     g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_context->VSSetShader(g_vertex_shader.Get(), nullptr, 0);
-    g_context->PSSetShader(shader, nullptr, 0);
     g_context->Draw(static_cast<UINT>(triangles.size()), first_vertex);
     part(4);
 }

@@ -21,6 +21,7 @@
 #include "pc/nv2a_vsh.h"
 #include "pc/physical_memory.h"
 #include "pc/renderer_d3d11.h"
+#include "pc/settings.h"
 #include "pc/xbox_thread.h"
 
 namespace mc3::pc {
@@ -579,9 +580,187 @@ void prepare_draw_state() {
     }
 }
 
+// MC3_DEBUG_FRAME_AT=<seconds>[+<length>]: one line per draw during 1 s (or <length> s) from that time (counted
+// from the first draw), to see what the frames are made of.
+// (Globals, not statics: draw is a template, and each instantiation would get its own window.)
+void update_debug_window() {
+    const ULONGLONG now = GetTickCount64();
+    if (!g_window_start) {
+        char value[32] = {};
+        const bool set = GetEnvironmentVariableA("MC3_DEBUG_FRAME_AT", value, sizeof(value)) != 0;
+        g_window_start = set ? now + static_cast<ULONGLONG>(std::atof(value) * 1000) : ~0ull;
+        const char* plus = std::strchr(value, '+');
+        g_window_end = g_window_start + static_cast<ULONGLONG>((plus ? std::atof(plus + 1) : 1.0) * 1000);
+    }
+    g_debug_window_open = now >= g_window_start && now < g_window_end;
+}
+
+// DEBUG: vertex time per second by kind of draw (0 fixed function on the CPU, 1 vertex program, 2 fixed function
+// on the GPU: only the attribute packing).
+void debug_vertex_work(int kind, uint64_t elapsed, uint32_t count) {
+    static uint64_t ticks[3] = {}, vertices[3] = {}, draws[3] = {};
+    static ULONGLONG last = GetTickCount64();
+    ticks[kind] += elapsed;
+    vertices[kind] += count;
+    ++draws[kind];
+    if (GetTickCount64() - last < 10000) return;
+    LARGE_INTEGER frequency;
+    QueryPerformanceFrequency(&frequency);
+    const double seconds = (GetTickCount64() - last) / 1000.0;
+    const auto ms = [&](int k) { return ticks[k] * 1000.0 / frequency.QuadPart / seconds; };
+    log_line("DEBUG vertex work per second: fixed-function %.0f ms (%.0f draws, %.0f vertices), program %.0f ms "
+             "(%.0f draws, %.0f vertices), fixed-function on the GPU %.0f ms (%.0f draws, %.0f vertices)",
+             ms(0), draws[0] / seconds, vertices[0] / seconds, ms(1), draws[1] / seconds, vertices[1] / seconds, ms(2),
+             draws[2] / seconds, vertices[2] / seconds);
+    for (int k = 0; k < 3; ++k) ticks[k] = vertices[k] = draws[k] = 0;
+    last = GetTickCount64();
+}
+
+// Setting gpu_vertices: the fixed-function transform in a vertex shader instead of on the CPU. The debugging
+// switches that look at or filter the transformed vertices (MC3_DEBUG_DRAWS, MC3_SKIP, MC3_DUMP_DRAW) keep the CPU.
+bool gpu_fixed_function() {
+    static const bool enabled = [] {
+        char value[64];
+        const bool debugging = GetEnvironmentVariableA("MC3_DEBUG_DRAWS", value, sizeof(value)) ||
+                               GetEnvironmentVariableA("MC3_SKIP", value, sizeof(value)) ||
+                               GetEnvironmentVariableA("MC3_DUMP_DRAW", value, sizeof(value));
+        const bool on = setting("gpu_vertices") != 0 && !debugging && renderer_has_fixed_function();
+        log_line("vertices: fixed-function transform on the %s", on ? "GPU" : "CPU");
+        return on;
+    }();
+    return enabled;
+}
+
+// The fixed-function attributes the vertex shader reads (position, normal, colours, fog, texture coordinates).
+constexpr uint32_t kGpuAttributes = 1u << kInPosition | 1u << kInNormal | 1u << kInDiffuse | 1u << kInSpecular |
+                                    1u << kInFog | 0xFu << kInTexture0;
+
+// Where a draw's vertices are, for the fixed-function path on the GPU (whose shader decodes the guest's bytes).
+struct VertexSource {
+    const std::vector<uint32_t>* indices = nullptr;  // draw_indexed: vertex numbers into the vertex arrays
+    const uint8_t* inline_bytes = nullptr;            // draw_inline: the vertices themselves...
+    uint32_t inline_stride = 0;
+    const uint32_t* inline_offsets = nullptr;         // ...and each attribute's offset in a vertex
+};
+
+// The fixed-function draw with the transform done by the renderer's vertex shader: here the state is copied into
+// the shader's constants, and the guest memory the vertices occupy is uploaded as it is. False when the vertices
+// cannot be uploaded that way (the CPU then does the draw).
+bool draw_fixed_function_on_gpu(const SurfaceState& target, uint32_t count, const VertexSource& source) {
+    LARGE_INTEGER pack_start, pack_end;
+    QueryPerformanceCounter(&pack_start);
+    static FixedFunctionConstants c;  // GPU thread only
+    static std::vector<uint8_t> data;
+    data.clear();
+    std::vector<uint32_t> order;
+    append_triangles(g_k.primitive, count, order);
+
+    for (uint32_t a = 0; a < kVshAttributes; ++a) {
+        std::memcpy(c.attribute_default[a], g_k.attribute[a].data(), 16);
+        const uint32_t format = g_k.array_format[a];
+        const bool from_array = ((kGpuAttributes >> a) & 1) && ((format >> 4) & 0xF);
+        c.attribute_layout[a][0] = 0;
+        c.attribute_layout[a][1] = static_cast<int32_t>(source.inline_bytes ? source.inline_stride : format >> 8);
+        c.attribute_layout[a][2] = static_cast<int32_t>(format & 0xFF);
+        c.attribute_layout[a][3] = from_array ? 1 : 0;
+    }
+    if (source.inline_bytes) {
+        for (uint32_t a = 0; a < kVshAttributes; ++a) c.attribute_layout[a][0] = static_cast<int32_t>(source.inline_offsets[a]);
+        data.assign(source.inline_bytes, source.inline_bytes + static_cast<size_t>(count) * source.inline_stride);
+    } else {
+        // Only the part of each array between the lowest and the highest index is uploaded; arrays close together
+        // in memory (usually one interleaved buffer) share one copy.
+        const std::vector<uint32_t>& indices = *source.indices;
+        const auto [low, high] = std::minmax_element(indices.begin(), indices.end());
+        struct Range {
+            uint32_t start, end, attribute, address;
+        };
+        Range ranges[kVshAttributes];
+        uint32_t used = 0;
+        for (uint32_t a = 0; a < kVshAttributes; ++a) {
+            if (!c.attribute_layout[a][3]) continue;
+            const uint32_t format = g_k.array_format[a], offset = g_k.array_offset[a], stride = format >> 8;
+            const uint32_t base = (offset & 0x80000000) ? g_k.dma_vertex_b : g_k.dma_vertex_a;
+            const uint64_t address = (base + (offset & 0x7FFFFFFF)) & 0x7FFFFFFF;
+            const uint64_t end = address + static_cast<uint64_t>(*high) * stride + attribute_bytes(format);
+            if (end > kPhysicalMemorySize) return false;
+            const uint32_t start = static_cast<uint32_t>(address + static_cast<uint64_t>(*low) * stride);
+            ranges[used++] = {start & ~3u, static_cast<uint32_t>((end + 3) & ~3ull), a, static_cast<uint32_t>(address)};
+        }
+        std::sort(ranges, ranges + used, [](const Range& x, const Range& y) { return x.start < y.start; });
+        constexpr uint32_t kMergeGap = 4096, kMaximumBytes = 32u << 20;
+        for (uint32_t i = 0; i < used;) {
+            uint32_t j = i + 1, end = ranges[i].end;
+            while (j < used && ranges[j].start <= end + kMergeGap) end = std::max(end, ranges[j++].end);
+            const size_t at = data.size();
+            if (at + (end - ranges[i].start) > kMaximumBytes) return false;
+            const uint8_t* bytes = physical_pointer(ranges[i].start);
+            data.insert(data.end(), bytes, bytes + (end - ranges[i].start));
+            for (uint32_t k = i; k < j; ++k) {
+                c.attribute_layout[ranges[k].attribute][0] =
+                    static_cast<int32_t>(static_cast<int64_t>(at) + ranges[k].address - ranges[i].start);
+            }
+            i = j;
+        }
+        for (uint32_t& vertex : order) vertex = indices[vertex];
+    }
+    data.resize((data.size() + 3) / 4 * 4 + 8);  // whole words, and room for the shader's two-word reads
+
+    if (g_k.skin_mode) log_once(0x2001, "fixed-function skinning is not supported yet; the first matrix is used");
+    std::memcpy(c.composite, g_k.composite, sizeof(c.composite));
+    std::memcpy(c.model_view, g_k.model_view[0], sizeof(c.model_view));
+    std::memcpy(c.inverse_model_view, g_k.inverse_model_view[0], sizeof(c.inverse_model_view));
+    std::memcpy(c.texture_matrix, g_k.texture_matrix, sizeof(c.texture_matrix));
+    std::memcpy(c.texgen_plane, g_k.texgen_plane, sizeof(c.texgen_plane));
+    c.texture_matrix_mask = 0;
+    for (int stage = 0; stage < 4; ++stage) {
+        if (g_k.texture_matrix_enable[stage]) c.texture_matrix_mask |= 1u << stage;
+        for (int i = 0; i < 4; ++i) {
+            const uint32_t mode = g_k.texgen[stage][i];
+            c.texgen_mode[stage][i] = mode == kTexgenEyeLinear ? 1 : mode == kTexgenObjectLinear ? 2 : 0;
+            if (mode != kTexgenDisable && !c.texgen_mode[stage][i]) {
+                log_once(0x2100 + mode, "fixed-function texgen mode not supported yet");
+            }
+        }
+    }
+    std::memcpy(c.light, g_k.light, sizeof(c.light));
+    std::memcpy(c.viewport_offset, g_k.viewport_offset, 16);
+    std::memcpy(c.eye_position, g_k.eye_position, 16);
+    std::memcpy(c.scene_ambient, g_k.scene_ambient, 12);
+    std::memcpy(c.material_emission, g_k.material_emission, 12);
+    c.material_emission[3] = g_k.material_alpha;
+    std::memcpy(c.specular_params, g_k.specular_params, sizeof(g_k.specular_params));
+    std::memcpy(c.fog_plane, g_k.fog_plane, 16);
+    std::memcpy(c.fog_params, g_k.fog_params, sizeof(g_k.fog_params));
+    c.flags = (g_k.lighting ? kFixedFunctionLighting : 0) | (g_k.specular ? kFixedFunctionSpecular : 0) |
+              (g_k.fog ? kFixedFunctionFog : 0) | (g_k.normalization ? kFixedFunctionNormalize : 0) |
+              ((g_k.light_control & kLightControlSeparateSpecular) ? kFixedFunctionSeparateSpecular : 0) |
+              ((g_k.light_control & kLightControlLocalEye) ? kFixedFunctionLocalEye : 0);
+    c.color_material = g_k.color_material;
+    c.light_enable_mask = g_k.light_enable_mask;
+    c.fog_gen_mode = g_k.fog_gen_mode;
+    c.fog_mode = g_k.fog_mode;
+    c.clip_max = g_k.clip_max;
+    if (g_k.fog) {
+        const uint32_t generation = g_k.fog_gen_mode;
+        if (generation != kFogGenSpecularAlpha && generation != kFogGenRadial && generation != kFogGenPlanar &&
+            generation != kFogGenAbsPlanar && generation != kFogGenX) {
+            log_once(0x2200 + generation, "fog generation mode not supported yet");
+        }
+    }
+
+    QueryPerformanceCounter(&pack_end);
+    const uint64_t elapsed = static_cast<uint64_t>(pack_end.QuadPart - pack_start.QuadPart);
+    renderer_note_vertex_work(elapsed, count);
+    debug_vertex_work(2, elapsed, count);
+    prepare_draw_state();
+    renderer_draw_fixed_function(target, g_k.draw, c, data.data(), static_cast<uint32_t>(data.size()), order);
+    return true;
+}
+
 // Runs the vertex program over `count` vertices obtained from `fetch` and draws the primitive.
 template <typename Fetch>
-void draw(uint32_t count, Fetch fetch) {
+void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
     if (count == 0 || g_k.primitive == kEnd) return;
     const bool fixed_function = (g_k.execution_mode & 3) != kExecutionModeProgram;
     if (!fixed_function) {
@@ -593,6 +772,13 @@ void draw(uint32_t count, Fetch fetch) {
     }
     const SurfaceState target = surface();
     if (!target.width || !target.height) return;
+
+    if (fixed_function && gpu_fixed_function() && !g_debug_window_open &&
+        draw_fixed_function_on_gpu(target, count, source)) {
+        ++g_draws;
+        update_debug_window();
+        return;
+    }
 
     std::vector<RenderVertex> vertices(count);
     LARGE_INTEGER vertex_start, vertex_end;
@@ -620,25 +806,7 @@ void draw(uint32_t count, Fetch fetch) {
     }
     QueryPerformanceCounter(&vertex_end);
     renderer_note_vertex_work(static_cast<uint64_t>(vertex_end.QuadPart - vertex_start.QuadPart), count);
-    {  // DEBUG: vertex time by kind of draw
-        static uint64_t ticks[2] = {}, vertices[2] = {}, draws[2] = {};
-        static ULONGLONG last = GetTickCount64();
-        const int kind = fixed_function ? 0 : 1;
-        ticks[kind] += static_cast<uint64_t>(vertex_end.QuadPart - vertex_start.QuadPart);
-        vertices[kind] += count;
-        ++draws[kind];
-        if (GetTickCount64() - last >= 10000) {
-            LARGE_INTEGER frequency;
-            QueryPerformanceFrequency(&frequency);
-            const double seconds = (GetTickCount64() - last) / 1000.0;
-            log_line("DEBUG vertex work per second: fixed-function %.0f ms (%.0f draws, %.0f vertices), program %.0f ms "
-                     "(%.0f draws, %.0f vertices)",
-                     ticks[0] * 1000.0 / frequency.QuadPart / seconds, draws[0] / seconds, vertices[0] / seconds,
-                     ticks[1] * 1000.0 / frequency.QuadPart / seconds, draws[1] / seconds, vertices[1] / seconds);
-            ticks[0] = ticks[1] = vertices[0] = vertices[1] = draws[0] = draws[1] = 0;
-            last = GetTickCount64();
-        }
-    }
+    debug_vertex_work(fixed_function ? 0 : 1, static_cast<uint64_t>(vertex_end.QuadPart - vertex_start.QuadPart), count);
     static bool fixed_function_only = false;  // MC3_DEBUG_DRAWS_FF=1: describe only fixed-function draws
     if (g_debug_draws < 0) {
         char value[16] = {};
@@ -749,39 +917,7 @@ void draw(uint32_t count, Fetch fetch) {
     if (dump_now) renderer_dump_target(target.color_address, "dump-after");
     ++g_draws;
 
-    // MC3_DEBUG_FRAME_AT=<seconds>[+<length>]: one line per draw during 1 s (or <length> s) from that time (counted
-    // from the first draw), to see what the frames are made of.
-    // (Globals, not statics: draw is a template, and each instantiation would get its own window.)
-    if (!g_window_start) {
-        char value[32] = {};
-        const ULONGLONG now = GetTickCount64();
-        const bool set = GetEnvironmentVariableA("MC3_DEBUG_FRAME_AT", value, sizeof(value)) != 0;
-        g_window_start = set ? now + static_cast<ULONGLONG>(std::atof(value) * 1000) : ~0ull;
-        const char* plus = std::strchr(value, '+');
-        g_window_end = g_window_start + static_cast<ULONGLONG>((plus ? std::atof(plus + 1) : 1.0) * 1000);
-    }
-    const ULONGLONG now = GetTickCount64();
-    {  // DEBUG: where the bump environment map (stage mode 6) is used
-        static uint32_t logged = 0;
-        const uint32_t program = g_k.draw.program.stage_program;
-        for (int stage = 0; stage < 4 && logged < 30; ++stage) {
-            if (((program >> (stage * 5)) & 0x1F) != 6) continue;
-            float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
-            for (const RenderVertex& p : vertices) {
-                if (p.position[3] <= 0) continue;
-                x0 = std::min(x0, p.position[0] / p.position[3]), y0 = std::min(y0, p.position[1] / p.position[3]);
-                x1 = std::max(x1, p.position[0] / p.position[3]), y1 = std::max(y1, p.position[1] / p.position[3]);
-            }
-            log_line("DEBUG bump draw %llu at %.1f s: stages %05X rect %.0f %.0f %.0f %.0f tex0 %08X fmt %08X tex1 %08X "
-                     "fmt %08X surf %08X n %u",
-                     static_cast<unsigned long long>(g_draws), (now - g_window_start + 0.0) / 1000.0, program, x0, y0,
-                     x1, y1, g_k.draw.textures[0].descriptor.address, g_k.draw.textures[0].descriptor.format,
-                     g_k.draw.textures[1].descriptor.address, g_k.draw.textures[1].descriptor.format,
-                     target.color_address, count);
-            ++logged;
-        }
-    }
-    g_debug_window_open = now >= g_window_start && now < g_window_end;
+    update_debug_window();
     if (g_debug_window_open) {
         // MC3_DEBUG_PROBE=x,y: log the screen pixel there whenever a draw changes it.
         if (g_probe_x < 0) {
@@ -850,7 +986,7 @@ void draw_inline() {
     if (stride == 0) return;
     const auto* bytes = reinterpret_cast<const uint8_t*>(g_k.inline_data.data());
     const uint32_t count = static_cast<uint32_t>(g_k.inline_data.size() * 4 / stride);
-    draw(count, [&](uint32_t vertex, Vec4* inputs) {
+    draw(count, VertexSource{nullptr, bytes, stride, offsets}, [&](uint32_t vertex, Vec4* inputs) {
         for (uint32_t a = 0; a < kVshAttributes; ++a) {
             if ((g_k.array_format[a] >> 4) & 0xF) inputs[a] = read_attribute(bytes + vertex * stride + offsets[a], g_k.array_format[a]);
         }
@@ -858,7 +994,7 @@ void draw_inline() {
 }
 
 void draw_indexed(const std::vector<uint32_t>& indices) {
-    draw(static_cast<uint32_t>(indices.size()), [&](uint32_t vertex, Vec4* inputs) {
+    draw(static_cast<uint32_t>(indices.size()), VertexSource{&indices}, [&](uint32_t vertex, Vec4* inputs) {
         for (uint32_t a = 0; a < kVshAttributes; ++a) {
             const uint32_t format = g_k.array_format[a];
             if (!((format >> 4) & 0xF)) continue;

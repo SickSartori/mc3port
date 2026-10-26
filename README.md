@@ -64,9 +64,11 @@ F10: accende e spegne gli effetti moderni, per confrontarli con l'immagine origi
 
 ## Impostazioni
 
-Al primo avvio viene creato `mc3port.ini` accanto a `mc3.exe`, con una spiegazione per ogni voce: risoluzione
-interna (antialiasing), filtro anisotropico, effetti moderni (nitidezza, bagliore delle luci, saturazione,
-contrasto, vignettatura, ombreggiatura ambientale e suo raggio). Si modifica con un editor di testo e vale dal
+Al primo avvio viene creato `mc3port.ini` accanto a `mc3.exe`, con una spiegazione per ogni voce: fotogrammi al
+secondo, calcolo dei vertici sulla scheda video (`gpu_vertices`), risoluzione interna (antialiasing), filtro
+anisotropico, effetti moderni (nitidezza, bagliore delle luci, saturazione, contrasto, vignettatura, ombreggiatura
+ambientale e suo raggio). Le voci nuove mancanti in un file già esistente valgono col loro valore predefinito.
+Si modifica con un editor di testo e vale dal
 riavvio successivo. Ogni voce si può dare anche come variabile d'ambiente `MC3_<NOME>` (per esempio `MC3_BLOOM=0`),
 che ha la precedenza sul file.
 
