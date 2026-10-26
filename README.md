@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" alt="mc3port logo" width="160"></p>
+
 # mc3port
 
 An unofficial native Windows port of **Midnight Club 3: DUB Edition Remix** for the original Xbox (European release).
@@ -159,7 +161,7 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 - [Dear ImGui](https://github.com/ocornut/imgui) by Omar Cornut, MIT licence: the launcher's interface.
 - [Barlow](https://github.com/jpt/barlow) by Jeremy Tribby, SIL Open Font License: the launcher's font.
 - The launcher's background music was generated for mc3port with ElevenLabs Music (through Magnific).
-- The program icon comes from SteamGridDB.
+- The program icon and logo are mc3port's own, drawn with Barlow Semi Condensed (`tools/make_icon.py`).
 - The launcher's logo and pictures are the game's own, read from your disc while it runs; they are not part of
   mc3port.
 
