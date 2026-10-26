@@ -12,6 +12,18 @@ optional modern effects.
 > To play you need your own, legally obtained copy of the game. mc3port reads everything it needs from your disc
 > image while it runs. Please do not ask for game files or disc images, and do not share them.
 
+## Screenshots
+
+![The title screen in the game's own 16:9 mode](docs/screenshots/title-16x9.jpg)
+
+| | |
+|---|---|
+| ![A race in Tokyo, 16:9](docs/screenshots/race-16x9.jpg) | ![The launcher](docs/screenshots/launcher.jpg) |
+| ![Launcher settings](docs/screenshots/launcher-settings.jpg) | ![Launcher controls, with rebindable keys](docs/screenshots/launcher-controls.jpg) |
+
+The launcher speaks English or Italian, following Windows; these captures come from an Italian Windows. Its logo and
+pictures are read from the player's disc. The game content in the screenshots belongs to its owners.
+
 ## What it is
 
 mc3port is a port, not a remaster. It runs the original 2005 game, with its own cars, cities, physics and soundtrack.
