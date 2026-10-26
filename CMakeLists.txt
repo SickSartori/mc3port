@@ -50,6 +50,7 @@ if(WIN32)
         src/pc/privileged.cpp
         src/pc/renderer_d3d11.cpp
         src/pc/runtime.cpp
+        src/pc/settings.cpp
         src/pc/xbox_thread.cpp
     )
     target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp)

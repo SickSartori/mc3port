@@ -60,13 +60,23 @@ controller, la porta 1 è la tastiera (solo quando la finestra del gioco è in p
 | Shift sinistro / Ctrl sinistro | Nero / Bianco |
 
 Alt+Invio o F11: schermo intero (senza bordi) e ritorno alla finestra. L'immagine resta 4:3 con bande nere.
+F10: accende e spegne gli effetti moderni, per confrontarli con l'immagine originale.
+
+## Impostazioni
+
+Al primo avvio viene creato `mc3port.ini` accanto a `mc3.exe`, con una spiegazione per ogni voce: risoluzione
+interna (antialiasing), filtro anisotropico, effetti moderni (nitidezza, bagliore delle luci, saturazione,
+contrasto, vignettatura, ombreggiatura ambientale e suo raggio). Si modifica con un editor di testo e vale dal
+riavvio successivo. Ogni voce si può dare anche come variabile d'ambiente `MC3_<NOME>` (per esempio `MC3_BLOOM=0`),
+che ha la precedenza sul file.
 
 Variabili d'ambiente:
 
 | Variabile | Effetto |
 |---|---|
-| `MC3_RENDER_SCALE=<1..4>` | risoluzione interna: 2 (predefinito) disegna a 1280x960 e riduce alla finestra (antialiasing), 1 come l'Xbox |
-| `MC3_ANISOTROPY=<1..16>` | filtro anisotropico sulle texture con mipmap (predefinito 16, 1 = spento) |
+| `MC3_<VOCE>` | qualunque voce di `mc3port.ini` (per esempio `MC3_RENDER_SCALE=1`, `MC3_AMBIENT_OCCLUSION=0`) |
+| `MC3_DUMP_WINDOW=1` | con `MC3_DUMP_FRAMES`, salva anche l'immagine della finestra con gli effetti (`window-NNNNN.bmp`) |
+| `MC3_AO_VIEW=1` | mostra solo l'ombreggiatura ambientale, in grigio, al posto della scena (per regolarla) |
 | `MC3_LANGUAGE` | lingua del sistema: 1 inglese, 3 tedesco, 4 francese, 5 spagnolo, 6 italiano (predefinito) |
 | `MC3_MULTICORE=1` | usa tutti i core; per default il gioco gira su un core solo, come sull'Xbox |
 | `MC3_NO_DIALOG=1` | niente finestra in caso di errore fatale (per i test automatici) |

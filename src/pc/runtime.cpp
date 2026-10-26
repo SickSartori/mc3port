@@ -30,6 +30,7 @@
 #include "pc/nv2a.h"
 #include "pc/physical_memory.h"
 #include "pc/privileged.h"
+#include "pc/settings.h"
 #include "pc/xbox_thread.h"
 
 static_assert(sizeof(void*) == 4, "the PC runtime runs the game's x86 code natively and must be 32-bit");
@@ -354,6 +355,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     const HostImage host = host_image();
     const std::filesystem::path exe_directory = module_directory();
     log_open(exe_directory / "mc3port.log");
+    settings_load(exe_directory / "mc3port.ini");
     SetUnhandledExceptionFilter(on_unhandled_exception);
     AddVectoredExceptionHandler(1, on_first_chance_exception);
 

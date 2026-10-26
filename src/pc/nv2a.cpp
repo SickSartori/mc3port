@@ -684,6 +684,10 @@ LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam, LPAR
         return 0;
     }
     if (message == WM_SYSCHAR && wparam == VK_RETURN) return 0;  // no beep for Alt+Enter
+    if (message == WM_SYSKEYDOWN && wparam == VK_F10) {  // F10 is a system key
+        if (!(lparam & (1 << 30))) renderer_toggle_effects();
+        return 0;
+    }
     return DefWindowProcW(window, message, wparam, lparam);
 }
 

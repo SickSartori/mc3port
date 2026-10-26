@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -16,6 +17,7 @@
 
 #include "pc/log.h"
 #include "pc/physical_memory.h"
+#include "pc/settings.h"
 
 namespace mc3::pc {
 
@@ -72,6 +74,7 @@ struct Target {
 struct DepthTarget {
     ComPtr<ID3D11Texture2D> texture;
     ComPtr<ID3D11DepthStencilView> dsv;
+    ComPtr<ID3D11ShaderResourceView> srv;  // the depth, read by the ambient occlusion pass
     uint32_t width = 0, height = 0;
 };
 
@@ -217,14 +220,9 @@ ComPtr<ID3DBlob> compile(const char* source, size_t size, const char* profile, c
 
 // Internal resolution: every render target is this many times the game's size in each direction, and drawn
 // scaled (positions arrive relative to the game's size, so only viewports, scissors, clears and copies change).
-// The picture is reduced to the window when presented: smoother edges and sharper detail (MC3_RENDER_SCALE=1..4).
-const uint32_t g_scale = [] {
-    char value[8] = {};
-    const uint32_t scale = GetEnvironmentVariableA("MC3_RENDER_SCALE", value, sizeof(value))
-                               ? static_cast<uint32_t>(std::strtoul(value, nullptr, 10))
-                               : 2u;
-    return std::clamp<uint32_t>(scale, 1, 4);
-}();
+// The picture is reduced to the window when presented: smoother edges and sharper detail (setting render_scale,
+// read when the renderer starts).
+uint32_t g_scale = 1;
 
 LONG scaled(uint32_t pixels) { return static_cast<LONG>(pixels * g_scale); }
 float scaled_float(uint32_t pixels) { return static_cast<float>(pixels * g_scale); }
@@ -316,15 +314,102 @@ DepthTarget* get_depth_target(uint32_t address, uint32_t width, uint32_t height)
     desc.Height = height * g_scale;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    desc.Format = DXGI_FORMAT_R24G8_TYPELESS;  // depth-stencil view and shader view of the same texture
     desc.SampleDesc.Count = 1;
-    desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    desc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
     target = DepthTarget{};
     if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &target.texture))) return nullptr;
-    g_device->CreateDepthStencilView(target.texture.Get(), nullptr, &target.dsv);
+    D3D11_DEPTH_STENCIL_VIEW_DESC dsv{};
+    dsv.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    dsv.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+    g_device->CreateDepthStencilView(target.texture.Get(), &dsv, &target.dsv);
+    D3D11_SHADER_RESOURCE_VIEW_DESC srv{};
+    srv.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+    srv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srv.Texture2D.MipLevels = 1;
+    g_device->CreateShaderResourceView(target.texture.Get(), &srv, &target.srv);
     target.width = width;
     target.height = height;
     return &target;
+}
+
+// --- ambient occlusion ---
+//
+// Corners and contacts darkened from the depth buffer, applied to a frame's 3D scene before its HUD: at the first
+// draw without depth test that follows depth-tested draws on a full-size target (once per depth clear, so each view
+// of the split screen gets its own). The depth is not linear and the game's projection is unknown, but 1 - depth is
+// proportional to 1/z, which varies linearly across the screen on a plane: comparing a pixel with the mean of two
+// opposite neighbours gives zero on flat surfaces and a positive value in creases, relative to the pixel's own
+// value whatever the scale. Large differences (an object in front of another) are left out, so outlines get no halo.
+
+constexpr char kOcclusionPixelShader[] = R"(
+cbuffer Occlusion : register(b0) { float radius; float strength; float2 unused; };
+Texture2D<float> depth : register(t0);
+float4 main(float4 position : SV_Position) : SV_Target {
+    const int2 p = int2(position.xy);
+    const float centre = 1 - depth.Load(int3(p, 0));  // proportional to 1/z
+    if (centre <= 1e-5) return 1;                      // cleared to the far plane: sky
+    const float angle = (((p.x & 3) * 4 + (p.y & 3)) / 16.0) * 6.2831853;
+    float occlusion = 0;
+    [unroll] for (int i = 0; i < 6; ++i) {
+        const float a = angle + i * 0.5235988;          // 30 degrees apart over a half turn
+        const float r = radius * (0.35 + 0.65 * ((i * 5 + 3) % 6) / 5.0);
+        const int2 o = int2(round(float2(cos(a), sin(a)) * r));
+        const float one = 1 - depth.Load(int3(p + o, 0));
+        const float two = 1 - depth.Load(int3(p - o, 0));
+        const float crease = ((one + two) * 0.5 - centre) / centre;  // > 0: the pixel lies behind its neighbours
+        occlusion += saturate(crease * 40) * (1 - smoothstep(0.15, 0.4, crease));
+    }
+    const float light = 1 - strength * occlusion / 6;
+    return float4(light, light, light, 1);
+}
+)";
+
+struct OcclusionConstants {
+    float radius, strength, unused[2];
+};
+
+ComPtr<ID3D11PixelShader> g_occlusion_pixel_shader;
+ComPtr<ID3D11Buffer> g_occlusion_constants;
+ComPtr<ID3D11BlendState> g_multiply_blend;  // destination colour times the source (alpha untouched)
+std::atomic<bool> g_effects_enabled{true};  // F10
+
+// Per depth buffer, since its last clear (the start of a scene; presents do not line up with scenes): 3D drawn,
+// occlusion applied.
+struct SceneState {
+    bool drawn = false;
+    bool occluded = false;
+};
+std::unordered_map<uint32_t, SceneState> g_scenes;
+uint32_t g_occlusion_scenes = 0, g_full_depth_clears = 0;  // for the log: every scene should get its pass
+
+void apply_occlusion(Target& target, DepthTarget& depth) {
+    const float strength = setting("ambient_occlusion");
+    if (strength <= 0 || !g_occlusion_pixel_shader || !depth.srv || !g_effects_enabled) return;
+    const OcclusionConstants constants{setting("ambient_occlusion_radius") * 14.0f * g_scale, std::min(strength, 1.0f)};
+    g_context->UpdateSubresource(g_occlusion_constants.Get(), 0, nullptr, &constants, 0, 0);
+    ID3D11RenderTargetView* rtv = target.rtv.Get();
+    g_context->OMSetRenderTargets(1, &rtv, nullptr);  // the depth is read, not bound
+    // MC3_AO_VIEW=1: the occlusion alone, in grey, instead of the scene (to tune it).
+    static const bool view_only = GetEnvironmentVariableA("MC3_AO_VIEW", nullptr, 0) != 0;
+    g_context->OMSetBlendState(view_only ? nullptr : g_multiply_blend.Get(), nullptr, 0xFFFFFFFF);
+    g_context->OMSetDepthStencilState(nullptr, 0);
+    const D3D11_VIEWPORT viewport{0, 0, scaled_float(target.width), scaled_float(target.height), 0, 1};
+    g_context->RSSetViewports(1, &viewport);
+    const D3D11_RECT all{0, 0, scaled(target.width), scaled(target.height)};
+    g_context->RSSetScissorRects(1, &all);
+    g_context->RSSetState(g_rasterizer.Get());
+    g_context->IASetInputLayout(nullptr);
+    g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_context->VSSetShader(g_clear_vertex_shader.Get(), nullptr, 0);
+    g_context->PSSetShader(g_occlusion_pixel_shader.Get(), nullptr, 0);
+    ID3D11Buffer* buffer = g_occlusion_constants.Get();
+    g_context->PSSetConstantBuffers(0, 1, &buffer);
+    ID3D11ShaderResourceView* source = depth.srv.Get();
+    g_context->PSSetShaderResources(0, 1, &source);
+    g_context->Draw(3, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    g_context->PSSetShaderResources(0, 1, &none);
 }
 
 D3D11_BLEND blend_factor(uint32_t gl) {
@@ -456,14 +541,8 @@ ID3D11SamplerState* sampler(const TextureStage& stage) {
         D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT,   D3D11_FILTER_MIN_MAG_MIP_LINEAR};
     desc.Filter = kFilters[(linear_min ? 4 : 0) | (linear_mag ? 2 : 0) | (linear_mip ? 1 : 0)];
     // Smooth (trilinear) filtering becomes anisotropic: textures seen at a slant (roads, walls) stay sharp
-    // (MC3_ANISOTROPY=1..16, 1 = off).
-    static const UINT anisotropy = [] {
-        char value[8] = {};
-        const UINT level = GetEnvironmentVariableA("MC3_ANISOTROPY", value, sizeof(value))
-                               ? static_cast<UINT>(std::strtoul(value, nullptr, 10))
-                               : 16u;
-        return std::clamp<UINT>(level, 1, 16);
-    }();
+    // (setting anisotropy, 1..16, 1 = off).
+    static const UINT anisotropy = std::clamp<UINT>(static_cast<UINT>(setting("anisotropy")), 1, 16);
     if (linear_min && linear_mag && mipmaps && anisotropy > 1) {
         desc.Filter = D3D11_FILTER_ANISOTROPIC;
         desc.MaxAnisotropy = anisotropy;
@@ -666,10 +745,187 @@ void ensure_swap_chain_size() {
     g_device->CreateRenderTargetView(back_buffer.Get(), nullptr, &g_back_buffer_rtv);
 }
 
-// Draws the frame into the window: the largest 4:3 rectangle that fits, centred, filtered.
-void present_frame(ID3D11ShaderResourceView* frame) {
+// --- modern effects, applied to the finished frame when it is presented ---
+//
+// Bloom: the bright parts at a quarter of the frame's size, blurred (horizontal then vertical Gaussian) and added.
+// The final pass then sharpens (contrast-adaptive, like AMD CAS), adds the bloom, sets contrast and saturation and
+// darkens the corners a little. Settings in mc3port.ini; F10 switches the effects off and on to compare.
+
+struct PostConstants {
+    float source_texel[2];  // 1 / size of the texture read
+    float output_texel[2];  // 1 / size of the frame's rectangle in the window
+    float sharpen, bloom, bloom_threshold, saturation;
+    float contrast, vignette, direction_x, direction_y;  // blur direction (in source texels)
+};
+
+ComPtr<ID3D11Buffer> g_post_constants;
+ComPtr<ID3D11PixelShader> g_bright_pixel_shader, g_blur_pixel_shader, g_final_pixel_shader;
+ComPtr<ID3D11Texture2D> g_bloom_texture[2];
+ComPtr<ID3D11RenderTargetView> g_bloom_rtv[2];
+ComPtr<ID3D11ShaderResourceView> g_bloom_srv[2];
+uint32_t g_bloom_width = 0, g_bloom_height = 0;
+
+constexpr char kBrightPixelShader[] = R"(
+cbuffer Post : register(b0) { float2 source_texel; float2 output_texel; float sharpen, bloom, threshold, saturation;
+                              float contrast, vignette; float2 direction; };
+Texture2D frame : register(t0);
+SamplerState filtered : register(s0);
+float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    // A quarter-size texel covers 4x4 frame texels: four bilinear taps average them.
+    float3 sum = 0;
+    [unroll] for (int i = 0; i < 4; ++i) {
+        const float2 offset = float2((i & 1) ? 1 : -1, (i & 2) ? 1 : -1) * source_texel;
+        sum += frame.SampleLevel(filtered, uv + offset, 0).rgb;
+    }
+    const float3 colour = sum / 4;
+    const float brightness = max(colour.r, max(colour.g, colour.b));
+    const float weight = saturate((brightness - threshold) / max(1 - threshold, 0.01));
+    return float4(colour * weight, 1);
+}
+)";
+
+constexpr char kBlurPixelShader[] = R"(
+cbuffer Post : register(b0) { float2 source_texel; float2 output_texel; float sharpen, bloom, threshold, saturation;
+                              float contrast, vignette; float2 direction; };
+Texture2D source : register(t0);
+SamplerState filtered : register(s0);
+float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    // 9-tap Gaussian folded into 5 bilinear taps.
+    const float weights[3] = {0.2270270270, 0.3162162162, 0.0702702703};
+    const float offsets[3] = {0.0, 1.3846153846, 3.2307692308};
+    const float2 step = direction * source_texel;
+    float3 sum = source.SampleLevel(filtered, uv, 0).rgb * weights[0];
+    [unroll] for (int i = 1; i < 3; ++i) {
+        sum += source.SampleLevel(filtered, uv + step * offsets[i], 0).rgb * weights[i];
+        sum += source.SampleLevel(filtered, uv - step * offsets[i], 0).rgb * weights[i];
+    }
+    return float4(sum, 1);
+}
+)";
+
+constexpr char kFinalPixelShader[] = R"(
+cbuffer Post : register(b0) { float2 source_texel; float2 output_texel; float sharpen, bloom, threshold, saturation;
+                              float contrast, vignette; float2 direction; };
+Texture2D frame : register(t0);
+Texture2D glow : register(t1);
+SamplerState filtered : register(s0);
+float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
+    float3 c = frame.SampleLevel(filtered, uv, 0).rgb;
+    if (sharpen > 0) {
+        // Contrast-adaptive sharpening on the cross of neighbouring output pixels.
+        const float3 n = frame.SampleLevel(filtered, uv + float2(0, -output_texel.y), 0).rgb;
+        const float3 s = frame.SampleLevel(filtered, uv + float2(0, output_texel.y), 0).rgb;
+        const float3 w = frame.SampleLevel(filtered, uv + float2(-output_texel.x, 0), 0).rgb;
+        const float3 e = frame.SampleLevel(filtered, uv + float2(output_texel.x, 0), 0).rgb;
+        const float3 low = min(c, min(min(n, s), min(w, e)));
+        const float3 high = max(c, max(max(n, s), max(w, e)));
+        const float3 amplitude = sqrt(saturate(min(low, 1 - high) / max(high, 1e-4)));
+        const float3 peak = -1 / lerp(8.0, 5.0, saturate(sharpen));
+        const float3 weight = amplitude * peak;
+        c = saturate((c + (n + s + w + e) * weight) / (1 + 4 * weight));
+    }
+    c += glow.SampleLevel(filtered, uv, 0).rgb * bloom;
+    c = (c - 0.5) * contrast + 0.5;
+    const float luma = dot(c, float3(0.299, 0.587, 0.114));
+    c = lerp(luma.xxx, c, saturation);
+    const float2 centred = uv - 0.5;
+    c *= 1 - vignette * smoothstep(0.2, 0.75, dot(centred, centred) * 2);
+    return float4(saturate(c), 1);
+}
+)";
+
+void ensure_bloom_targets(uint32_t width, uint32_t height) {
+    width = std::max(1u, width / 4), height = std::max(1u, height / 4);
+    if (g_bloom_texture[0] && g_bloom_width == width && g_bloom_height == height) return;
+    for (int i = 0; i < 2; ++i) {
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = width;
+        desc.Height = height;
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_R11G11B10_FLOAT;
+        desc.SampleDesc.Count = 1;
+        desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        g_bloom_texture[i].Reset();
+        g_bloom_rtv[i].Reset();
+        g_bloom_srv[i].Reset();
+        g_device->CreateTexture2D(&desc, nullptr, &g_bloom_texture[i]);
+        g_device->CreateRenderTargetView(g_bloom_texture[i].Get(), nullptr, &g_bloom_rtv[i]);
+        g_device->CreateShaderResourceView(g_bloom_texture[i].Get(), nullptr, &g_bloom_srv[i]);
+    }
+    g_bloom_width = width;
+    g_bloom_height = height;
+}
+
+// One full-surface pass into `rtv` (viewport `area`) reading `sources`.
+void post_pass(ID3D11RenderTargetView* rtv, const D3D11_VIEWPORT& area, ID3D11PixelShader* shader,
+               ID3D11ShaderResourceView* const* sources, UINT source_count, const PostConstants& constants) {
+    g_context->UpdateSubresource(g_post_constants.Get(), 0, nullptr, &constants, 0, 0);
+    g_context->OMSetRenderTargets(1, &rtv, nullptr);
+    g_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+    g_context->OMSetDepthStencilState(nullptr, 0);
+    g_context->RSSetViewports(1, &area);
+    const D3D11_RECT scissor{static_cast<LONG>(area.TopLeftX), static_cast<LONG>(area.TopLeftY),
+                             static_cast<LONG>(area.TopLeftX + area.Width), static_cast<LONG>(area.TopLeftY + area.Height)};
+    g_context->RSSetScissorRects(1, &scissor);
+    g_context->RSSetState(g_rasterizer.Get());
+    g_context->IASetInputLayout(nullptr);
+    g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_context->VSSetShader(g_present_vertex_shader.Get(), nullptr, 0);
+    g_context->PSSetShader(shader, nullptr, 0);
+    ID3D11Buffer* buffer = g_post_constants.Get();
+    g_context->PSSetConstantBuffers(0, 1, &buffer);
+    g_context->PSSetShaderResources(0, source_count, sources);
+    ID3D11SamplerState* sampler = g_present_sampler.Get();
+    g_context->PSSetSamplers(0, 1, &sampler);
+    g_context->Draw(3, 0);
+    ID3D11ShaderResourceView* none[2] = {};
+    g_context->PSSetShaderResources(0, 2, none);
+}
+
+// Draws the frame into the window: the largest 4:3 rectangle that fits, centred, filtered, with the effects.
+void present_frame(ID3D11ShaderResourceView* frame, uint32_t frame_width, uint32_t frame_height) {
     ensure_swap_chain_size();
     if (!g_back_buffer_rtv || !g_present_pixel_shader) return;
+    if (g_effects_enabled && g_final_pixel_shader && frame_width && frame_height) {
+        constexpr float kAspect = 4.0f / 3.0f;
+        float width = static_cast<float>(g_swap_width), height = static_cast<float>(g_swap_height);
+        if (width > height * kAspect) {
+            width = height * kAspect;
+        } else {
+            height = width / kAspect;
+        }
+        const D3D11_VIEWPORT area{std::floor((g_swap_width - width) / 2), std::floor((g_swap_height - height) / 2),
+                                  width, height, 0, 1};
+        PostConstants constants{};
+        constants.sharpen = setting("sharpen");
+        constants.bloom = setting("bloom");
+        constants.bloom_threshold = setting("bloom_threshold");
+        constants.saturation = setting("saturation");
+        constants.contrast = setting("contrast");
+        constants.vignette = setting("vignette");
+        ID3D11ShaderResourceView* glow = nullptr;
+        if (constants.bloom > 0) {
+            ensure_bloom_targets(frame_width, frame_height);
+            const D3D11_VIEWPORT quarter{0, 0, static_cast<float>(g_bloom_width), static_cast<float>(g_bloom_height), 0, 1};
+            constants.source_texel[0] = 1.0f / frame_width, constants.source_texel[1] = 1.0f / frame_height;
+            post_pass(g_bloom_rtv[0].Get(), quarter, g_bright_pixel_shader.Get(), &frame, 1, constants);
+            constants.source_texel[0] = 1.0f / g_bloom_width, constants.source_texel[1] = 1.0f / g_bloom_height;
+            constants.direction_x = 1, constants.direction_y = 0;
+            ID3D11ShaderResourceView* first = g_bloom_srv[0].Get();
+            post_pass(g_bloom_rtv[1].Get(), quarter, g_blur_pixel_shader.Get(), &first, 1, constants);
+            constants.direction_x = 0, constants.direction_y = 1;
+            ID3D11ShaderResourceView* second = g_bloom_srv[1].Get();
+            post_pass(g_bloom_rtv[0].Get(), quarter, g_blur_pixel_shader.Get(), &second, 1, constants);
+            glow = g_bloom_srv[0].Get();
+        }
+        const float black[4] = {0, 0, 0, 1};
+        g_context->ClearRenderTargetView(g_back_buffer_rtv.Get(), black);
+        constants.output_texel[0] = 1.0f / width, constants.output_texel[1] = 1.0f / height;
+        ID3D11ShaderResourceView* sources[2] = {frame, glow};
+        post_pass(g_back_buffer_rtv.Get(), area, g_final_pixel_shader.Get(), sources, 2, constants);
+        return;
+    }
     constexpr float kAspect = 4.0f / 3.0f;
     float width = static_cast<float>(g_swap_width), height = static_cast<float>(g_swap_height);
     if (width > height * kAspect) {
@@ -754,6 +1010,7 @@ void upload_scaled(Target& to, uint32_t x, uint32_t y, uint32_t width, uint32_t 
 }  // namespace
 
 bool renderer_start(HWND window) {
+    g_scale = std::clamp<uint32_t>(static_cast<uint32_t>(setting("render_scale")), 1, 4);
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0};
     if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 1,
                                  D3D11_SDK_VERSION, &g_device, nullptr, &g_context))) {
@@ -865,6 +1122,37 @@ bool renderer_start(HWND window) {
         "float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {\n"
         "    return source.Sample(nearest, uv);\n"
         "}\n";
+    const auto pixel = [](const char* source, size_t size, const char* name, ComPtr<ID3D11PixelShader>& shader) {
+        if (ComPtr<ID3DBlob> code = compile(source, size, "ps_5_0", name)) {
+            g_device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &shader);
+        }
+    };
+    pixel(kBrightPixelShader, sizeof(kBrightPixelShader) - 1, "bloom bright pixel", g_bright_pixel_shader);
+    pixel(kBlurPixelShader, sizeof(kBlurPixelShader) - 1, "bloom blur pixel", g_blur_pixel_shader);
+    pixel(kFinalPixelShader, sizeof(kFinalPixelShader) - 1, "final pixel", g_final_pixel_shader);
+    pixel(kOcclusionPixelShader, sizeof(kOcclusionPixelShader) - 1, "occlusion pixel", g_occlusion_pixel_shader);
+    D3D11_BUFFER_DESC occlusion_constants{};
+    occlusion_constants.ByteWidth = sizeof(OcclusionConstants);
+    occlusion_constants.Usage = D3D11_USAGE_DEFAULT;
+    occlusion_constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    g_device->CreateBuffer(&occlusion_constants, nullptr, &g_occlusion_constants);
+    D3D11_BLEND_DESC multiply{};
+    multiply.RenderTarget[0].BlendEnable = TRUE;
+    multiply.RenderTarget[0].SrcBlend = D3D11_BLEND_ZERO;
+    multiply.RenderTarget[0].DestBlend = D3D11_BLEND_SRC_COLOR;
+    multiply.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+    multiply.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ZERO;
+    multiply.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ONE;
+    multiply.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+    multiply.RenderTarget[0].RenderTargetWriteMask =
+        D3D11_COLOR_WRITE_ENABLE_RED | D3D11_COLOR_WRITE_ENABLE_GREEN | D3D11_COLOR_WRITE_ENABLE_BLUE;
+    g_device->CreateBlendState(&multiply, &g_multiply_blend);
+    D3D11_BUFFER_DESC post_constants{};
+    post_constants.ByteWidth = sizeof(PostConstants);
+    post_constants.Usage = D3D11_USAGE_DEFAULT;
+    post_constants.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    g_device->CreateBuffer(&post_constants, nullptr, &g_post_constants);
+    g_effects_enabled = setting("effects") != 0;
     ComPtr<ID3DBlob> stretch_ps = compile(kStretchPixelShader, sizeof(kStretchPixelShader) - 1, "ps_5_0", "stretch pixel");
     if (stretch_ps) {
         g_device->CreatePixelShader(stretch_ps->GetBufferPointer(), stretch_ps->GetBufferSize(), nullptr,
@@ -943,6 +1231,13 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
         g_context->PSSetConstantBuffers(1, 1, &constants);
         g_context->Draw(3, 0);
     }
+    // A scene (or a split-screen view) starts. The game also clears the same depth buffer for small targets
+    // (256x256, 512x512 reflections) in the middle of a frame; those must not restart the scene, or the occlusion
+    // was skipped in some frames and flickered.
+    if ((flags & 0x1) && surface.zeta_address && surface.width >= 640) {
+        g_scenes[surface.zeta_address] = SceneState{};
+        ++g_full_depth_clears;
+    }
     if ((flags & 0x3) && surface.zeta_address) {
         // The depth buffer has its colour target's size (D3D11 requires it when both are bound).
         if (DepthTarget* depth = get_depth_target(surface.zeta_address, target->width, target->height)) {
@@ -974,6 +1269,22 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     DepthTarget* depth = (surface.zeta_address && (state.depth_test || state.depth_write || state.stencil_test))
                              ? get_depth_target(surface.zeta_address, target->width, target->height)
                              : nullptr;
+    // Ambient occlusion between the 3D scene and what is drawn over it (the HUD keeps depth testing on, with
+    // ALWAYS and no writes, so "3D" means comparing or writing depth).
+    constexpr uint32_t kDepthAlways = 0x207;
+    const bool scene_draw = (state.depth_test && state.depth_function != kDepthAlways) || state.depth_write;
+    if (surface.zeta_address && target->width >= 640) {
+        SceneState& scene = g_scenes[surface.zeta_address];
+        if (scene_draw) {
+            scene.drawn = true;
+        } else if (scene.drawn && !scene.occluded) {
+            scene.occluded = true;
+            if (DepthTarget* scene_depth = get_depth_target(surface.zeta_address, target->width, target->height)) {
+                apply_occlusion(*target, *scene_depth);
+                ++g_occlusion_scenes;
+            }
+        }
+    }
 
     uint64_t mark = ticks();
     const auto part = [&mark](int index) {
@@ -1151,6 +1462,11 @@ void renderer_blit(const BlitRequest& b) {
     }
 }
 
+void renderer_toggle_effects() {
+    g_effects_enabled = !g_effects_enabled;
+    log_line("renderer: modern effects %s", g_effects_enabled ? "on" : "off");
+}
+
 void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_t pitch) {
     if (!g_device || !width || !height) return;
     ID3D11Texture2D* frame = nullptr;
@@ -1183,12 +1499,24 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
         frame = g_upload.Get();
         frame_view = g_upload_srv.Get();
     }
-    present_frame(frame_view);
+    if (g_presented % 600 == 599) {
+        log_line("renderer: ambient occlusion on %u of %u scenes", g_occlusion_scenes, g_full_depth_clears);
+        g_occlusion_scenes = g_full_depth_clears = 0;
+    }
+    D3D11_TEXTURE2D_DESC frame_desc{};
+    if (frame) frame->GetDesc(&frame_desc);
+    present_frame(frame_view, frame_desc.Width, frame_desc.Height);
     ++g_presented;
     ++g_stats.presents;
     log_statistics();
     if (g_dump_every && g_presented % g_dump_every == 0) {
         dump_frame(frame);  // the game's frame at its own size, not the window
+        static const bool dump_window = GetEnvironmentVariableA("MC3_DUMP_WINDOW", nullptr, 0) != 0;
+        if (dump_window) {  // what the window shows, with the effects (window-NNNNN.bmp)
+            ComPtr<ID3D11Texture2D> back_buffer;
+            g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
+            dump_frame(back_buffer.Get(), "window");
+        }
         const auto extra = g_targets.find(g_dump_target);
         if (extra != g_targets.end()) dump_frame(extra->second.texture.Get(), "target");
     }
