@@ -78,10 +78,16 @@ Modalità provate (con lo script di input, 25 ottobre 2026):
 | Modalità | Stato |
 |---|---|
 | Carriera | funziona: profilo, video, garage, acquisto dell'auto, prima gara; i progressi (auto comprata) si salvano e si ricaricano |
-| Arcade | funziona: guida libera a San Diego (su Xbox 360 in retrocompatibilità non va) |
+| Arcade | funziona: guida libera a San Diego e Tokyo (su Xbox 360 in retrocompatibilità non va) |
+| Arcade a 2 giocatori | funziona a schermo diviso (32 fps, la città è disegnata due volte); il riquadro nero dietro ogni auto è lo specchietto retrovisore, che come nell'originale mostra solo i fari delle auto dietro |
 | Rete | corretto senza connessione: "Il cavo di rete non è connesso" |
-| Sfida di Tokyo, Editor di gare | da provare (la navigazione automatica dei menu è instabile) |
+| Sfida di Tokyo | funziona (provata anche a mano, con il fiume percorribile) |
+| Editor di gare | funziona: si entra, la telecamera si muove, il menu dell'editor si apre (provato anche a mano) |
 | Profili | creazione, scelta e caricamento all'avvio funzionano |
+
+Con l'orologio a 733 MHz (26 ottobre) la navigazione automatica dei menu è affidabile: un tocco conta una volta.
+Il profilo di prova "Giocatore 2" è a Tokyo; Sfida di Tokyo è la seconda voce del menu principale, Arcade la
+terza, Editor di gare la quinta (con conferma "Sì").
 
 Da verificare a mano: fine di una gara e salvataggio della carriera dopo una vittoria; velocità nei menu (scesa a
 circa 24 fps dopo le correzioni del radar, da controllare).

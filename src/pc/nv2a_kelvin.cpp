@@ -635,16 +635,16 @@ void draw(uint32_t count, Fetch fetch) {
     if (dump_now) renderer_dump_target(target.color_address, "dump-after");
     ++g_draws;
 
-    // MC3_DEBUG_FRAME_AT=<seconds>: one line per draw during 1 s from that time (counted from the first draw), to
-    // see what the frames are made of.
+    // MC3_DEBUG_FRAME_AT=<seconds>[+<length>]: one line per draw during 1 s (or <length> s) from that time (counted
+    // from the first draw), to see what the frames are made of.
     // (Globals, not statics: draw is a template, and each instantiation would get its own window.)
     if (!g_window_start) {
-        char value[16] = {};
+        char value[32] = {};
         const ULONGLONG now = GetTickCount64();
-        g_window_start = GetEnvironmentVariableA("MC3_DEBUG_FRAME_AT", value, sizeof(value))
-                             ? now + static_cast<ULONGLONG>(std::atof(value) * 1000)
-                             : ~0ull;
-        g_window_end = g_window_start + 1000;
+        const bool set = GetEnvironmentVariableA("MC3_DEBUG_FRAME_AT", value, sizeof(value)) != 0;
+        g_window_start = set ? now + static_cast<ULONGLONG>(std::atof(value) * 1000) : ~0ull;
+        const char* plus = std::strchr(value, '+');
+        g_window_end = g_window_start + static_cast<ULONGLONG>((plus ? std::atof(plus + 1) : 1.0) * 1000);
     }
     const ULONGLONG now = GetTickCount64();
     g_debug_window_open = now >= g_window_start && now < g_window_end;
@@ -976,6 +976,12 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
                     log_line("nv2a: clear flags %02X colour %08X zeta %08X surface %08X", argument, g_k.color_clear,
                              g_k.zstencil_clear, surface().color_address);
                 }
+            }
+            if (g_debug_window_open) {
+                log_line("frame clear: flags %02X colour %08X zeta %08X rect %u %u %u %u surf %08X", argument,
+                         g_k.color_clear, g_k.zstencil_clear, g_k.clear_horizontal & 0xFFFF,
+                         g_k.clear_vertical & 0xFFFF, g_k.clear_horizontal >> 16, g_k.clear_vertical >> 16,
+                         surface().color_address);
             }
             renderer_clear(surface(), argument, g_k.color_clear, g_k.zstencil_clear, g_k.clear_horizontal & 0xFFFF,
                            g_k.clear_vertical & 0xFFFF, g_k.clear_horizontal >> 16, g_k.clear_vertical >> 16);

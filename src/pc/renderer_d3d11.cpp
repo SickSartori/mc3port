@@ -697,6 +697,11 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
     if (!g_device || !surface.width || !surface.height) return;
     Target* target = get_target(surface.color_address, surface.width, surface.height);
     if (!target) return;
+    // One more column and row than the rectangle's inclusive maximum: the game's rectangles end a pixel short of the
+    // quads it draws over them. The HUD radar clears alpha on 38..165 x 323..450 and draws its background and map,
+    // masked by destination alpha, on 39..166 x 324..451; the uncleared edge kept the scene's alpha (sun glare adds
+    // up there) and showed a dark line to the right of and under the radar.
+    x1 += 1, y1 += 1;
     // NV097_CLEAR_SURFACE: R 0x10, G 0x20, B 0x40, A 0x80 map onto D3D11's write-mask bits.
     const uint32_t channels = (flags >> 4) & 0xF;
     if (channels == 0xF) {

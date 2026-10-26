@@ -84,8 +84,9 @@ struct Port {
 struct ScriptedPress {
     ULONGLONG at_ms;
     ULONGLONG until_ms;  // "<start>-<end>:<button>" holds it; "<start>:<button>" taps it for 200 ms
-    std::string button;
+    std::string button;  // "p2a", "p2start"...: the same buttons on controller 2 (up to p4)
     bool logged = false;
+    uint32_t port = 0;
     // "@<file>[#n]+<seconds>[~<hold>]:<button>": relative to the n-th time the game opens a file whose path
     // contains <file> (menus and loads open their files: robust against timing differences between runs).
     std::string event;
@@ -106,6 +107,7 @@ XInputSetStateFunction g_xinput_set_state = nullptr;
 ULONGLONG g_next_scan_ms[kPorts] = {};  // XInputGetState on an empty port is slow: look again once a second
 bool g_host_connected[kPorts] = {};
 std::vector<ScriptedPress> g_script;
+uint32_t g_script_ports = 0;  // controllers the script presses on (a virtual pad is connected for each)
 ULONGLONG g_start_ms = 0;
 
 void load_xinput() {
@@ -162,7 +164,15 @@ void load_script() {
         }
         start = end + 1;
     }
-    log_line("input: %zu scripted presses on controller 1", g_script.size());
+    for (ScriptedPress& press : g_script) {
+        if (press.button.size() > 2 && press.button[0] == 'p' && press.button[1] >= '1' && press.button[1] <= '4') {
+            press.port = static_cast<uint32_t>(press.button[1] - '1');
+            press.button.erase(0, 2);
+            g_script_ports |= 1u << press.port;
+        }
+    }
+    g_script_ports |= 1;  // controller 1 is always there
+    log_line("input: %zu scripted presses (controllers %X)", g_script.size(), g_script_ports);
 }
 
 bool game_has_focus() {
@@ -192,8 +202,8 @@ void press(XboxGamepad& pad, const std::string& button) {
     else if (button == "sr") pad.thumb_lx = 32767;
 }
 
-// The test script's presses, on controller 1 (added to a real pad's state when one is connected).
-void apply_script(XboxGamepad& pad) {
+// The test script's presses on controller `port` (added to a real pad's state when one is connected).
+void apply_script(XboxGamepad& pad, uint32_t port) {
     if (!g_script.empty()) {
         const ULONGLONG now = GetTickCount64() - g_start_ms;
         for (ScriptedPress& entry : g_script) {
@@ -205,9 +215,12 @@ void apply_script(XboxGamepad& pad) {
                     }
                 }
             }
-            if (now >= entry.at_ms && now < entry.until_ms) {
+            if (entry.port == port && now >= entry.at_ms && now < entry.until_ms) {
                 press(pad, entry.button);
-                if (!entry.logged) log_line("input: script presses %s at %.1f s", entry.button.c_str(), now / 1000.0);
+                if (!entry.logged) {
+                    log_line("input: script presses %s on controller %u at %.1f s", entry.button.c_str(), port + 1,
+                             now / 1000.0);
+                }
                 entry.logged = true;
             }
         }
@@ -217,7 +230,7 @@ void apply_script(XboxGamepad& pad) {
 // Controller 1 without a pad: the keyboard (only while the game window is in front) and the test script.
 bool virtual_pad(XboxGamepad& pad) {
     pad = {};
-    apply_script(pad);
+    apply_script(pad, 0);
     if (game_has_focus()) {
         if (key(VK_UP)) pad.buttons |= kDpadUp;
         if (key(VK_DOWN)) pad.buttons |= kDpadDown;
@@ -261,7 +274,8 @@ XboxGamepad from_xinput(const XINPUT_GAMEPAD& in) {
     return pad;
 }
 
-// Reads port `index` from the host. Port 0 falls back to the virtual pad.
+// Reads port `index` from the host. Port 0 falls back to the virtual pad; other ports to the script's presses when
+// the script uses them (to test split screen without a second controller).
 bool read_host(uint32_t index, XboxGamepad& pad) {
     const ULONGLONG now = GetTickCount64();
     if (g_xinput_get_state && (g_host_connected[index] || now >= g_next_scan_ms[index])) {
@@ -270,11 +284,15 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
         if (!g_host_connected[index]) g_next_scan_ms[index] = now + 1000;
         if (g_host_connected[index]) {
             pad = from_xinput(state.Gamepad);
-            if (index == 0) apply_script(pad);
+            apply_script(pad, index);
             return true;
         }
     }
-    return index == 0 && virtual_pad(pad);
+    if (index == 0) return virtual_pad(pad);
+    if (!(g_script_ports & (1u << index))) return false;
+    pad = {};
+    apply_script(pad, index);
+    return true;
 }
 
 uint32_t host_mask() {
