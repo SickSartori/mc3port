@@ -1,6 +1,7 @@
 #include "pc/nv2a.h"
 
 #include <windows.h>
+#include <dwmapi.h>
 
 #include <algorithm>
 #include <atomic>
@@ -726,9 +727,16 @@ void window_thread(HANDLE ready) {
     height = std::min<LONG>(height, static_cast<LONG>((work.right - work.left) * 95 / 100 / renderer_aspect()));
     RECT rect{0, 0, static_cast<LONG>(height * renderer_aspect()), height};
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
-    g_window = CreateWindowW(L"mc3port", L"Midnight Club 3: DUB Edition Remix", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+    g_window = CreateWindowW(L"mc3port", L"Midnight Club 3: DUB Edition Remix", WS_OVERLAPPEDWINDOW,
                              CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr,
                              nullptr, window_class.hInstance, nullptr);
+    // A dark title bar (Windows 10 and 11), black on Windows 11 like the bars around the picture; set before the
+    // window shows, so that it never flashes light.
+    const BOOL dark = TRUE;
+    DwmSetWindowAttribute(g_window, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark));
+    const COLORREF black = RGB(0, 0, 0);
+    DwmSetWindowAttribute(g_window, DWMWA_CAPTION_COLOR, &black, sizeof(black));
+    ShowWindow(g_window, SW_SHOW);
     SetEvent(ready);
     MSG message;
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
