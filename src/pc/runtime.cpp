@@ -27,6 +27,8 @@
 #include "pc/input_hle.h"
 #include "pc/kernel.h"
 #include "pc/kernel_internal.h"
+#include "pc/keyboard_bindings.h"
+#include "pc/launcher_ui.h"
 #include "pc/log.h"
 #include "pc/nv2a.h"
 #include "pc/physical_memory.h"
@@ -366,7 +368,14 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
         fatal("launcher reservation %08X+%08lX is not inside its own image", address_of(reserved), reserved_size);
     }
 
-    std::optional<GameDisc> disc = open_game_disc(exe_directory);
+    load_key_bindings();
+    nv2a_load_icons();  // the exe's resources, before the XBE overwrites them
+    // The launcher, unless a disc image is given on the command line (frontends, test scripts) or MC3_SKIP_LAUNCHER
+    // or MC3_NO_DIALOG is set.
+    const bool skip_launcher = !command_line_disc().empty() || GetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", nullptr, 0) ||
+                               GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0);
+    std::optional<GameDisc> disc =
+        skip_launcher ? open_game_disc(exe_directory) : run_launcher(nv2a_open_window(), exe_directory);
     if (!disc) {
         log_line("no game disc: exiting");
         ExitProcess(0);
@@ -378,7 +387,6 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
 
     std::string error;
 
-    nv2a_load_icons();  // the exe's resources, before the XBE overwrites them
     map_xbe(*g_xbe, host);
 
     apply_hle_patches(*g_xbe);

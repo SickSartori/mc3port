@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "pc/exec_memory.h"
+#include "pc/keyboard_bindings.h"
 #include "pc/log.h"
 
 namespace mc3::pc {
@@ -232,26 +233,29 @@ bool virtual_pad(XboxGamepad& pad) {
     pad = {};
     apply_script(pad, 0);
     if (game_has_focus()) {
-        if (key(VK_UP)) pad.buttons |= kDpadUp;
-        if (key(VK_DOWN)) pad.buttons |= kDpadDown;
-        if (key(VK_LEFT)) pad.buttons |= kDpadLeft;
-        if (key(VK_RIGHT)) pad.buttons |= kDpadRight;
-        if (key(VK_RETURN) && !key(VK_MENU)) pad.buttons |= kStart;  // Alt+Enter is full screen
-        if (key(VK_BACK)) pad.buttons |= kBack;
-        if (key(VK_SPACE)) pad.analog[kAnalogA] = 255;
-        if (key(VK_ESCAPE)) pad.analog[kAnalogB] = 255;
-        if (key('Z')) pad.analog[kAnalogX] = 255;
-        if (key('C')) pad.analog[kAnalogY] = 255;
-        if (key(VK_LSHIFT)) pad.analog[kAnalogBlack] = 255;
-        if (key(VK_LCONTROL)) pad.analog[kAnalogWhite] = 255;
-        if (key('S')) pad.analog[kAnalogLeftTrigger] = 255;
-        if (key('W')) pad.analog[kAnalogRightTrigger] = 255;
-        if (key('A')) pad.thumb_lx = -32768;
-        if (key('D')) pad.thumb_lx = 32767;
-        if (key('J')) pad.thumb_rx = -32768;
-        if (key('L')) pad.thumb_rx = 32767;
-        if (key('I')) pad.thumb_ry = 32767;
-        if (key('K')) pad.thumb_ry = -32768;
+        const auto down = [](PadInput input) { return key(bound_key(input)); };
+        if (down(PadInput::kDpadUp)) pad.buttons |= kDpadUp;
+        if (down(PadInput::kDpadDown)) pad.buttons |= kDpadDown;
+        if (down(PadInput::kDpadLeft)) pad.buttons |= kDpadLeft;
+        if (down(PadInput::kDpadRight)) pad.buttons |= kDpadRight;
+        if (down(PadInput::kStart) && !(bound_key(PadInput::kStart) == VK_RETURN && key(VK_MENU))) {
+            pad.buttons |= kStart;  // Alt+Enter is full screen
+        }
+        if (down(PadInput::kBack)) pad.buttons |= kBack;
+        if (down(PadInput::kA)) pad.analog[kAnalogA] = 255;
+        if (down(PadInput::kB)) pad.analog[kAnalogB] = 255;
+        if (down(PadInput::kX)) pad.analog[kAnalogX] = 255;
+        if (down(PadInput::kY)) pad.analog[kAnalogY] = 255;
+        if (down(PadInput::kBlack)) pad.analog[kAnalogBlack] = 255;
+        if (down(PadInput::kWhite)) pad.analog[kAnalogWhite] = 255;
+        if (down(PadInput::kLeftTrigger)) pad.analog[kAnalogLeftTrigger] = 255;
+        if (down(PadInput::kRightTrigger)) pad.analog[kAnalogRightTrigger] = 255;
+        if (down(PadInput::kSteerLeft)) pad.thumb_lx = -32768;
+        if (down(PadInput::kSteerRight)) pad.thumb_lx = 32767;
+        if (down(PadInput::kLookLeft)) pad.thumb_rx = -32768;
+        if (down(PadInput::kLookRight)) pad.thumb_rx = 32767;
+        if (down(PadInput::kLookUp)) pad.thumb_ry = 32767;
+        if (down(PadInput::kLookDown)) pad.thumb_ry = -32768;
     }
     return true;  // controller 1 is always there
 }

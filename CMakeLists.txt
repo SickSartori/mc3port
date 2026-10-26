@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(mc3port LANGUAGES C CXX)
+project(mc3port VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,6 +23,18 @@ if(WIN32)
                             "Configure with -A Win32 or use the 'pc-x86' preset.")
     endif()
 
+    # Dear ImGui (MIT, third_party/imgui): the launcher's interface.
+    add_library(imgui STATIC
+        third_party/imgui/imgui.cpp
+        third_party/imgui/imgui_draw.cpp
+        third_party/imgui/imgui_tables.cpp
+        third_party/imgui/imgui_widgets.cpp
+        third_party/imgui/backends/imgui_impl_dx11.cpp
+        third_party/imgui/backends/imgui_impl_win32.cpp
+    )
+    target_include_directories(imgui PUBLIC third_party/imgui)
+    target_compile_definitions(imgui PRIVATE NOMINMAX)
+
     # Runtime: maps the XBE, emulates the Xbox kernel and hosts the game's threads.
     add_library(mc3runtime SHARED
         src/pc/audio_mixer.cpp
@@ -40,6 +52,10 @@ if(WIN32)
         src/pc/kernel_memory.cpp
         src/pc/kernel_system.cpp
         src/pc/kernel_threads.cpp
+        src/pc/keyboard_bindings.cpp
+        src/pc/launcher_art.cpp
+        src/pc/launcher_music.cpp
+        src/pc/launcher_ui.cpp
         src/pc/log.cpp
         src/pc/mmio.cpp
         src/pc/nv2a.cpp
@@ -53,18 +69,21 @@ if(WIN32)
         src/pc/runtime.cpp
         src/pc/settings.cpp
         src/pc/xbox_thread.cpp
+        res/launcher.rc
     )
-    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32)
-    target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
+    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp imgui mfplat mfreadwrite mfuuid shlwapi)
+    target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
+                               MC3PORT_VERSION="${PROJECT_VERSION}")
+    target_compile_options(mc3runtime PRIVATE /utf-8)
 
     # Launcher: linked at the XBE base (0x10000) so Windows reserves the game's address range for us.
     # It has no CRT; runtime checks and security cookies would pull one in.
     string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
     add_executable(mc3 src/pc/launcher.c res/mc3.rc)
     target_compile_options(mc3 PRIVATE /GS-)
-    target_link_libraries(mc3 PRIVATE kernel32)
+    target_link_libraries(mc3 PRIVATE kernel32 user32)
     target_link_options(mc3 PRIVATE
-        /NODEFAULTLIB /ENTRY:LauncherEntry /SUBSYSTEM:CONSOLE
+        /NODEFAULTLIB /ENTRY:LauncherEntry /SUBSYSTEM:WINDOWS
         /BASE:0x10000 /FIXED /DYNAMICBASE:NO /LARGEADDRESSAWARE
         /SAFESEH:NO /INCREMENTAL:NO
     )

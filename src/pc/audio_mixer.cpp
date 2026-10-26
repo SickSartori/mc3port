@@ -16,6 +16,7 @@
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
+#include "pc/settings.h"
 #include "pc/xbox_types.h"
 
 namespace mc3::pc {
@@ -369,7 +370,9 @@ void mix(float* out, uint32_t frames) {
     }
     // Master level (the Xbox keeps headroom too), then a soft limiter instead of hard clipping: linear up to 0.8,
     // a smooth knee above, so many voices at once round off instead of crackling.
-    constexpr float kMasterGain = 0.4f, kKnee = 0.8f;  // 0.5 still kept the limiter busy while driving
+    constexpr float kKnee = 0.8f;
+    // 0.4 at full volume: 0.5 still kept the limiter busy while driving.
+    static const float kMasterGain = 0.4f * std::clamp(setting("volume"), 0.0f, 100.0f) / 100.0f;
     float peak = 0;
     uint32_t limited = 0;
     for (uint32_t i = 0; i < frames * 2; ++i) {

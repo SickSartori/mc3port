@@ -1,0 +1,10 @@
+// Resources of mc3runtime.dll: the launcher's music (generated for mc3port with ElevenLabs Music) and fonts (Barlow Semi Condensed, SIL Open Font License, see
+// third_party/fonts/OFL.txt). In the DLL, not in mc3.exe, whose image the XBE overwrites.
+#include "launcher_resources.h"
+
+IDR_FONT_MEDIUM RCDATA "../third_party/fonts/BarlowSemiCondensed-Medium.ttf"
+IDR_FONT_SEMIBOLD RCDATA "../third_party/fonts/BarlowSemiCondensed-SemiBold.ttf"
+IDR_FONT_MEDIUM_ITALIC RCDATA "../third_party/fonts/BarlowSemiCondensed-MediumItalic.ttf"
+IDR_FONT_EXTRABOLD_ITALIC RCDATA "../third_party/fonts/BarlowSemiCondensed-ExtraBoldItalic.ttf"
+IDR_LAUNCHER_MUSIC RCDATA "launcher_music.mp3"
+IDR_FONT_BLACK_ITALIC RCDATA "../third_party/fonts/BarlowSemiCondensed-BlackItalic.ttf"

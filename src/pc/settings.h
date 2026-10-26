@@ -12,6 +12,10 @@ void settings_load(const std::filesystem::path& file);
 
 // The value of a key listed in settings.cpp (its default when the file and the environment do not set it).
 float setting(const char* key);
+// The key's default value.
+float setting_default(const char* key);
+// Stores a new value into the file (the other lines and their comments stay as they are).
+void setting_save(const char* key, float value);
 
 // A text key listed in settings.cpp (UTF-8; empty when not set), and storing a new value into the file (the other
 // lines and their comments stay as they are).

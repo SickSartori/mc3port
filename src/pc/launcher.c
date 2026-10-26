@@ -15,18 +15,11 @@ unsigned char g_xbe_reserve[XBE_RESERVE_SIZE];
 
 typedef void(__cdecl* Mc3RunFunction)(void* reserved, unsigned long reserved_size);
 
-static void write_error(const char* text) {
-    DWORD written = 0;
-    DWORD length = 0;
-    while (text[length]) ++length;
-    WriteFile(GetStdHandle(STD_ERROR_HANDLE), text, length, &written, NULL);
-}
-
 void __cdecl LauncherEntry(void) {
     HMODULE runtime = LoadLibraryW(L"mc3runtime.dll");
     Mc3RunFunction run = runtime ? (Mc3RunFunction)GetProcAddress(runtime, "mc3_run") : NULL;
     if (!run) {
-        write_error("mc3: cannot load mc3runtime.dll (it must be next to mc3.exe)\r\n");
+        MessageBoxA(NULL, "Cannot load mc3runtime.dll: it must be next to mc3.exe.", "mc3port", MB_ICONERROR | MB_OK);
         ExitProcess(1);
     }
     run(g_xbe_reserve, XBE_RESERVE_SIZE);

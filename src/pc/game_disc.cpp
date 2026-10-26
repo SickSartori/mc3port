@@ -52,8 +52,9 @@ std::string sha256(const std::vector<uint8_t>& data) {
     return hex;
 }
 
-// Opens `path` as the game disc; on failure, `problem` says why in the player's words.
-std::optional<GameDisc> try_disc(const std::filesystem::path& path, std::string& problem) {
+}  // namespace
+
+std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::string& problem) {
     std::string error;
     std::unique_ptr<XdvdfsImage> image = XdvdfsImage::open(path, &error);
     const std::optional<XdvdfsImage::Entry> entry = image ? image->find("default.xbe") : std::nullopt;
@@ -98,6 +99,8 @@ std::filesystem::path command_line_disc() {
     return result;
 }
 
+namespace {
+
 std::vector<std::filesystem::path> nearby_discs(const std::filesystem::path& exe_directory) {
     std::vector<std::filesystem::path> found;
     std::error_code ignored;
@@ -115,7 +118,9 @@ std::vector<std::filesystem::path> nearby_discs(const std::filesystem::path& exe
     return found;
 }
 
-std::filesystem::path ask_for_disc() {
+}  // namespace
+
+std::filesystem::path ask_for_disc_image(void* owner_window) {
     wchar_t file[MAX_PATH * 4] = {};
     const std::wstring title = wide(text("Choose your Midnight Club 3: DUB Edition Remix disc image (Xbox, Europe)",
                                          "Scegli l'immagine del disco di Midnight Club 3: DUB Edition Remix (Xbox, "
@@ -125,6 +130,7 @@ std::filesystem::path ask_for_disc() {
                                 std::wstring(L"\0*.*\0\0", 6);
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = static_cast<HWND>(owner_window);
     dialog.lpstrFilter = filter.c_str();
     dialog.lpstrFile = file;
     dialog.nMaxFile = static_cast<DWORD>(std::size(file));
@@ -133,10 +139,7 @@ std::filesystem::path ask_for_disc() {
     return GetOpenFileNameW(&dialog) ? std::filesystem::path(file) : std::filesystem::path();
 }
 
-}  // namespace
-
-std::optional<GameDisc> open_game_disc(const std::filesystem::path& exe_directory) {
-    std::string problem;
+std::optional<GameDisc> find_game_disc(const std::filesystem::path& exe_directory, std::string& problem) {
     std::vector<std::filesystem::path> candidates;
     if (const std::filesystem::path argument = command_line_disc(); !argument.empty()) candidates.push_back(argument);
     const std::string remembered = setting_text("disc_image");
@@ -150,8 +153,14 @@ std::optional<GameDisc> open_game_disc(const std::filesystem::path& exe_director
             log_line("disc: %s not found", utf8(candidate).c_str());
             continue;
         }
-        if (std::optional<GameDisc> disc = try_disc(candidate, problem)) return disc;
+        if (std::optional<GameDisc> disc = check_game_disc(candidate, problem)) return disc;
     }
+    return std::nullopt;
+}
+
+std::optional<GameDisc> open_game_disc(const std::filesystem::path& exe_directory) {
+    std::string problem;
+    if (std::optional<GameDisc> disc = find_game_disc(exe_directory, problem)) return disc;
 
     // MC3_NO_DIALOG: automated runs end here instead of waiting for the player.
     const bool dialogs = !GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0);
@@ -165,12 +174,12 @@ std::optional<GameDisc> open_game_disc(const std::filesystem::path& exe_director
         MessageBoxW(nullptr, message.c_str(), L"mc3port", MB_ICONWARNING | MB_OK);
     }
     for (;;) {
-        const std::filesystem::path chosen = ask_for_disc();
+        const std::filesystem::path chosen = ask_for_disc_image(nullptr);
         if (chosen.empty()) {
             log_line("disc: the player closed the file dialog");
             return std::nullopt;
         }
-        if (std::optional<GameDisc> disc = try_disc(chosen, problem)) {
+        if (std::optional<GameDisc> disc = check_game_disc(chosen, problem)) {
             setting_save_text("disc_image", utf8(chosen));
             return disc;
         }

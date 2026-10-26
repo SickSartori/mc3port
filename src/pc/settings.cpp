@@ -23,8 +23,12 @@ struct Setting {
 };
 
 const Setting kSettings[] = {
+    {"game_language", 0, "Game language: 0 = like Windows, 1 = English, 3 = German, 4 = French, 5 = Spanish, 6 = Italian."},
     {"frame_rate", 30, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work)."},
     {"widescreen", 1, "16:9 widescreen: 1 = the game's own widescreen mode (wider view, no black bars), 0 = 4:3 like a classic TV."},
+    {"fullscreen", 0, "Start in full screen: 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},
+    {"volume", 100, "Overall volume, 0 to 100."},
+    {"check_updates", 1, "Look for a newer mc3port release on GitHub when the launcher opens: 1 = yes, 0 = no."},
     {"gpu_vertices", 1, "Vertex processing on the graphics card: 1 = yes (faster), 0 = on the processor."},
     {"render_scale", 2, "Internal resolution: 1 = like the Xbox (640x480), 2 = 1280x960, 3, 4. Higher = smoother edges."},
     {"anisotropy", 16, "Anisotropic texture filtering: 1 = off, up to 16."},
@@ -46,6 +50,7 @@ struct TextSetting {
 
 const TextSetting kTextSettings[] = {
     {"disc_image", "Your Midnight Club 3: DUB Edition Remix disc image (.iso). Filled in when you choose it; empty = ask."},
+    {"keyboard", "Keyboard keys for controller 1 (Windows virtual-key codes); change them in the launcher. Empty = defaults."},
 };
 
 std::filesystem::path g_file;
@@ -130,8 +135,10 @@ std::string setting_text(const char* key) {
     return found != g_texts.end() ? found->second : std::string();
 }
 
-void setting_save_text(const char* key, const std::string& value) {
-    g_texts[key] = value;
+namespace {
+
+// Replaces the key's line in the file, or appends it with the key's comment.
+void save_line(const char* key, const std::string& value, const char* comment) {
     std::vector<std::string> lines;
     {
         std::ifstream in(g_file);
@@ -145,14 +152,41 @@ void setting_save_text(const char* key, const std::string& value) {
         }
     }
     if (!replaced) {
-        for (const TextSetting& s : kTextSettings) {
-            if (std::strcmp(s.key, key) == 0) lines.insert(lines.end(), {"", std::string("# ") + s.comment});
-        }
+        if (comment) lines.insert(lines.end(), {"", std::string("# ") + comment});
         lines.push_back(std::string(key) + " = " + value);
     }
     std::ofstream out(g_file, std::ios::trunc);
     for (const std::string& line : lines) out << line << "\n";
     if (!out) log_line("settings: could not write %s", g_file.string().c_str());
+}
+
+}  // namespace
+
+void setting_save_text(const char* key, const std::string& value) {
+    g_texts[key] = value;
+    const char* comment = nullptr;
+    for (const TextSetting& s : kTextSettings) {
+        if (std::strcmp(s.key, key) == 0) comment = s.comment;
+    }
+    save_line(key, value, comment);
+}
+
+float setting_default(const char* key) {
+    for (const Setting& s : kSettings) {
+        if (std::strcmp(s.key, key) == 0) return s.value;
+    }
+    return 0;
+}
+
+void setting_save(const char* key, float value) {
+    g_values[key] = value;
+    const char* comment = nullptr;
+    for (const Setting& s : kSettings) {
+        if (std::strcmp(s.key, key) == 0) comment = s.comment;
+    }
+    char text[32];
+    std::snprintf(text, sizeof(text), "%g", value);
+    save_line(key, text, comment);
 }
 
 }  // namespace mc3::pc

@@ -664,8 +664,10 @@ void gpu_thread() {
 // --- display ---
 
 // Full screen without a border on the window's monitor, and back to the window as it was (Alt+Enter or F11).
+bool g_full_screen = false;
+
 void toggle_full_screen(HWND window) {
-    static bool full_screen = false;
+    bool& full_screen = g_full_screen;
     static WINDOWPLACEMENT placement{sizeof(WINDOWPLACEMENT)};
     if (!full_screen) {
         MONITORINFO monitor{sizeof(MONITORINFO)};
@@ -686,7 +688,13 @@ void toggle_full_screen(HWND window) {
     full_screen = !full_screen;
 }
 
+std::atomic<WindowHook> g_window_hook{nullptr};  // nv2a_set_window_hook
+
 LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (const WindowHook hook = g_window_hook.load()) {
+        LRESULT result = 0;
+        if (hook(window, message, wparam, lparam, &result)) return result;
+    }
     if (message == WM_CLOSE) {
         log_line("window closed by the user");
         ExitProcess(0);
@@ -727,9 +735,11 @@ void window_thread(HANDLE ready) {
     height = std::min<LONG>(height, static_cast<LONG>((work.right - work.left) * 95 / 100 / renderer_aspect()));
     RECT rect{0, 0, static_cast<LONG>(height * renderer_aspect()), height};
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+    const int width = rect.right - rect.left, height_with_frame = rect.bottom - rect.top;  // centred in the work area
     g_window = CreateWindowW(L"mc3port", L"Midnight Club 3: DUB Edition Remix", WS_OVERLAPPEDWINDOW,
-                             CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr,
-                             nullptr, window_class.hInstance, nullptr);
+                             work.left + std::max<LONG>(0, (work.right - work.left - width) / 2),
+                             work.top + std::max<LONG>(0, (work.bottom - work.top - height_with_frame) / 2), width,
+                             height_with_frame, nullptr, nullptr, window_class.hInstance, nullptr);
     // A dark title bar (Windows 10 and 11), black on Windows 11 like the bars around the picture; set before the
     // window shows, so that it never flashes light.
     const BOOL dark = TRUE;
@@ -737,6 +747,7 @@ void window_thread(HANDLE ready) {
     const COLORREF black = RGB(0, 0, 0);
     DwmSetWindowAttribute(g_window, DWMWA_CAPTION_COLOR, &black, sizeof(black));
     ShowWindow(g_window, SW_SHOW);
+    if (setting("fullscreen") != 0) toggle_full_screen(g_window);
     SetEvent(ready);
     MSG message;
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
@@ -871,10 +882,7 @@ bool start_nv2a() {
     reg(kPfbCstatus) = kPhysicalMemorySize;
     reg(kPgraphFifo) = 1;  // PGRAPH takes methods
 
-    HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-    std::thread(window_thread, ready).detach();
-    WaitForSingleObject(ready, 5000);
-    CloseHandle(ready);
+    nv2a_open_window();
     kelvin_initialise(&dma_base);
     std::thread(gpu_thread).detach();
     start_game_code_thread(interrupt_thread);
@@ -890,6 +898,22 @@ bool nv2a_handle_access_violation(CONTEXT* context, uint32_t address) {
     log_line("nv2a: cannot emulate the register access at %08lX (address %08X, code %02X %02X %02X %02X)",
              context->Eip, address, code[0], code[1], code[2], code[3]);
     return false;
+}
+
+HWND nv2a_open_window() {
+    if (!g_window) {
+        HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        std::thread(window_thread, ready).detach();
+        WaitForSingleObject(ready, 5000);
+        CloseHandle(ready);
+    }
+    return g_window;
+}
+
+void nv2a_set_window_hook(WindowHook hook) { g_window_hook = hook; }
+
+void nv2a_set_full_screen(bool full_screen) {
+    if (g_window && full_screen != g_full_screen) toggle_full_screen(g_window);
 }
 
 void nv2a_load_icons() {

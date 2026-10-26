@@ -169,13 +169,19 @@ constexpr uint32_t kRegBinary = 3;
 constexpr uint32_t kRegDword = 4;
 
 uint32_t configured_language() {
-    // XC_LANGUAGE: 1 English, 2 Japanese, 3 German, 4 French, 5 Spanish, 6 Italian.
+    // XC_LANGUAGE: 1 English, 2 Japanese, 3 German, 4 French, 5 Spanish, 6 Italian. MC3_LANGUAGE, else the
+    // game_language setting, else Windows' language when the disc has it (English otherwise).
     char value[8] = {};
-    if (GetEnvironmentVariableA("MC3_LANGUAGE", value, sizeof(value))) {
-        const int language = std::atoi(value);
-        if (language >= 1 && language <= 6) return static_cast<uint32_t>(language);
+    int language = GetEnvironmentVariableA("MC3_LANGUAGE", value, sizeof(value)) ? std::atoi(value)
+                                                                                   : static_cast<int>(setting("game_language"));
+    if (language == 1 || (language >= 3 && language <= 6)) return static_cast<uint32_t>(language);
+    switch (PRIMARYLANGID(GetUserDefaultUILanguage())) {
+        case LANG_GERMAN: return 3;
+        case LANG_FRENCH: return 4;
+        case LANG_SPANISH: return 5;
+        case LANG_ITALIAN: return 6;
+        default: return 1;
     }
-    return 6;
 }
 
 NTSTATUS __stdcall ExQueryNonVolatileSetting(uint32_t value_index, uint32_t* type, void* value, uint32_t value_length,

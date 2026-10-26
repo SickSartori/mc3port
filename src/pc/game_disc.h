@@ -17,10 +17,22 @@ struct GameDisc {
     Xbe xbe;
 };
 
-// The disc image from the command line, else the one remembered in mc3port.ini (disc_image), else an .iso next
-// to mc3.exe or in the working directory, else one the player picks in a file dialog (then remembered). Each must
-// hold the supported game: the PAL Midnight Club 3: DUB Edition Remix, whose code the port's patches are made
-// for (MC3_ANY_VERSION=1 accepts any). Returns nothing when the player gives up (the caller exits).
+// Opens `path` if it holds the supported game: the PAL Midnight Club 3: DUB Edition Remix, whose code the port's
+// patches are made for (MC3_ANY_VERSION=1 accepts any). Otherwise `problem` says why, for the player.
+std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::string& problem);
+
+// The disc image given on the command line (empty if none).
+std::filesystem::path command_line_disc();
+
+// Without asking: the command line's disc image, else the one remembered in mc3port.ini (disc_image), else an .iso
+// next to mc3.exe or in the working directory. `problem` tells why the last one tried was refused.
+std::optional<GameDisc> find_game_disc(const std::filesystem::path& exe_directory, std::string& problem);
+
+// The file dialog for choosing a disc image (empty path if closed).
+std::filesystem::path ask_for_disc_image(void* owner_window);
+
+// find_game_disc, then message boxes and the file dialog until a good disc is chosen (then remembered). Returns
+// nothing when the player gives up (the caller exits). Used when the launcher is skipped.
 std::optional<GameDisc> open_game_disc(const std::filesystem::path& exe_directory);
 
 }  // namespace mc3::pc
