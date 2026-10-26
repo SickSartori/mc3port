@@ -169,8 +169,8 @@ float ease_out(float t) {
 
 // --- shared state with the window thread ---
 
-// ImGui's input queue is filled by the window thread. Recursive: ImGui's own calls (SetCapture on a click) send\r
-// messages straight back into window_hook on the same thread.\r
+// ImGui's input queue is filled by the window thread. Recursive: ImGui's own calls (SetCapture on a click) send
+// messages straight back into window_hook on the same thread.
 std::recursive_mutex g_ui_mutex;
 std::atomic<int> g_captured_key{0};    // the key pressed while rebinding (0: none)
 std::atomic<bool> g_capturing{false};
