@@ -172,6 +172,47 @@ bool texture_is_linear(const TextureDescriptor& texture) {
     return info && info->kind == kLinear;
 }
 
+uint32_t texture_levels(const TextureDescriptor& texture) {
+    const FormatInfo* info = format_info(color_code(texture));
+    if (!info || info->kind == kLinear || (texture.format & 0x4)) return 1;  // linear and cube maps: top level only
+    const uint32_t log_u = (texture.format >> 20) & 0xF, log_v = (texture.format >> 24) & 0xF;
+    return std::clamp<uint32_t>((texture.format >> 16) & 0xF, 1, std::max(log_u, log_v) + 1);
+}
+
+namespace {
+
+// Bytes of one level of a swizzled or compressed texture (DXT levels are at least one 4x4 block).
+uint32_t level_bytes(const FormatInfo& info, uint32_t width, uint32_t height) {
+    return info.kind == kCompressed ? std::max(1u, width / 4) * std::max(1u, height / 4) * info.bytes_per_texel
+                                    : width * height * info.bytes_per_texel;
+}
+
+}  // namespace
+
+TextureDescriptor texture_level(const TextureDescriptor& texture, uint32_t level) {
+    const FormatInfo* info = format_info(color_code(texture));
+    if (!info || level == 0) return texture;
+    const uint32_t log_u = (texture.format >> 20) & 0xF, log_v = (texture.format >> 24) & 0xF;
+    TextureDescriptor result = texture;
+    for (uint32_t l = 0; l < level; ++l) {
+        result.address += level_bytes(*info, 1u << (log_u > l ? log_u - l : 0), 1u << (log_v > l ? log_v - l : 0));
+    }
+    const uint32_t u = log_u > level ? log_u - level : 0, v = log_v > level ? log_v - level : 0;
+    result.format = (texture.format & ~0x0FFF0000u) | (1u << 16) | (u << 20) | (v << 24);
+    return result;
+}
+
+uint32_t texture_total_bytes(const TextureDescriptor& texture) {
+    uint32_t width = 0, height = 0, bytes = 0;
+    if (!texture_extent(texture, &width, &height, &bytes)) return 0;
+    const uint32_t levels = texture_levels(texture);
+    if (levels == 1) return bytes;
+    const TextureDescriptor last = texture_level(texture, levels - 1);
+    uint32_t last_width = 0, last_height = 0, last_bytes = 0;
+    texture_extent(last, &last_width, &last_height, &last_bytes);
+    return last.address - texture.address + last_bytes;
+}
+
 TextureImage decode_texture(const TextureDescriptor& texture) {
     TextureImage image;
     const uint32_t code = color_code(texture);

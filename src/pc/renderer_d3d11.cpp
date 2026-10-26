@@ -215,16 +215,31 @@ ComPtr<ID3DBlob> compile(const char* source, size_t size, const char* profile, c
     return code;
 }
 
+// Internal resolution: every render target is this many times the game's size in each direction, and drawn
+// scaled (positions arrive relative to the game's size, so only viewports, scissors, clears and copies change).
+// The picture is reduced to the window when presented: smoother edges and sharper detail (MC3_RENDER_SCALE=1..4).
+const uint32_t g_scale = [] {
+    char value[8] = {};
+    const uint32_t scale = GetEnvironmentVariableA("MC3_RENDER_SCALE", value, sizeof(value))
+                               ? static_cast<uint32_t>(std::strtoul(value, nullptr, 10))
+                               : 2u;
+    return std::clamp<uint32_t>(scale, 1, 4);
+}();
+
+LONG scaled(uint32_t pixels) { return static_cast<LONG>(pixels * g_scale); }
+float scaled_float(uint32_t pixels) { return static_cast<float>(pixels * g_scale); }
+
 // The surface at `address`, at least width x height. A smaller request reuses the existing target (the draw's
-// viewport covers only its part); a larger one grows it and keeps what was drawn so far.
+// viewport covers only its part); a larger one grows it and keeps what was drawn so far. Sizes are the game's;
+// the texture is g_scale times larger.
 Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     Target& target = g_targets[address];
     if (target.texture && target.width >= width && target.height >= height) return &target;
     width = std::max(width, target.width);
     height = std::max(height, target.height);
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = width;
-    desc.Height = height;
+    desc.Width = width * g_scale;
+    desc.Height = height * g_scale;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = target.format;
@@ -238,7 +253,7 @@ Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     grown.width = width;
     grown.height = height;
     if (target.texture) {
-        const D3D11_BOX box{0, 0, 0, target.width, target.height, 1};
+        const D3D11_BOX box{0, 0, 0, target.width * g_scale, target.height * g_scale, 1};
         g_context->CopySubresourceRegion(grown.texture.Get(), 0, 0, 0, 0, target.texture.Get(), 0, &box);
     }
     target = grown;
@@ -254,8 +269,8 @@ ComPtr<ID3D11PixelShader> g_copy_pixel_shader;
 void make_float_target(Target& target, uint32_t address) {
     if (target.format == DXGI_FORMAT_R16G16B16A16_FLOAT || !g_copy_pixel_shader) return;
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = target.width;
-    desc.Height = target.height;
+    desc.Width = target.width * g_scale;
+    desc.Height = target.height * g_scale;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
@@ -273,9 +288,9 @@ void make_float_target(Target& target, uint32_t address) {
     g_context->OMSetRenderTargets(1, &rtv, nullptr);
     g_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
     g_context->OMSetDepthStencilState(nullptr, 0);
-    const D3D11_VIEWPORT viewport{0, 0, static_cast<float>(target.width), static_cast<float>(target.height), 0, 1};
+    const D3D11_VIEWPORT viewport{0, 0, scaled_float(target.width), scaled_float(target.height), 0, 1};
     g_context->RSSetViewports(1, &viewport);
-    const D3D11_RECT all{0, 0, static_cast<LONG>(target.width), static_cast<LONG>(target.height)};
+    const D3D11_RECT all{0, 0, scaled(target.width), scaled(target.height)};
     g_context->RSSetScissorRects(1, &all);
     g_context->RSSetState(g_rasterizer.Get());
     g_context->IASetInputLayout(nullptr);
@@ -297,8 +312,8 @@ DepthTarget* get_depth_target(uint32_t address, uint32_t width, uint32_t height)
                                           address];
     if (target.texture && target.width == width && target.height == height) return &target;
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = width;
-    desc.Height = height;
+    desc.Width = width * g_scale;
+    desc.Height = height * g_scale;
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -427,14 +442,36 @@ ID3D11SamplerState* sampler(const TextureStage& stage) {
     ComPtr<ID3D11SamplerState>& cached = g_samplers[{stage.address_mode, stage.filter}];
     if (cached) return cached.Get();
     D3D11_SAMPLER_DESC desc{};
+    // NV097_SET_TEXTURE_FILTER: magnification 1 nearest, 2 linear; minification 1 nearest, 2 linear, 3-6 the
+    // four mipmap combinations (nearest/linear within a level, nearest/linear between levels), 7 convolution.
+    const uint32_t min = (stage.filter >> 16) & 0xFF;
     const bool linear_mag = ((stage.filter >> 24) & 0xF) != 1;
-    const bool linear_min = ((stage.filter >> 16) & 0xFF) != 1;
-    desc.Filter = linear_mag ? (linear_min ? D3D11_FILTER_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT)
-                             : (linear_min ? D3D11_FILTER_MIN_LINEAR_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_POINT);
+    const bool linear_min = min == 2 || min == 4 || min == 6 || min == 7;
+    const bool mipmaps = min >= 3 && min <= 6;
+    const bool linear_mip = min == 5 || min == 6;
+    static constexpr D3D11_FILTER kFilters[8] = {
+        D3D11_FILTER_MIN_MAG_MIP_POINT,          D3D11_FILTER_MIN_MAG_POINT_MIP_LINEAR,
+        D3D11_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT, D3D11_FILTER_MIN_POINT_MAG_MIP_LINEAR,
+        D3D11_FILTER_MIN_LINEAR_MAG_MIP_POINT,   D3D11_FILTER_MIN_LINEAR_MAG_POINT_MIP_LINEAR,
+        D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT,   D3D11_FILTER_MIN_MAG_MIP_LINEAR};
+    desc.Filter = kFilters[(linear_min ? 4 : 0) | (linear_mag ? 2 : 0) | (linear_mip ? 1 : 0)];
+    // Smooth (trilinear) filtering becomes anisotropic: textures seen at a slant (roads, walls) stay sharp
+    // (MC3_ANISOTROPY=1..16, 1 = off).
+    static const UINT anisotropy = [] {
+        char value[8] = {};
+        const UINT level = GetEnvironmentVariableA("MC3_ANISOTROPY", value, sizeof(value))
+                               ? static_cast<UINT>(std::strtoul(value, nullptr, 10))
+                               : 16u;
+        return std::clamp<UINT>(level, 1, 16);
+    }();
+    if (linear_min && linear_mag && mipmaps && anisotropy > 1) {
+        desc.Filter = D3D11_FILTER_ANISOTROPIC;
+        desc.MaxAnisotropy = anisotropy;
+    }
     desc.AddressU = address_mode(stage.address_mode & 0xF);
     desc.AddressV = address_mode((stage.address_mode >> 8) & 0xF);
     desc.AddressW = address_mode((stage.address_mode >> 16) & 0xF);
-    desc.MaxLOD = D3D11_FLOAT32_MAX;
+    desc.MaxLOD = mipmaps ? D3D11_FLOAT32_MAX : 0;  // without mipmap filtering only the top level is used
     g_device->CreateSamplerState(&desc, &cached);
     return cached.Get();
 }
@@ -464,6 +501,16 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
 
     uint32_t width = 0, height = 0, bytes = 0;
     if (!texture_extent(d, &width, &height, &bytes)) return nullptr;
+    // The game's own mip levels follow the top one; they are checked and hashed with it.
+    uint32_t levels = texture_levels(d);
+    if (levels > 1) {
+        const uint32_t all = texture_total_bytes(d);
+        if (physical_pointer(d.address + all - 1)) {
+            bytes = all;
+        } else {
+            levels = 1;
+        }
+    }
     const uint8_t* memory = physical_pointer(d.address);
     if (!memory || !physical_pointer(d.address + bytes - 1)) return nullptr;
     CachedTexture& cached = g_textures[std::make_tuple(d.address, d.format, d.pitch, d.rect, d.palette)];
@@ -515,10 +562,18 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
             std::fclose(file);
         }
     }
+    std::vector<TextureImage> lower_levels;
+    for (uint32_t level = 1; level < levels; ++level) {
+        lower_levels.push_back(decode_texture(texture_level(d, level)));
+        if (lower_levels.back().layout != image.layout) {
+            lower_levels.clear();
+            break;
+        }
+    }
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = image.width;
     desc.Height = image.height;
-    desc.MipLevels = 1;
+    desc.MipLevels = 1 + static_cast<UINT>(lower_levels.size());
     desc.ArraySize = 1;
     desc.Format = image.layout == TextureLayout::Bc1   ? DXGI_FORMAT_BC1_UNORM
                   : image.layout == TextureLayout::Bc2 ? DXGI_FORMAT_BC2_UNORM
@@ -526,9 +581,10 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
                                                        : DXGI_FORMAT_B8G8R8A8_UNORM;
     desc.SampleDesc.Count = 1;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA data{image.data.data(), image.row_pitch, 0};
+    std::vector<D3D11_SUBRESOURCE_DATA> data{{image.data.data(), image.row_pitch, 0}};
+    for (const TextureImage& level : lower_levels) data.push_back({level.data.data(), level.row_pitch, 0});
     cached = CachedTexture{};
-    if (FAILED(g_device->CreateTexture2D(&desc, &data, &cached.texture))) return nullptr;
+    if (FAILED(g_device->CreateTexture2D(&desc, data.data(), &cached.texture))) return nullptr;
     g_device->CreateShaderResourceView(cached.texture.Get(), nullptr, &cached.srv);
     cached.content_hash = hash;
     return cached.srv.Get();
@@ -645,6 +701,56 @@ void present_frame(ID3D11ShaderResourceView* frame) {
     g_context->PSSetShaderResources(0, 1, &none);
 }
 
+// Guest pixels (32-bit) into a region of an enlarged render target: through a small texture drawn g_scale times
+// larger, since a copy cannot stretch.
+ComPtr<ID3D11PixelShader> g_stretch_pixel_shader;
+ComPtr<ID3D11SamplerState> g_point_sampler;
+ComPtr<ID3D11Texture2D> g_stretch_source;
+ComPtr<ID3D11ShaderResourceView> g_stretch_source_srv;
+uint32_t g_stretch_width = 0, g_stretch_height = 0;
+
+void upload_scaled(Target& to, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const uint8_t* pixels,
+                   uint32_t pitch) {
+    if (!pixels || !g_stretch_pixel_shader) return;
+    if (!g_stretch_source || g_stretch_width != width || g_stretch_height != height) {
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = width;
+        desc.Height = height;
+        desc.MipLevels = 1;
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        g_stretch_source.Reset();
+        g_stretch_source_srv.Reset();
+        if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &g_stretch_source))) return;
+        g_device->CreateShaderResourceView(g_stretch_source.Get(), nullptr, &g_stretch_source_srv);
+        g_stretch_width = width;
+        g_stretch_height = height;
+    }
+    g_context->UpdateSubresource(g_stretch_source.Get(), 0, nullptr, pixels, pitch, 0);
+    ID3D11RenderTargetView* rtv = to.rtv.Get();
+    g_context->OMSetRenderTargets(1, &rtv, nullptr);
+    g_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+    g_context->OMSetDepthStencilState(nullptr, 0);
+    const D3D11_VIEWPORT viewport{scaled_float(x), scaled_float(y), scaled_float(width), scaled_float(height), 0, 1};
+    g_context->RSSetViewports(1, &viewport);
+    const D3D11_RECT scissor{scaled(x), scaled(y), scaled(x + width), scaled(y + height)};
+    g_context->RSSetScissorRects(1, &scissor);
+    g_context->RSSetState(g_rasterizer.Get());
+    g_context->IASetInputLayout(nullptr);
+    g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_context->VSSetShader(g_present_vertex_shader.Get(), nullptr, 0);
+    g_context->PSSetShader(g_stretch_pixel_shader.Get(), nullptr, 0);
+    ID3D11ShaderResourceView* source = g_stretch_source_srv.Get();
+    g_context->PSSetShaderResources(0, 1, &source);
+    ID3D11SamplerState* sampler = g_point_sampler.Get();
+    g_context->PSSetSamplers(0, 1, &sampler);
+    g_context->Draw(3, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    g_context->PSSetShaderResources(0, 1, &none);
+}
+
 }  // namespace
 
 bool renderer_start(HWND window) {
@@ -751,6 +857,19 @@ bool renderer_start(HWND window) {
     present_sampler.AddressU = present_sampler.AddressV = present_sampler.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     present_sampler.MaxLOD = D3D11_FLOAT32_MAX;
     g_device->CreateSamplerState(&present_sampler, &g_present_sampler);
+    present_sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+    g_device->CreateSamplerState(&present_sampler, &g_point_sampler);
+    constexpr char kStretchPixelShader[] =
+        "Texture2D source : register(t0);\n"
+        "SamplerState nearest : register(s0);\n"
+        "float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {\n"
+        "    return source.Sample(nearest, uv);\n"
+        "}\n";
+    ComPtr<ID3DBlob> stretch_ps = compile(kStretchPixelShader, sizeof(kStretchPixelShader) - 1, "ps_5_0", "stretch pixel");
+    if (stretch_ps) {
+        g_device->CreatePixelShader(stretch_ps->GetBufferPointer(), stretch_ps->GetBufferSize(), nullptr,
+                                    &g_stretch_pixel_shader);
+    }
 
     D3D11_BUFFER_DESC surface_constants{};
     surface_constants.ByteWidth = 16;
@@ -791,7 +910,7 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
     if (channels == 0xF) {
         float rgba[4];
         unpack_color(color, rgba);
-        const D3D11_RECT rect{x0, y0, x1 + 1, y1 + 1};
+        const D3D11_RECT rect{x0 * scaled(1), y0 * scaled(1), (x1 + 1) * scaled(1), (y1 + 1) * scaled(1)};
         g_context1->ClearView(target->rtv.Get(), rgba, &rect, 1);
     } else if (channels && g_clear_pixel_shader) {
         // Some channels only (the HUD clears alpha alone to reuse it as a mask).
@@ -811,9 +930,9 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
         g_context->OMSetRenderTargets(1, &rtv, nullptr);
         g_context->OMSetBlendState(blend.Get(), nullptr, 0xFFFFFFFF);
         g_context->OMSetDepthStencilState(nullptr, 0);
-        const D3D11_VIEWPORT viewport{0, 0, static_cast<float>(target->width), static_cast<float>(target->height), 0, 1};
+        const D3D11_VIEWPORT viewport{0, 0, scaled_float(target->width), scaled_float(target->height), 0, 1};
         g_context->RSSetViewports(1, &viewport);
-        const D3D11_RECT rect{x0, y0, x1 + 1, y1 + 1};
+        const D3D11_RECT rect{x0 * scaled(1), y0 * scaled(1), (x1 + 1) * scaled(1), (y1 + 1) * scaled(1)};
         g_context->RSSetScissorRects(1, &rect);
         g_context->RSSetState(g_rasterizer.Get());
         g_context->IASetInputLayout(nullptr);
@@ -908,11 +1027,10 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     ID3D11ShaderResourceView* none[4] = {};
     g_context->PSSetShaderResources(0, 4, none);
     g_context->OMSetRenderTargets(1, &rtv, depth ? depth->dsv.Get() : nullptr);
-    const D3D11_VIEWPORT viewport{0, 0, static_cast<float>(target->width), static_cast<float>(target->height), 0, 1};
+    const D3D11_VIEWPORT viewport{0, 0, scaled_float(target->width), scaled_float(target->height), 0, 1};
     g_context->RSSetViewports(1, &viewport);
-    const D3D11_RECT scissor{static_cast<LONG>(surface.clip_x), static_cast<LONG>(surface.clip_y),
-                             static_cast<LONG>(surface.clip_x + surface.clip_width),
-                             static_cast<LONG>(surface.clip_y + surface.clip_height)};
+    const D3D11_RECT scissor{scaled(surface.clip_x), scaled(surface.clip_y), scaled(surface.clip_x + surface.clip_width),
+                             scaled(surface.clip_y + surface.clip_height)};
     g_context->RSSetScissorRects(1, &scissor);
     g_context->RSSetState(rasterizer_for(state));
     g_context->OMSetBlendState(blend_state(state), state.blend_color, 0xFFFFFFFF);
@@ -976,7 +1094,7 @@ bool renderer_probe(uint32_t address, uint32_t x, uint32_t y, uint8_t bgra[4]) {
         desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
         if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &staging))) return false;
     }
-    const D3D11_BOX box{x, y, 0, x + 1, y + 1, 1};
+    const D3D11_BOX box{x * g_scale, y * g_scale, 0, x * g_scale + 1, y * g_scale + 1, 1};
     g_context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, found->second.texture.Get(), 0, &box);
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (FAILED(g_context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return false;
@@ -1001,9 +1119,10 @@ void renderer_blit(const BlitRequest& b) {
         const uint32_t height = existing != g_targets.end() ? existing->second.height : from.height;
         Target* to = get_target(b.destination, width, height);
         if (!to || b.destination_x + b.width > to->width || b.destination_y + b.height > to->height) return;
-        D3D11_BOX box{b.source_x, b.source_y, 0, b.source_x + b.width, b.source_y + b.height, 1};
-        g_context->CopySubresourceRegion(to->texture.Get(), 0, b.destination_x, b.destination_y, 0, from.texture.Get(),
-                                         0, &box);
+        const D3D11_BOX box{b.source_x * g_scale, b.source_y * g_scale, 0, (b.source_x + b.width) * g_scale,
+                            (b.source_y + b.height) * g_scale, 1};
+        g_context->CopySubresourceRegion(to->texture.Get(), 0, b.destination_x * g_scale, b.destination_y * g_scale, 0,
+                                         from.texture.Get(), 0, &box);
         return;
     }
     // Guest memory to guest memory.
@@ -1020,11 +1139,15 @@ void renderer_blit(const BlitRequest& b) {
     if (destination != g_targets.end() && b.bytes_per_pixel == 4) {
         Target& to = destination->second;
         if (b.destination_x + b.width > to.width || b.destination_y + b.height > to.height) return;
-        D3D11_BOX box{b.destination_x, b.destination_y, 0, b.destination_x + b.width, b.destination_y + b.height, 1};
-        g_context->UpdateSubresource(to.texture.Get(), 0, &box,
-                                     physical_pointer(b.destination + b.destination_y * b.destination_pitch +
-                                                      b.destination_x * 4),
-                                     b.destination_pitch, 0);
+        const uint8_t* pixels =
+            physical_pointer(b.destination + b.destination_y * b.destination_pitch + b.destination_x * 4);
+        if (g_scale == 1) {
+            const D3D11_BOX box{b.destination_x, b.destination_y, 0, b.destination_x + b.width,
+                                b.destination_y + b.height, 1};
+            g_context->UpdateSubresource(to.texture.Get(), 0, &box, pixels, b.destination_pitch, 0);
+        } else {
+            upload_scaled(to, b.destination_x, b.destination_y, b.width, b.height, pixels, b.destination_pitch);
+        }
     }
 }
 

@@ -59,10 +59,14 @@ controller, la porta 1 è la tastiera (solo quando la finestra del gioco è in p
 | I / J / K / L | levetta destra |
 | Shift sinistro / Ctrl sinistro | Nero / Bianco |
 
+Alt+Invio o F11: schermo intero (senza bordi) e ritorno alla finestra. L'immagine resta 4:3 con bande nere.
+
 Variabili d'ambiente:
 
 | Variabile | Effetto |
 |---|---|
+| `MC3_RENDER_SCALE=<1..4>` | risoluzione interna: 2 (predefinito) disegna a 1280x960 e riduce alla finestra (antialiasing), 1 come l'Xbox |
+| `MC3_ANISOTROPY=<1..16>` | filtro anisotropico sulle texture con mipmap (predefinito 16, 1 = spento) |
 | `MC3_LANGUAGE` | lingua del sistema: 1 inglese, 3 tedesco, 4 francese, 5 spagnolo, 6 italiano (predefinito) |
 | `MC3_MULTICORE=1` | usa tutti i core; per default il gioco gira su un core solo, come sull'Xbox |
 | `MC3_NO_DIALOG=1` | niente finestra in caso di errore fatale (per i test automatici) |

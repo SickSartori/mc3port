@@ -32,6 +32,12 @@ bool texture_extent(const TextureDescriptor& texture, uint32_t* width, uint32_t*
 // Linear formats are rectangle textures: the hardware addresses them in texels, not in 0..1.
 bool texture_is_linear(const TextureDescriptor& texture);
 
+// Mip levels stored after the top one (NV097_SET_TEXTURE_FORMAT bits 16-19; 1 for linear textures), the
+// descriptor of one level (its address and size, one level), and the bytes all the levels occupy.
+uint32_t texture_levels(const TextureDescriptor& texture);
+TextureDescriptor texture_level(const TextureDescriptor& texture, uint32_t level);
+uint32_t texture_total_bytes(const TextureDescriptor& texture);
+
 // Decodes the top mip level. Unsupported formats return layout Unsupported (logged once per format).
 TextureImage decode_texture(const TextureDescriptor& texture);
 
