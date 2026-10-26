@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -1331,6 +1332,18 @@ void Launcher::frame(float now, float dt) {
     hint(pad_connected_ ? "A" : (italian() ? "Invio" : "Enter"), kGreen, t.select);
     g_alpha = 1;
     ImGui::End();
+
+    // Enter or A with nothing focused (the mouse was used last): play from the first page.
+    if (!wizard_ && page_ == Page::kPlay && disc_ && !ImGui::IsAnyItemFocused() &&
+        (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown))) {
+        play_ = done_ = true;
+    }
+    // MC3_LAUNCHER_AUTOPLAY=<seconds>: test scripts press Play.
+    static const float autoplay = [] {
+        char value[16] = {};
+        return GetEnvironmentVariableA("MC3_LAUNCHER_AUTOPLAY", value, sizeof(value)) ? static_cast<float>(std::atof(value)) : -1.0f;
+    }();
+    if (autoplay >= 0 && since >= autoplay && disc_) play_ = done_ = true;
 
     // Back: to the first page, or a step back in the guide.
     if (rebinding_ < 0 && (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight))) {
