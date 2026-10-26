@@ -650,15 +650,47 @@ void gpu_thread() {
 
 // --- display ---
 
+// Full screen without a border on the window's monitor, and back to the window as it was (Alt+Enter or F11).
+void toggle_full_screen(HWND window) {
+    static bool full_screen = false;
+    static WINDOWPLACEMENT placement{sizeof(WINDOWPLACEMENT)};
+    if (!full_screen) {
+        MONITORINFO monitor{sizeof(MONITORINFO)};
+        if (!GetWindowPlacement(window, &placement) ||
+            !GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor)) {
+            return;
+        }
+        SetWindowLongW(window, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+        const RECT& area = monitor.rcMonitor;
+        SetWindowPos(window, HWND_TOP, area.left, area.top, area.right - area.left, area.bottom - area.top,
+                     SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+    } else {
+        SetWindowLongW(window, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+        SetWindowPlacement(window, &placement);
+        SetWindowPos(window, nullptr, 0, 0, 0, 0,
+                     SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
+    }
+    full_screen = !full_screen;
+}
+
 LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     if (message == WM_CLOSE) {
         log_line("window closed by the user");
         ExitProcess(0);
     }
+    const bool alt_enter = message == WM_SYSKEYDOWN && wparam == VK_RETURN && (lparam & (1 << 29));
+    if (alt_enter || (message == WM_KEYDOWN && wparam == VK_F11)) {
+        if (!(lparam & (1 << 30))) toggle_full_screen(window);  // not on auto-repeat
+        return 0;
+    }
+    if (message == WM_SYSCHAR && wparam == VK_RETURN) return 0;  // no beep for Alt+Enter
     return DefWindowProcW(window, message, wparam, lparam);
 }
 
 void window_thread(HANDLE ready) {
+    // Real pixels on scaled displays (150% and so on): otherwise Windows renders the window small and enlarges it,
+    // blurring the picture.
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     WNDCLASSW window_class{};
     window_class.lpfnWndProc = window_procedure;
     window_class.hInstance = GetModuleHandleW(nullptr);
@@ -667,7 +699,11 @@ void window_thread(HANDLE ready) {
     window_class.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     window_class.lpszClassName = L"mc3port";
     RegisterClassW(&window_class);
-    RECT rect{0, 0, 1280, 960};
+    // 4:3 client area, 85% of the screen's usable height.
+    RECT work{0, 0, 1280, 1024};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+    const LONG height = std::max<LONG>(480, (work.bottom - work.top) * 85 / 100);
+    RECT rect{0, 0, height * 4 / 3, height};
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     g_window = CreateWindowW(L"mc3port", L"Midnight Club 3: DUB Edition Remix", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                              CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr,

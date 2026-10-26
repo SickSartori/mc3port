@@ -647,6 +647,26 @@ void draw(uint32_t count, Fetch fetch) {
         g_window_end = g_window_start + static_cast<ULONGLONG>((plus ? std::atof(plus + 1) : 1.0) * 1000);
     }
     const ULONGLONG now = GetTickCount64();
+    {  // DEBUG: where the bump environment map (stage mode 6) is used
+        static uint32_t logged = 0;
+        const uint32_t program = g_k.draw.program.stage_program;
+        for (int stage = 0; stage < 4 && logged < 30; ++stage) {
+            if (((program >> (stage * 5)) & 0x1F) != 6) continue;
+            float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+            for (const RenderVertex& p : vertices) {
+                if (p.position[3] <= 0) continue;
+                x0 = std::min(x0, p.position[0] / p.position[3]), y0 = std::min(y0, p.position[1] / p.position[3]);
+                x1 = std::max(x1, p.position[0] / p.position[3]), y1 = std::max(y1, p.position[1] / p.position[3]);
+            }
+            log_line("DEBUG bump draw %llu at %.1f s: stages %05X rect %.0f %.0f %.0f %.0f tex0 %08X fmt %08X tex1 %08X "
+                     "fmt %08X surf %08X n %u",
+                     static_cast<unsigned long long>(g_draws), (now - g_window_start + 0.0) / 1000.0, program, x0, y0,
+                     x1, y1, g_k.draw.textures[0].descriptor.address, g_k.draw.textures[0].descriptor.format,
+                     g_k.draw.textures[1].descriptor.address, g_k.draw.textures[1].descriptor.format,
+                     target.color_address, count);
+            ++logged;
+        }
+    }
     g_debug_window_open = now >= g_window_start && now < g_window_end;
     if (g_debug_window_open) {
         // MC3_DEBUG_PROBE=x,y: log the screen pixel there whenever a draw changes it.

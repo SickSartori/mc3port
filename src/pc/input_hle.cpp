@@ -236,7 +236,7 @@ bool virtual_pad(XboxGamepad& pad) {
         if (key(VK_DOWN)) pad.buttons |= kDpadDown;
         if (key(VK_LEFT)) pad.buttons |= kDpadLeft;
         if (key(VK_RIGHT)) pad.buttons |= kDpadRight;
-        if (key(VK_RETURN)) pad.buttons |= kStart;
+        if (key(VK_RETURN) && !key(VK_MENU)) pad.buttons |= kStart;  // Alt+Enter is full screen
         if (key(VK_BACK)) pad.buttons |= kBack;
         if (key(VK_SPACE)) pad.analog[kAnalogA] = 255;
         if (key(VK_ESCAPE)) pad.analog[kAnalogB] = 255;

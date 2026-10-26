@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -126,7 +127,15 @@ ComPtr<ID3D11PixelShader> g_clear_pixel_shader;
 ComPtr<ID3D11Buffer> g_clear_constants;
 std::map<uint32_t, ComPtr<ID3D11BlendState>> g_clear_blend_states;  // by write mask
 ComPtr<ID3D11Texture2D> g_upload;  // guest framebuffers that were never rendered to
+ComPtr<ID3D11ShaderResourceView> g_upload_srv;
 uint32_t g_upload_width = 0, g_upload_height = 0;
+
+// Presentation: the frame is drawn into the window keeping the game's 4:3 shape, black bars around it.
+HWND g_window_handle = nullptr;
+ComPtr<ID3D11RenderTargetView> g_back_buffer_rtv;
+ComPtr<ID3D11VertexShader> g_present_vertex_shader;
+ComPtr<ID3D11PixelShader> g_present_pixel_shader;
+ComPtr<ID3D11SamplerState> g_present_sampler;
 
 std::unordered_map<uint32_t, Target> g_targets;
 std::unordered_map<uint64_t, DepthTarget> g_depth_targets;
@@ -584,11 +593,56 @@ void dump_frame(ID3D11Texture2D* texture, const char* prefix = "frame") {
     g_context->Unmap(staging.Get(), 0);
 }
 
-void ensure_swap_chain_size(uint32_t width, uint32_t height) {
-    if (width == g_swap_width && height == g_swap_height) return;
+// The swap chain follows the window's client area (it changes with resizing and full screen).
+void ensure_swap_chain_size() {
+    RECT client{};
+    GetClientRect(g_window_handle, &client);
+    const auto width = static_cast<uint32_t>(std::max<LONG>(1, client.right - client.left));
+    const auto height = static_cast<uint32_t>(std::max<LONG>(1, client.bottom - client.top));
+    if (width == g_swap_width && height == g_swap_height && g_back_buffer_rtv) return;
+    g_context->OMSetRenderTargets(0, nullptr, nullptr);
+    g_back_buffer_rtv.Reset();
     g_swap_chain->ResizeBuffers(2, width, height, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
     g_swap_width = width;
     g_swap_height = height;
+    ComPtr<ID3D11Texture2D> back_buffer;
+    g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
+    g_device->CreateRenderTargetView(back_buffer.Get(), nullptr, &g_back_buffer_rtv);
+}
+
+// Draws the frame into the window: the largest 4:3 rectangle that fits, centred, filtered.
+void present_frame(ID3D11ShaderResourceView* frame) {
+    ensure_swap_chain_size();
+    if (!g_back_buffer_rtv || !g_present_pixel_shader) return;
+    constexpr float kAspect = 4.0f / 3.0f;
+    float width = static_cast<float>(g_swap_width), height = static_cast<float>(g_swap_height);
+    if (width > height * kAspect) {
+        width = height * kAspect;
+    } else {
+        height = width / kAspect;
+    }
+    const float left = std::floor((g_swap_width - width) / 2), top = std::floor((g_swap_height - height) / 2);
+    const float black[4] = {0, 0, 0, 1};
+    g_context->ClearRenderTargetView(g_back_buffer_rtv.Get(), black);
+    ID3D11RenderTargetView* rtv = g_back_buffer_rtv.Get();
+    g_context->OMSetRenderTargets(1, &rtv, nullptr);
+    g_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+    g_context->OMSetDepthStencilState(nullptr, 0);
+    const D3D11_VIEWPORT viewport{left, top, width, height, 0, 1};
+    g_context->RSSetViewports(1, &viewport);
+    const D3D11_RECT scissor{0, 0, static_cast<LONG>(g_swap_width), static_cast<LONG>(g_swap_height)};
+    g_context->RSSetScissorRects(1, &scissor);
+    g_context->RSSetState(g_rasterizer.Get());
+    g_context->IASetInputLayout(nullptr);
+    g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_context->VSSetShader(g_present_vertex_shader.Get(), nullptr, 0);
+    g_context->PSSetShader(g_present_pixel_shader.Get(), nullptr, 0);
+    g_context->PSSetShaderResources(0, 1, &frame);
+    ID3D11SamplerState* sampler = g_present_sampler.Get();
+    g_context->PSSetSamplers(0, 1, &sampler);
+    g_context->Draw(3, 0);
+    ID3D11ShaderResourceView* none = nullptr;
+    g_context->PSSetShaderResources(0, 1, &none);
 }
 
 }  // namespace
@@ -621,7 +675,8 @@ bool renderer_start(HWND window) {
         log_line("renderer: cannot create the swap chain");
         return false;
     }
-    factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER);
+    factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER);  // full screen is the window's own (nv2a.cpp)
+    g_window_handle = window;
 
     ComPtr<ID3DBlob> vs = compile(kVertexShader, sizeof(kVertexShader) - 1, "vs_5_0", "vertex");
     if (!vs) return false;
@@ -668,6 +723,35 @@ bool renderer_start(HWND window) {
         g_copy_vertex_shader = g_clear_vertex_shader;
         g_device->CreatePixelShader(copy_ps->GetBufferPointer(), copy_ps->GetBufferSize(), nullptr, &g_copy_pixel_shader);
     }
+    constexpr char kPresentVertexShader[] =
+        "struct Output { float4 position : SV_Position; float2 uv : TEXCOORD0; };\n"
+        "Output main(uint id : SV_VertexID) {\n"
+        "    Output o;\n"
+        "    const float2 p = float2((id << 1) & 2, id & 2);\n"
+        "    o.position = float4(p * float2(2, -2) + float2(-1, 1), 0, 1);\n"
+        "    o.uv = p;\n"
+        "    return o;\n"
+        "}\n";
+    constexpr char kPresentPixelShader[] =
+        "Texture2D frame : register(t0);\n"
+        "SamplerState filtered : register(s0);\n"
+        "float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {\n"
+        "    return float4(frame.Sample(filtered, uv).rgb, 1);\n"
+        "}\n";
+    ComPtr<ID3DBlob> present_vs = compile(kPresentVertexShader, sizeof(kPresentVertexShader) - 1, "vs_5_0", "present vertex");
+    ComPtr<ID3DBlob> present_ps = compile(kPresentPixelShader, sizeof(kPresentPixelShader) - 1, "ps_5_0", "present pixel");
+    if (present_vs && present_ps) {
+        g_device->CreateVertexShader(present_vs->GetBufferPointer(), present_vs->GetBufferSize(), nullptr,
+                                     &g_present_vertex_shader);
+        g_device->CreatePixelShader(present_ps->GetBufferPointer(), present_ps->GetBufferSize(), nullptr,
+                                    &g_present_pixel_shader);
+    }
+    D3D11_SAMPLER_DESC present_sampler{};
+    present_sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    present_sampler.AddressU = present_sampler.AddressV = present_sampler.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    present_sampler.MaxLOD = D3D11_FLOAT32_MAX;
+    g_device->CreateSamplerState(&present_sampler, &g_present_sampler);
+
     D3D11_BUFFER_DESC surface_constants{};
     surface_constants.ByteWidth = 16;
     surface_constants.Usage = D3D11_USAGE_DEFAULT;
@@ -946,12 +1030,12 @@ void renderer_blit(const BlitRequest& b) {
 
 void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_t pitch) {
     if (!g_device || !width || !height) return;
-    ComPtr<ID3D11Texture2D> back_buffer;
+    ID3D11Texture2D* frame = nullptr;
+    ID3D11ShaderResourceView* frame_view = nullptr;
     const auto target = g_targets.find(address);
     if (target != g_targets.end()) {
-        ensure_swap_chain_size(target->second.width, target->second.height);
-        g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
-        g_context->CopyResource(back_buffer.Get(), target->second.texture.Get());
+        frame = target->second.texture.Get();
+        frame_view = target->second.srv.Get();
     } else {
         // Nothing rendered there: show the guest memory (32-bit pixels).
         const uint8_t* pixels = physical_pointer(address);
@@ -966,20 +1050,22 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
             desc.SampleDesc.Count = 1;
             desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
             g_upload.Reset();
+            g_upload_srv.Reset();
             g_device->CreateTexture2D(&desc, nullptr, &g_upload);
+            g_device->CreateShaderResourceView(g_upload.Get(), nullptr, &g_upload_srv);
             g_upload_width = width;
             g_upload_height = height;
         }
         g_context->UpdateSubresource(g_upload.Get(), 0, nullptr, pixels, pitch, 0);
-        ensure_swap_chain_size(width, height);
-        g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
-        g_context->CopyResource(back_buffer.Get(), g_upload.Get());
+        frame = g_upload.Get();
+        frame_view = g_upload_srv.Get();
     }
+    present_frame(frame_view);
     ++g_presented;
     ++g_stats.presents;
     log_statistics();
     if (g_dump_every && g_presented % g_dump_every == 0) {
-        dump_frame(back_buffer.Get());
+        dump_frame(frame);  // the game's frame at its own size, not the window
         const auto extra = g_targets.find(g_dump_target);
         if (extra != g_targets.end()) dump_frame(extra->second.texture.Get(), "target");
     }
