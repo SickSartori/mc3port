@@ -58,7 +58,7 @@ struct Texts {
     const char *quality, *quality_sub, *original, *balanced, *high, *custom, *scale, *scale_sub;
     const char *anisotropy, *gpu_vertices, *gpu_vertices_sub, *effects, *effects_sub, *on, *off;
     const char *sharpen, *bloom, *bloom_threshold, *saturation, *contrast, *vignette, *occlusion, *occlusion_radius;
-    const char *defaults, *controls_lead, *press_key, *reset_keys;
+    const char *defaults, *controls_lead, *press_key, *reset_keys, *system_keys, *full_screen_key, *effects_key, *launcher_keys, *pads_note;
     const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *legal, *credits;
     const char *welcome, *welcome_lead, *next, *quality_title, *quality_lead, *all_set, *all_set_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
@@ -81,7 +81,8 @@ const Texts kEnglish = {
     "Sharpening", "Light glow", "Glow threshold", "Saturation", "Contrast", "Vignette", "Ambient occlusion",
     "Occlusion size",
     "Restore defaults", "Xbox controllers work as they are. Choose the keyboard keys here.", "Press a key...",
-    "Restore keys",
+    "Restore keys", "PC KEYS", "Full screen on and off", "Modern effects on and off", "Launcher: move, select, back",
+    "PlayStation and other pads: through Steam Input or DS4Windows, which present them as Xbox controllers.",
     "Unofficial native Windows port. No game files included: you need your own copy.", "Looking for updates...",
     "This is the latest version", "Version %s is available", "Opens the release page; nothing downloads by itself",
     "Open", "Log folder", "For bug reports, attach mc3port.log",
@@ -110,7 +111,9 @@ const Texts kItalian = {
     "Nitidezza", "Bagliore delle luci", "Soglia del bagliore", "Saturazione", "Contrasto", "Vignettatura",
     "Ombreggiatura ambientale", "Ampiezza dell'ombreggiatura",
     "Valori predefiniti", "I controller Xbox funzionano cos\xC3\xAC come sono. Qui scegli i tasti della tastiera.",
-    "Premi un tasto...", "Tasti predefiniti",
+    "Premi un tasto...", "Tasti predefiniti", "TASTI DEL PC", "Schermo intero s\xC3\xAC/no", "Effetti moderni s\xC3\xAC/no",
+    "Launcher: muoversi, scegliere, tornare",
+    "Controller PlayStation e altri: tramite Steam Input o DS4Windows, che li presentano come controller Xbox.",
     "Port nativo non ufficiale per Windows. Nessun file del gioco incluso: serve la tua copia.",
     "Cerco aggiornamenti...", "Questa \xC3\xA8 l'ultima versione", "\xC3\x88 disponibile la versione %s",
     "Apre la pagina della versione; niente si scarica da solo", "Apri", "Cartella dei log",
@@ -345,7 +348,7 @@ private:
     void draw_background(float now);
     void frame(float now, float dt);
 
-    // Layout helpers: design pixels (1920x1080) times scale_.
+    // Layout helpers: design pixels (1600x900) times scale_.
     float px(float value) const { return value * scale_; }
     void text(ImFont* font, float size, ImVec2 at, ImU32 colour, const char* str, float wrap = 0);
     ImVec2 measure(ImFont* font, float size, const char* str, float wrap = 0) const;
@@ -581,8 +584,9 @@ void Launcher::resize_if_needed() {
     device_->CreateRenderTargetView(buffer.Get(), nullptr, &target_);
     width_ = width;
     height_ = height;
-    // Everything scales with the window; below 0.55 text would be too small to read (very small windows crop).
-    scale_ = std::max(0.55f, std::min(width / 1920.0f, height / 1080.0f));
+    // Everything scales with the window, designed on 1600x900; below 0.65 text would be too small to read (very
+    // small windows crop).
+    scale_ = std::max(0.65f, std::min(width / 1600.0f, height / 900.0f));
 }
 
 ComPtr<ID3D11ShaderResourceView> dxt_texture(ID3D11Device* device, const DxtImage& image) {
@@ -1080,9 +1084,31 @@ void Launcher::page_controls() {
         list_->AddRectFilled(box_a, box_b, fade(mix(IM_COL32(255, 255, 255, 14), kRed, hot * (waiting ? 0.8f : 0.35f))));
         text(body_bold_, px(16), ImVec2(box_b.x - key_size.x - px(9), y + (row_height - key_size.y) / 2), kInk, key.c_str());
     }
-    cursor_ += row_height * static_cast<float>((kPadInputs + 1) / 2) + px(16);
+    cursor_ += row_height * static_cast<float>((kPadInputs + 1) / 2) + px(12);
     if (small_button(t.reset_keys, ImVec2(origin_.x, origin_.y + cursor_), "##reset_keys")) reset_key_bindings();
-    cursor_ += px(48);
+    cursor_ += px(52);
+
+    // The port's own keys, not rebindable.
+    text(heading_, px(20), ImVec2(origin_.x, origin_.y + cursor_), kInk, t.system_keys);
+    cursor_ += px(32);
+    const char* enter = italian() ? "Invio" : "Enter";
+    char alt_enter[32];
+    std::snprintf(alt_enter, sizeof(alt_enter), "F11 \xC2\xB7 Alt+%s", enter);
+    char navigation[48];
+    std::snprintf(navigation, sizeof(navigation), "%s \xC2\xB7 %s \xC2\xB7 Esc", italian() ? "Frecce" : "Arrows", enter);
+    const char* system[][2] = {{alt_enter, t.full_screen_key}, {"F10", t.effects_key}, {navigation, t.launcher_keys}};
+    for (const auto& [keys, action] : system) {
+        const ImVec2 size = measure(body_bold_, px(16), keys);
+        const ImVec2 a(origin_.x, origin_.y + cursor_ + px(3));
+        list_->AddRectFilled(a, ImVec2(a.x + size.x + px(18), a.y + row_height - px(6)), fade(IM_COL32(255, 255, 255, 14)));
+        text(body_bold_, px(16), ImVec2(a.x + px(9), a.y + (row_height - px(6) - size.y) / 2), kInk, keys);
+        text(body_, px(17), ImVec2(a.x + size.x + px(32), origin_.y + cursor_ + px(7)), kInk, action);
+        cursor_ += row_height;
+    }
+    cursor_ += px(10);
+    const ImVec2 note = measure(body_, px(16), t.pads_note, panel_width_);
+    text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.pads_note, panel_width_);
+    cursor_ += note.y + px(8);
 }
 
 void Launcher::page_about() {
@@ -1247,7 +1273,7 @@ void Launcher::frame(float now, float dt) {
             ImGui::PushID(i);
             const bool pressed = ImGui::InvisibleButton("##menu", ImVec2(px(360), px(54)));
             const bool hovered = ImGui::IsItemHovered(), focused = ImGui::IsItemFocused();
-            if (i == 0 && since < 0.1f) ImGui::SetItemDefaultFocus();
+            if (static_cast<Page>(i) == page_ && since < 0.1f) ImGui::SetItemDefaultFocus();
             ImGui::PopID();
             const Page target = static_cast<Page>(i);
             if ((pressed || ((hovered && ImGui::GetIO().MouseDelta.x * ImGui::GetIO().MouseDelta.x + ImGui::GetIO().MouseDelta.y * ImGui::GetIO().MouseDelta.y > 0) || focused)) &&
@@ -1368,6 +1394,11 @@ std::optional<GameDisc> Launcher::run() {
     wizard_ = !disc_;
     if (disc_) start_art_loader(disc_->path);
     if (setting("check_updates") != 0) update_thread_ = std::thread(check_for_updates, &updates_);
+    char page[16] = {};  // MC3_LAUNCHER_PAGE=settings|controls|about: test screenshots
+    if (GetEnvironmentVariableA("MC3_LAUNCHER_PAGE", page, sizeof(page)) && !wizard_) {
+        page_ = !std::strcmp(page, "settings") ? Page::kSettings : !std::strcmp(page, "controls") ? Page::kControls
+                : !std::strcmp(page, "about") ? Page::kAbout : Page::kPlay;
+    }
     music_ = std::make_unique<LauncherMusic>();
     log_line("launcher: open (%s)", disc_ ? "disc found" : "first-run guide");
 
