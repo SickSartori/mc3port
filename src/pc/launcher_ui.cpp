@@ -4,6 +4,8 @@
 #include <d3dcompiler.h>
 #include <dxgi1_2.h>
 #include <shellapi.h>
+#include <bcrypt.h>
+#include <urlmon.h>
 #include <winhttp.h>
 #include <wrl/client.h>
 #include <xinput.h>
@@ -14,6 +16,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -31,6 +36,7 @@
 #include "pc/launcher_music.h"
 #include "pc/log.h"
 #include "pc/nv2a.h"
+#include "pc/paths.h"
 #include "pc/settings.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
@@ -53,13 +59,14 @@ struct Texts {
     const char *ready, *ready_lead, *disc_ok, *disc_none, *disc_none_sub, *change, *choose_iso;
     const char *pad_on, *pad_on_sub, *pad_off, *pad_off_sub, *edit;
     const char *tab_game, *tab_display, *tab_graphics, *tab_effects;
-    const char *game_language, *game_language_sub, *like_windows, *fps, *fps_sub, *volume;
+    const char *game_language, *game_language_sub, *like_windows, *fps, *fps_sub, *volume, *music_volume, *music_volume_sub;
     const char *aspect, *aspect_sub, *window_mode, *window_mode_sub, *windowed, *fullscreen;
     const char *quality, *quality_sub, *original, *balanced, *high, *custom, *scale, *scale_sub;
     const char *anisotropy, *gpu_vertices, *gpu_vertices_sub, *effects, *effects_sub, *on, *off;
     const char *sharpen, *bloom, *bloom_threshold, *saturation, *contrast, *vignette, *occlusion, *occlusion_radius;
     const char *defaults, *controls_lead, *press_key, *reset_keys, *system_keys, *full_screen_key, *effects_key, *launcher_keys, *pads_note;
     const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *legal, *credits;
+    const char *update_now, *update_install_sub, *downloading, *update_failed;
     const char *welcome, *welcome_lead, *next, *quality_title, *quality_lead, *all_set, *all_set_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
 };
@@ -71,7 +78,7 @@ const Texts kEnglish = {
     "Controller connected", "Xbox and compatible controllers", "No controller", "The keyboard works too", "Edit",
     "Game", "Display", "Graphics", "Effects",
     "Game language", "The game's text and speech", "Like Windows", "Frames per second", "60 is smoother; 30 like the Xbox",
-    "Volume",
+    "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
     "Aspect ratio", "16:9 uses the game's own widescreen mode", "Window mode", "Alt+Enter or F11 while playing",
     "Window", "Full screen",
     "Quality", "Sets resolution, filtering and effects together", "Original", "Balanced", "High", "Custom",
@@ -88,6 +95,8 @@ const Texts kEnglish = {
     "Open", "Log folder", "For bug reports, attach mc3port.log",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "MIT licence \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
+    "Update", "Downloads, checks and installs it; the game reopens by itself", "Downloading the update...",
+    "The update could not be downloaded or checked",
     "WELCOME", "You need your own copy: a disc image (ISO) of the European Xbox Midnight Club 3: DUB Edition Remix.",
     "NEXT", "QUALITY", "You can change it any time in the settings.", "ALL SET",
     "Disc verified. Connect a controller or use the keyboard.",
@@ -101,7 +110,8 @@ const Texts kItalian = {
     "Controller collegato", "Controller Xbox e compatibili", "Nessun controller", "Anche la tastiera funziona", "Modifica",
     "Gioco", "Schermo", "Grafica", "Effetti",
     "Lingua del gioco", "Testi e voci del gioco", "Come Windows", "Fotogrammi al secondo",
-    "60 \xC3\xA8 pi\xC3\xB9 fluido; 30 come l'Xbox", "Volume",
+    "60 \xC3\xA8 pi\xC3\xB9 fluido; 30 come l'Xbox", "Volume del gioco", "Musica del launcher",
+    "La musica di sottofondo di questa schermata; 0 la spegne",
     "Formato", "16:9 usa la modalit\xC3\xA0 panoramica del gioco", "Modalit\xC3\xA0 finestra",
     "Alt+Invio o F11 durante il gioco", "Finestra", "Schermo intero",
     "Qualit\xC3\xA0", "Imposta insieme risoluzione, filtri ed effetti", "Originale", "Bilanciata", "Alta",
@@ -120,6 +130,8 @@ const Texts kItalian = {
     "Per segnalare un problema allega mc3port.log",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenza MIT \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
+    "Aggiorna", "Si scarica, si verifica e si installa; il gioco si riapre da solo", "Scarico l'aggiornamento...",
+    "Non \xC3\xA8 stato possibile scaricare o verificare l'aggiornamento",
     "BENVENUTO",
     "Per giocare serve la tua copia: l'immagine ISO del disco Xbox europeo di Midnight Club 3: DUB Edition Remix.",
     "AVANTI", "QUALIT\xC3\x80", "Potrai cambiarla quando vuoi nelle impostazioni.", "TUTTO PRONTO",
@@ -210,6 +222,9 @@ struct UpdateCheck {
     std::mutex mutex;
     int state = 0;  // 0 checking, 1 up to date, 2 newer found, 3 failed (shown as nothing)
     std::string version, url;
+    std::string setup_url, sums_url;  // the release's installer and SHA256SUMS, if it has them
+    int download = 0;                 // 0 none, 1 downloading, 2 verified (start it), 3 failed
+    std::filesystem::path setup_file;
 };
 
 std::vector<int> version_numbers(const std::string& text) {
@@ -271,7 +286,65 @@ void check_for_updates(UpdateCheck* check) {
     check->state = newer ? 2 : 1;
     check->version = tag;
     check->url = url;
+    const std::string marker = "\"browser_download_url\":\"";
+    for (size_t at = body.find(marker); at != std::string::npos; at = body.find(marker, at + 1)) {
+        const size_t start = at + marker.size(), end = body.find('"', start);
+        const std::string asset = body.substr(start, end - start);
+        if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "-setup.exe") == 0) check->setup_url = asset;
+        if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "SHA256SUMS") == 0) check->sums_url = asset;
+    }
     log_line("launcher: latest release %s (%s)", tag.c_str(), newer ? "newer" : "not newer");
+}
+
+std::string file_sha256(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    const std::vector<char> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    uint8_t digest[32] = {};
+    if (data.empty() || BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, reinterpret_cast<PUCHAR>(const_cast<char*>(data.data())),
+                                   static_cast<ULONG>(data.size()), digest, sizeof(digest)) != 0) {
+        return {};
+    }
+    std::string hex;
+    char byte[3];
+    for (uint8_t b : digest) {
+        std::snprintf(byte, sizeof(byte), "%02x", b);
+        hex += byte;
+    }
+    return hex;
+}
+
+// Downloads the release's installer and SHA256SUMS to %TEMP%\mc3port-update and checks the installer's hash.
+void download_update(UpdateCheck* check) {
+    std::string setup_url, sums_url;
+    {
+        std::lock_guard<std::mutex> lock(check->mutex);
+        setup_url = check->setup_url;
+        sums_url = check->sums_url;
+    }
+    wchar_t temp[MAX_PATH] = {};
+    GetTempPathW(MAX_PATH, temp);
+    const std::filesystem::path folder = std::filesystem::path(temp) / "mc3port-update";
+    std::error_code ignored;
+    std::filesystem::create_directories(folder, ignored);
+    const std::string name = setup_url.substr(setup_url.rfind('/') + 1);
+    const std::filesystem::path setup = folder / name, sums = folder / "SHA256SUMS";
+    const std::wstring setup_wide(setup_url.begin(), setup_url.end()), sums_wide(sums_url.begin(), sums_url.end());
+    bool good = !sums_url.empty() && SUCCEEDED(URLDownloadToFileW(nullptr, setup_wide.c_str(), setup.c_str(), 0, nullptr)) &&
+                SUCCEEDED(URLDownloadToFileW(nullptr, sums_wide.c_str(), sums.c_str(), 0, nullptr));
+    if (good) {
+        std::ifstream list(sums);
+        const std::string hash = file_sha256(setup);
+        good = false;
+        for (std::string line; std::getline(list, line);) {
+            if (!hash.empty() && line.size() > 66 && line.compare(66, std::string::npos, name) == 0 && line.compare(0, 64, hash) == 0) {
+                good = true;
+            }
+        }
+    }
+    log_line("launcher: update %s %s", name.c_str(), good ? "downloaded and verified" : "could not be downloaded or verified");
+    std::lock_guard<std::mutex> lock(check->mutex);
+    check->download = good ? 2 : 3;
+    check->setup_file = setup;
 }
 
 // --- the background: the disc's artwork, crossfading with a slow zoom, graded towards the game's menus ---
@@ -371,6 +444,7 @@ private:
     void page_settings();
     void page_controls();
     void page_about();
+    void update_row(bool always);
     void page_wizard();
     void choose_disc();
     void set_setting(const char* key, float value) { setting_save(key, value); }
@@ -405,7 +479,7 @@ private:
 
     std::unique_ptr<LauncherMusic> music_;
     UpdateCheck updates_;
-    std::thread update_thread_;
+    std::thread update_thread_, download_thread_;
     HMODULE xinput_ = nullptr;
     decltype(&XInputGetState) xinput_get_state_ = nullptr;
     bool pad_connected_ = false;
@@ -548,6 +622,7 @@ void Launcher::stop_graphics() {
     music_.reset();  // fades out
     if (art_thread_.joinable()) art_thread_.join();
     if (update_thread_.joinable()) update_thread_.join();
+    if (download_thread_.joinable()) download_thread_.join();
     {
         std::lock_guard<std::mutex> lock(g_ui_mutex);
         nv2a_set_window_hook(nullptr);
@@ -938,6 +1013,7 @@ void Launcher::page_play() {
         page_ = Page::kSettings;
         page_since_ = static_cast<float>(ImGui::GetTime());
     }
+    update_row(false);
     ImGui::SetCursorScreenPos(ImVec2(origin_.x, origin_.y + cursor_));
     if (big_button(t.play, "##play", disc_.has_value())) {
         if (disc_) {
@@ -977,6 +1053,9 @@ void Launcher::page_settings() {
         row(t.volume, nullptr);
         float volume = setting("volume");
         if (slider("##volume", &volume, 0, 100, "%.0f")) set_setting("volume", std::round(volume));
+        row(t.music_volume, t.music_volume_sub);
+        float music = setting("launcher_music");
+        if (slider("##launcher_music", &music, 0, 100, "%.0f")) set_setting("launcher_music", std::round(music));
     } else if (settings_tab_ == 1) {
         row(t.aspect, t.aspect_sub);
         const char* aspects[] = {"4:3", "16:9"};
@@ -1035,7 +1114,7 @@ void Launcher::page_settings() {
     }
     cursor_ += px(8);
     if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults")) {
-        for (const char* key : {"game_language", "frame_rate", "volume", "widescreen", "fullscreen", "render_scale",
+        for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "widescreen", "fullscreen", "render_scale",
                                 "anisotropy", "gpu_vertices", "effects", "sharpen", "bloom", "bloom_threshold",
                                 "saturation", "contrast", "vignette", "ambient_occlusion", "ambient_occlusion_radius"}) {
             set_setting(key, setting_default(key));
@@ -1111,33 +1190,57 @@ void Launcher::page_controls() {
     cursor_ += note.y + px(8);
 }
 
+// The update notice: on the first page only when there is a newer version, on About always. An installed copy
+// (the setup's uninstaller next to mc3.exe) updates itself; a portable one opens the release page.
+void Launcher::update_row(bool always) {
+    const Texts& t = T();
+    int state, download;
+    std::string version, url, setup_url;
+    {
+        std::lock_guard<std::mutex> lock(updates_.mutex);
+        state = updates_.state;
+        download = updates_.download;
+        version = updates_.version;
+        url = updates_.url;
+        setup_url = updates_.setup_url;
+    }
+    if (setting("check_updates") == 0 || state == 3 || (!always && state != 2)) return;
+    std::error_code ignored;
+    const bool installed = !portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored);
+    const bool self_update = installed && !setup_url.empty() && download != 3;
+    char found[96];
+    std::snprintf(found, sizeof(found), t.update_found, version.c_str());
+    if (download == 1) {
+        status(false, t.downloading, found, nullptr, nullptr);
+    } else if (state == 2) {
+        if (status(false, download == 3 ? t.update_failed : found, self_update ? t.update_install_sub : t.update_sub,
+                   self_update ? t.update_now : t.open, "##update")) {
+            if (self_update) {
+                std::lock_guard<std::mutex> lock(updates_.mutex);
+                updates_.download = 1;
+                if (download_thread_.joinable()) download_thread_.join();
+                download_thread_ = std::thread(download_update, &updates_);
+            } else {
+                ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            }
+        }
+    } else {
+        status(true, state == 0 ? t.checking : t.up_to_date, "", nullptr, nullptr);
+    }
+}
+
 void Launcher::page_about() {
     const Texts& t = T();
     title(t.about);
     lead(t.about_lead);
-    int state;
-    std::string version, url;
-    {
-        std::lock_guard<std::mutex> lock(updates_.mutex);
-        state = updates_.state;
-        version = updates_.version;
-        url = updates_.url;
-    }
-    if (setting("check_updates") != 0 && state != 3) {
-        char found[96];
-        std::snprintf(found, sizeof(found), t.update_found, version.c_str());
-        if (status(state != 2, state == 0 ? t.checking : state == 1 ? t.up_to_date : found, state == 2 ? t.update_sub : "",
-                   state == 2 ? t.open : nullptr, "##update")) {
-            ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-        }
-    }
+    update_row(true);
     char heading[64];
     std::snprintf(heading, sizeof(heading), "mc3port %s", MC3PORT_VERSION);
     if (status(true, heading, t.credits, "GitHub", "##github")) {
         ShellExecuteA(nullptr, "open", (std::string("https://github.com/") + kRepository).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     }
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) {
-        const std::wstring argument = L"/select,\"" + (exe_directory_ / "mc3port.log").wstring() + L"\"";
+        const std::wstring argument = L"/select,\"" + (data_directory() / "mc3port.log").wstring() + L"\"";
         ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
     }
     cursor_ += px(8);
@@ -1425,6 +1528,16 @@ std::optional<GameDisc> Launcher::run() {
         }
         resize_if_needed();
         upload_art();
+        {
+            std::lock_guard<std::mutex> lock(updates_.mutex);
+            if (updates_.download == 2) {  // verified: the installer replaces the files and reopens the game
+                updates_.download = 0;
+                ShellExecuteW(nullptr, L"open", updates_.setup_file.c_str(),
+                              L"/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /UPDATE", nullptr, SW_SHOWNORMAL);
+                log_line("launcher: installing the update, closing");
+                done_ = true;
+            }
+        }
         {
             std::lock_guard<std::mutex> lock(g_ui_mutex);
             ImGui_ImplDX11_NewFrame();

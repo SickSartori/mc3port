@@ -1,5 +1,6 @@
 # Builds the Release configuration and packages it for a GitHub release:
-#   dist/mc3port-<version>-windows-x86.zip  (mc3.exe, mc3runtime.dll, readme and licences)
+#   dist/mc3port-<version>-windows-x86.zip        (portable: mc3.exe, mc3runtime.dll, readme and licences)
+#   dist/mc3port-<version>-windows-x86-setup.exe  (installer, with Inno Setup 6.6+; skipped if it is missing)
 #   dist/SHA256SUMS
 # The version comes from project(... VERSION ...) in CMakeLists.txt. No game file can end up in the package.
 param([switch]$SkipBuild)
@@ -31,9 +32,20 @@ Copy-Item third_party/fonts/OFL.txt "$stage\licenses\barlow-OFL.txt"
 $forbidden = Get-ChildItem $stage -Recurse -File | Where-Object { $_.Extension -in ".iso", ".xbe", ".xiso", ".log", ".ini" }
 if ($forbidden) { throw "not for the package: $($forbidden.Name -join ', ')" }
 
-$zip = "dist/$name.zip"
-Compress-Archive -Path "$stage\*" -DestinationPath $zip
-$hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-Set-Content -Path dist/SHA256SUMS -Value "$hash  $name.zip" -Encoding ascii -NoNewline
-"$zip  ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB)"
-"sha256 $hash"
+Compress-Archive -Path "$stage\*" -DestinationPath "dist/$name.zip"
+
+$iscc = @($env:ISCC, "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+          "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if ($iscc) {
+    & $iscc /Q "/DAppVersion=$version" "/DSourceDir=$(Resolve-Path $stage)" "/DOutputDir=$(Resolve-Path dist)" installer/mc3port.iss
+    if ($LASTEXITCODE) { throw "installer build failed" }
+} else {
+    Write-Warning "Inno Setup not found: no installer"
+}
+
+$lines = foreach ($file in Get-ChildItem dist -File | Where-Object { $_.Extension -in ".zip", ".exe" } | Sort-Object Name) {
+    $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
+    "$($file.Name)  ($([math]::Round($file.Length / 1MB, 1)) MB)  sha256 $hash" | Write-Host
+    "$hash  $($file.Name)"
+}
+Set-Content -Path dist/SHA256SUMS -Value ($lines -join "`n") -Encoding ascii -NoNewline

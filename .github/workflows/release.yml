@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Inno Setup (for the installer)
+        run: choco install innosetup --no-progress -y
+
       - name: Build and package
         shell: pwsh
         run: ./tools/package.ps1

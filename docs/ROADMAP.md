@@ -1,7 +1,6 @@
 # Roadmap: port nativo di Midnight Club 3: DUB Edition Remix
 
-Obiettivo: far girare la versione **Xbox originale** (PAL, XDK 5849) in modo nativo su **PC** e su **Xbox 360**,
-senza l'emulatore di retrocompatibilità della 360 (che rompe la modalità Arcade e ha problemi di caricamento).
+Obiettivo: far girare la versione **Xbox originale** (PAL, XDK 5849) in modo nativo su **PC**.
 
 Il repository non contiene né conterrà mai file del gioco: ogni utente usa la propria copia del disco.
 
@@ -10,11 +9,10 @@ Il repository non contiene né conterrà mai file del gioco: ogni utente usa la 
 ```
 src/core   portabile (nessun header di piattaforma): lettura ISO XDVDFS, parser XBE, tabella export del kernel
 src/pc     Windows x86: launcher + runtime che esegue il codice x86 del gioco direttamente
-src/x360   (futuro) Xbox 360: codice ricompilato x86 -> C -> PowerPC, stesso kernel/HLE
 ```
 
-Le parti costose (kernel Xbox, Direct3D 8, DirectSound/XACT, input, salvataggi) vanno scritte una volta sola
-dietro interfacce astratte, in modo che PC e 360 cambino solo il backend.
+Le parti costose (kernel Xbox, Direct3D 8, DirectSound/XACT, input, salvataggi) sono scritte una volta sola, dietro
+interfacce astratte, con il backend Windows separato.
 
 ## PC
 
@@ -78,7 +76,7 @@ Modalità provate (con lo script di input, 25 ottobre 2026):
 | Modalità | Stato |
 |---|---|
 | Carriera | funziona: profilo, video, garage, acquisto dell'auto, prima gara; i progressi (auto comprata) si salvano e si ricaricano |
-| Arcade | funziona: guida libera a San Diego e Tokyo (su Xbox 360 in retrocompatibilità non va) |
+| Arcade | funziona: guida libera a San Diego e Tokyo |
 | Arcade a 2 giocatori | funziona a schermo diviso (32 fps, la città è disegnata due volte); il riquadro nero dietro ogni auto è lo specchietto retrovisore, che come nell'originale mostra solo i fari delle auto dietro |
 | Rete | corretto senza connessione: "Il cavo di rete non è connesso" |
 | Sfida di Tokyo | funziona (provata anche a mano, con il fiume percorribile) |
@@ -154,23 +152,6 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
   a un contatore a 733 MHz ricavato da `QueryPerformanceCounter` (`hle_patches.cpp`).
 - **Rete**: la scheda di rete (`0xFEF00000`) è memoria semplice e il PHY risponde "cavo scollegato"; la cifratura
   DES del traffico è un passaggio trasparente. Xbox Live e System Link non sono supportati.
-
-## Xbox 360
-
-La 360 ha una CPU PowerPC big-endian: il codice x86 non può girare così com'è.
-
-1. **Ricompilatore statico x86 -> C** (`tools/recomp`, futuro): disassembla tutto il codice del gioco
-   (le librerie XDK no, quelle le sostituisce l'HLE), ricostruisce funzioni e jump table, emette C che opera su un
-   contesto CPU emulato. La memoria del gioco resta little-endian; gli accessi usano le istruzioni byte-reversed
-   del PowerPC (`lwbrx`/`stwbrx`), quindi i dati del disco non vanno convertiti.
-2. **Validazione sul PC**: lo stesso C ricompilato gira anche su PC e si confronta con il loader nativo
-   (tracce di chiamate al kernel e frame renderizzati). Così il ricompilatore si mette a punto senza la console.
-3. **Backend 360**: grafica Xenos, audio, input e file tramite toolchain homebrew (libxenon/Free60).
-   Serve una console **RGH/JTAG**: senza modifica la 360 non esegue codice non firmato.
-
-Da verificare con un prototipo: precisione x87 (il gioco usa la FPU x87, da emulare con double), prestazioni
-(Xenon 3,2 GHz in-order contro Pentium III 733 MHz, con il costo di flag e byte-swap) e la quantità di codice
-raggiungibile solo tramite puntatori a funzione.
 
 ## Fatti già verificati sull'XBE
 

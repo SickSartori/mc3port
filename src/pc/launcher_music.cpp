@@ -119,7 +119,7 @@ void LauncherMusic::update(float dt, float target) {
     }
     if (!s.voice) return;
     s.level += (target - s.level) * std::min(1.0f, dt * 1.5f);
-    s.voice->SetVolume(s.level * 0.6f * std::clamp(setting("volume"), 0.0f, 100.0f) / 100.0f);
+    s.voice->SetVolume(s.level * 0.6f * std::clamp(setting("launcher_music"), 0.0f, 100.0f) / 100.0f);
 }
 
 LauncherMusic::~LauncherMusic() {

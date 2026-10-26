@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 # Portable core: disc image and XBE parsing, kernel export table.
-# No platform headers here: the Xbox 360 target reuses it as is.
+# No platform headers here.
 add_library(mc3core STATIC
     src/core/kernel_exports.cpp
     src/core/xbe.cpp
@@ -63,6 +63,7 @@ if(WIN32)
         src/pc/nv2a_kelvin.cpp
         src/pc/nv2a_texture.cpp
         src/pc/nv2a_vsh.cpp
+        src/pc/paths.cpp
         src/pc/physical_memory.cpp
         src/pc/privileged.cpp
         src/pc/renderer_d3d11.cpp
@@ -71,7 +72,7 @@ if(WIN32)
         src/pc/xbox_thread.cpp
         res/launcher.rc
     )
-    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp imgui mfplat mfreadwrite mfuuid shlwapi)
+    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp urlmon imgui mfplat mfreadwrite mfuuid shlwapi)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
                                MC3PORT_VERSION="${PROJECT_VERSION}")
     target_compile_options(mc3runtime PRIVATE /utf-8)

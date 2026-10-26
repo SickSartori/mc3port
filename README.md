@@ -53,12 +53,21 @@ Compared with the console:
 
 **With Quiver Launcher**: find mc3port in the catalog and install it. Quiver keeps it up to date.
 
-**By hand**: download `mc3port-<version>-windows-x86.zip` from the [releases page](https://github.com/SickSartori/mc3port/releases),
-extract it into a folder of your choice and start `mc3.exe`. To check the download, compare its SHA-256 with the
-`SHA256SUMS` file of the release. The files are not code signed, so Windows SmartScreen may ask once whether you
-trust them ("More info", then "Run anyway").
+**With the installer**: download `mc3port-<version>-windows-x86-setup.exe` from the
+[releases page](https://github.com/SickSartori/mc3port/releases) and run it. It installs for your user only (no
+administrator rights), adds Start menu and desktop shortcuts, and can be removed from Windows' installed apps. When a
+new version comes out, the launcher offers to update: it downloads the new installer, checks its SHA-256 and installs
+it, then reopens the game.
 
-To update, extract the new version over the old one. Your settings (`mc3port.ini`) and saves (`xbox_hdd`) stay.
+**Portable**: download `mc3port-<version>-windows-x86.zip`, extract it into a folder of your choice and start
+`mc3.exe`. To update, extract the new version over the old one.
+
+To check a download, compare its SHA-256 with the `SHA256SUMS` file of the release. The files are not code signed,
+so Windows SmartScreen may ask once whether you trust them ("More info", then "Run anyway").
+
+Your settings (`mc3port.ini`), saves (`xbox_hdd`), log and shader cache live in `%LOCALAPPDATA%\mc3port`, so updates
+and uninstalling never touch them. To keep them next to `mc3.exe` instead (a USB stick, say), create an empty file
+named `portable.txt` there.
 
 ## First start
 
@@ -122,7 +131,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 
 ## Reporting a problem
 
-Open the launcher's **About** page and press **Log folder**: attach `mc3port.log` from that folder to an
+Open the launcher's **About** page and press **Log folder**: attach `mc3port.log` from that folder (normally
+`%LOCALAPPDATA%\mc3port`) to an
 [issue](https://github.com/SickSartori/mc3port/issues), with your Windows version, graphics card and what you were doing.
 
 ## Building from source
@@ -135,7 +145,8 @@ cmake -S . -B build/pc-x86 -A Win32
 cmake --build build/pc-x86 --config Release
 ```
 
-`tools/package.ps1` builds the release zip and its `SHA256SUMS` in `dist/`. Technical notes, test switches and
+`tools/package.ps1` builds the release zip, the installer (with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.6 or
+newer) and their `SHA256SUMS` in `dist/`. Technical notes, test switches and
 debugging tools are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (in Italian).
 
 ## How this was made

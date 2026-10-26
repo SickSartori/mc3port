@@ -22,6 +22,7 @@
 #include <unordered_map>
 
 #include "pc/log.h"
+#include "pc/paths.h"
 #include "pc/physical_memory.h"
 #include "pc/settings.h"
 
@@ -1724,11 +1725,7 @@ struct ProgramShader {
 std::mutex g_program_mutex;
 std::unordered_map<uint64_t, ProgramShader> g_program_shaders;  // under g_program_mutex
 
-std::filesystem::path program_cache_folder() {
-    wchar_t path[MAX_PATH] = {};
-    GetModuleFileNameW(nullptr, path, MAX_PATH);
-    return std::filesystem::path(path).parent_path() / "shader_cache";
-}
+std::filesystem::path program_cache_folder() { return data_directory() / "shader_cache"; }
 ProgramConstants g_program_uploaded{};
 bool g_program_valid = false;
 

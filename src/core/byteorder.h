@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-// Explicit little-endian access, so the same parsers work on big-endian hosts (Xbox 360).
+// Explicit little-endian access, so the parsers do not depend on the host's byte order.
 namespace mc3 {
 
 inline uint16_t load_le16(const void* p) {

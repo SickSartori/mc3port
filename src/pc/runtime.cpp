@@ -31,6 +31,7 @@
 #include "pc/launcher_ui.h"
 #include "pc/log.h"
 #include "pc/nv2a.h"
+#include "pc/paths.h"
 #include "pc/physical_memory.h"
 #include "pc/privileged.h"
 #include "pc/settings.h"
@@ -77,12 +78,6 @@ HostImage host_image() {
     const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
     const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS32*>(base + dos->e_lfanew);
     return HostImage{base, nt->OptionalHeader.SizeOfImage};
-}
-
-std::filesystem::path module_directory() {
-    wchar_t path[MAX_PATH * 4];
-    const DWORD length = GetModuleFileNameW(nullptr, path, static_cast<DWORD>(std::size(path)));
-    return std::filesystem::path(std::wstring(path, length)).parent_path();
 }
 
 void log_xbe(const Xbe& xbe) {
@@ -357,9 +352,11 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     using namespace mc3::pc;
 
     const HostImage host = host_image();
-    const std::filesystem::path exe_directory = module_directory();
-    log_open(exe_directory / "mc3port.log");
-    settings_load(exe_directory / "mc3port.ini");
+    const std::filesystem::path exe_directory = program_directory();
+    log_open(data_directory() / "mc3port.log");
+    settings_load(data_directory() / "mc3port.ini");
+    log_line("files: program in %s, data in %s%s", reinterpret_cast<const char*>(exe_directory.u8string().c_str()),
+             reinterpret_cast<const char*>(data_directory().u8string().c_str()), portable_mode() ? " (portable)" : "");
     SetUnhandledExceptionFilter(on_unhandled_exception);
     AddVectoredExceptionHandler(1, on_first_chance_exception);
 
@@ -402,7 +399,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
              kernel.unimplemented);
 
     set_kernel_xbe(&*g_xbe);
-    const std::filesystem::path hdd_directory = exe_directory / "xbox_hdd";
+    const std::filesystem::path hdd_directory = data_directory() / "xbox_hdd";
     configure_file_system(g_disc.get(), hdd_directory.c_str());
     log_line("hard disk partitions: %s", reinterpret_cast<const char*>(hdd_directory.u8string().c_str()));
     restrict_to_one_core();

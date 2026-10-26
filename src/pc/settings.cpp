@@ -28,6 +28,7 @@ const Setting kSettings[] = {
     {"widescreen", 1, "16:9 widescreen: 1 = the game's own widescreen mode (wider view, no black bars), 0 = 4:3 like a classic TV."},
     {"fullscreen", 0, "Start in full screen: 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},
     {"volume", 100, "Overall volume, 0 to 100."},
+    {"launcher_music", 70, "Volume of the launcher's background music, 0 to 100 (0 = off)."},
     {"check_updates", 1, "Look for a newer mc3port release on GitHub when the launcher opens: 1 = yes, 0 = no."},
     {"gpu_vertices", 1, "Vertex processing on the graphics card: 1 = yes (faster), 0 = on the processor."},
     {"render_scale", 2, "Internal resolution: 1 = like the Xbox (640x480), 2 = 1280x960, 3, 4. Higher = smoother edges."},
