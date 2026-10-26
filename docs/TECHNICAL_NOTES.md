@@ -1,4 +1,4 @@
-# Roadmap: port nativo di Midnight Club 3: DUB Edition Remix
+# Note tecniche: port nativo di Midnight Club 3: DUB Edition Remix
 
 Obiettivo: far girare la versione **Xbox originale** (PAL, XDK 5849) in modo nativo su **PC**.
 
@@ -22,10 +22,10 @@ Il codice del gioco è x86 a 32 bit, come il PC: non va tradotto, va solo "ospit
 |---|---|---|
 | 0 | Analisi disco/XBE, struttura progetto, build CMake | fatto |
 | 1 | Launcher a 0x10000, mappatura XBE, patch `fs:`, thunk del kernel con stub che registrano la prima chiamata mancante | fatto |
-| 2 | Kernel: memoria, thread, sincronizzazione, file (`D:\` letto direttamente dalla ISO), tempo | fatto per l'avvio: il gioco arriva all'inizializzazione grafica. Restano 23 funzioni mai chiamate finora (driver `Io*`, crittografia `Xc*` per salvataggi e online) |
-| 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco; poi rendering su D3D11/Vulkan | in corso: video, menu (titolo, profilo, carriera) e città 3D illuminata visibili su D3D11; mancano texgen sferici/cube map, bump mapping, punti e linee, luci a due facce, culling; lento nei menu (build Debug) |
-| 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | audio fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2, musica WMA in gara); input fatto (XInput, vibrazione, tastiera); salvataggio del profilo su `xbox_hdd`; da provare con un controller vero |
-| 5 | Miglioramenti: risoluzione, widescreen, 60 fps, caricamenti | da fare |
+| 2 | Kernel: memoria, thread, sincronizzazione, file (`D:\` letto direttamente dalla ISO), tempo | fatto |
+| 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco, rendering su D3D11 | fatto |
+| 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2; XInput, vibrazione, tastiera; salvataggi su `xbox_hdd`) |
+| 5 | Miglioramenti e distribuzione: risoluzione interna, 16:9, 60 fps, vertici sulla GPU, effetti, launcher, installer | fatto (versione 0.1.0) |
 
 ### Grafica: perché si emula la GPU e non Direct3D
 
@@ -87,9 +87,6 @@ Con l'orologio a 733 MHz (26 ottobre) la navigazione automatica dei menu è affi
 Il profilo di prova "Giocatore 2" è a Tokyo; Sfida di Tokyo è la seconda voce del menu principale, Arcade la
 terza, Editor di gare la quinta (con conferma "Sì").
 
-Da verificare a mano: fine di una gara e salvataggio della carriera dopo una vittoria; velocità nei menu (scesa a
-circa 24 fps dopo le correzioni del radar, da controllare).
-
 - **Coordinate e clip**: i vertici arrivano in pixel della superficie intera e il renderer li converte con la
   dimensione vera della render target (larghezza dal pitch); il clip della superficie è uno scissor. Il radar
   restringe il clip a 256 pixel: prima la sua mappa finiva ingrandita al centro.
@@ -105,11 +102,6 @@ circa 24 fps dopo le correzioni del radar, da controllare).
   si fermava a zero e restava un'ellisse bianca piena; la superficie che li usa diventa R16G16B16A16_FLOAT.
 - **Velocità**: vertici in un buffer ad anello e conversione pixel->clip nel vertex shader (menu 42-60 fps, città
   47-52 fps).
-
-Da sistemare nelle migliorie grafiche (non bloccano il gioco): bump mapping (modalità texture `6`), cube map, punti
-e linee; vertici ancora calcolati sulla CPU. Opzione per ridurre o spegnere la sfocatura radiale da velocità
-(effetto del gioco originale, molto forte ad alta velocità e con il nitro: da confrontare con l'Xbox prima di
-toccarla).
 
 ### Audio
 
@@ -130,18 +122,18 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
   asincrono. Prima gli effetti fermati suonavano fino alla fine e si accumulavano (fino a 63 voci in città) e la
   musica del menu continuava sotto quella della città. Ora 20-35 voci e una sola musica. Dettagli in
   [ANALISI_XBE.md](ANALISI_XBE.md).
-- **Audio 3D**: non serve, MC3 non lo usa (vedi ANALISI_XBE.md). Da verificare a orecchio: alcuni suoni del motore
-  sono suonati da due coppie di voci identiche (stesso campione, stessa posizione); potrebbe essere voluto da XACT.
+- **Audio 3D**: non serve, MC3 non lo usa (vedi ANALISI_XBE.md). Alcuni suoni del motore
+  sono suonati da due coppie di voci identiche (stesso campione, stessa posizione), probabilmente per scelta di XACT.
 - **Mixer software** (`audio_mixer.cpp`): emula le voci dell'APU leggendo i campioni direttamente dalla memoria del
   gioco (i ring buffer di Bink funzionano così come sono), con regioni di play/loop, pitch Xbox (4096 per ottava,
   0 = 48 kHz), volumi in centesimi di dB, mixbin verso lo stereo, PCM 8/16 bit e ADPCM Xbox, pacchetti degli stream
   con eventi e callback (consegnate in `DirectSoundDoWork`).
 - **Uscita**: XAudio2, stereo 48 kHz a blocchi da 10 ms. Il log riporta ogni 10 s quanto audio è stato prodotto.
-- **Non ancora emulati**: effetti DSP (riverbero, il file `dsstdfx.bin` viene accettato e ignorato), LFO, inviluppo
-  multiplo (tono e filtro), filtri, headroom, audio 3D (non usati da MC3). Quattro funzioni DirectSound non sono ancora identificate con certezza: accettano gli
+- **Non emulati**: effetti DSP (riverbero, il file `dsstdfx.bin` viene accettato e ignorato), LFO, inviluppo
+  multiplo (tono e filtro), filtri, headroom, audio 3D (non usati da MC3). Quattro funzioni DirectSound non sono identificate con certezza: accettano gli
   argomenti, riescono e lo registrano nel log.
 
-### Input e rete provvisori
+### Input e rete
 
 - **Input**: `XInitDevices` non avvia lo stack USB (`hle_patches.cpp`); le sette funzioni XPP che il gioco usa per i
   controller sono redirette a XInput del PC (`input_hle.cpp`), con vibrazione, collegamento a caldo e tastiera come

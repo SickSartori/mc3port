@@ -2,7 +2,7 @@
 
 Note tecniche per chi compila e modifica mc3port (in italiano). La guida per i giocatori è il [README](../README.md) in inglese.
 
-Piano e stato delle fasi: [ROADMAP.md](ROADMAP.md). Dati ricavati dall'eseguibile: [ANALISI_XBE.md](ANALISI_XBE.md).
+Stato delle fasi e note tecniche: [TECHNICAL_NOTES.md](TECHNICAL_NOTES.md). Dati ricavati dall'eseguibile: [ANALISI_XBE.md](ANALISI_XBE.md).
 
 ## Come funziona (PC)
 

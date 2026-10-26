@@ -125,7 +125,7 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 
 - Only the European release is supported.
 - In 16:9 the game stretches its HUD (radar, speedometer) to the wider screen, as it did on a widescreen TV:
-  round dials look slightly oval. A fix that keeps them round is planned.
+  round dials look slightly oval.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides (full screen on a 16:9 monitor has none).
 
