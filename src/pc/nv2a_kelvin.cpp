@@ -620,6 +620,25 @@ void draw(uint32_t count, Fetch fetch) {
     }
     QueryPerformanceCounter(&vertex_end);
     renderer_note_vertex_work(static_cast<uint64_t>(vertex_end.QuadPart - vertex_start.QuadPart), count);
+    {  // DEBUG: vertex time by kind of draw
+        static uint64_t ticks[2] = {}, vertices[2] = {}, draws[2] = {};
+        static ULONGLONG last = GetTickCount64();
+        const int kind = fixed_function ? 0 : 1;
+        ticks[kind] += static_cast<uint64_t>(vertex_end.QuadPart - vertex_start.QuadPart);
+        vertices[kind] += count;
+        ++draws[kind];
+        if (GetTickCount64() - last >= 10000) {
+            LARGE_INTEGER frequency;
+            QueryPerformanceFrequency(&frequency);
+            const double seconds = (GetTickCount64() - last) / 1000.0;
+            log_line("DEBUG vertex work per second: fixed-function %.0f ms (%.0f draws, %.0f vertices), program %.0f ms "
+                     "(%.0f draws, %.0f vertices)",
+                     ticks[0] * 1000.0 / frequency.QuadPart / seconds, draws[0] / seconds, vertices[0] / seconds,
+                     ticks[1] * 1000.0 / frequency.QuadPart / seconds, draws[1] / seconds, vertices[1] / seconds);
+            ticks[0] = ticks[1] = vertices[0] = vertices[1] = draws[0] = draws[1] = 0;
+            last = GetTickCount64();
+        }
+    }
     static bool fixed_function_only = false;  // MC3_DEBUG_DRAWS_FF=1: describe only fixed-function draws
     if (g_debug_draws < 0) {
         char value[16] = {};

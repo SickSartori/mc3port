@@ -18,6 +18,7 @@
 #include "pc/nv2a_kelvin.h"
 #include "pc/renderer_d3d11.h"
 #include "pc/physical_memory.h"
+#include "pc/settings.h"
 
 namespace mc3::pc {
 namespace {
@@ -356,6 +357,14 @@ void service_present() {
     const DisplayMode display = current_display();
     const uint32_t front = g_front_buffer ? g_front_buffer.load() : display.frame_buffer;
     if (!front || !display.pitch) return;
+    {  // DEBUG: game frames (changes of the shown buffer) per 10 s
+        static uint32_t last_front = 0, flips = 0, presents = 0;
+        if (front != last_front) ++flips, last_front = front;
+        if (++presents == 600) {
+            log_line("DEBUG display: %u flips in %u presents", flips, presents);
+            flips = presents = 0;
+        }
+    }
     renderer_present(front & 0x0FFFFFFF, display.pitch / 4, 480, display.pitch);
 }
 
@@ -775,7 +784,10 @@ void interrupt_thread() {
     static const bool interrupts_disabled = GetEnvironmentVariableW(L"MC3_NO_GPU_IRQ", nullptr, 0) != 0;
 
     using Clock = std::chrono::steady_clock;
-    const auto period = std::chrono::nanoseconds(1000000000 / 60);
+    // The game shows a frame every second vertical blank: 30 fps at the Xbox's 60 Hz. Its logic runs on real time
+    // (the same acceleration at 60 and 120 Hz), so 120 Hz blanks give 60 game frames per second (setting frame_rate).
+    static const int vblank_hz = setting("frame_rate") >= 60 ? 120 : 60;
+    const auto period = std::chrono::nanoseconds(1000000000 / vblank_hz);
     auto next = Clock::now() + period;
     for (;;) {
         const auto now = Clock::now();

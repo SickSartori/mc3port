@@ -1509,7 +1509,22 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     ++g_presented;
     ++g_stats.presents;
     log_statistics();
-    if (g_dump_every && g_presented % g_dump_every == 0) {
+    // MC3_DUMP_SECONDS=<s>: a frame every s seconds of real time (frame-<milliseconds>.bmp... named by count).
+    static const double dump_seconds = [] {
+        char value[16] = {};
+        return GetEnvironmentVariableA("MC3_DUMP_SECONDS", value, sizeof(value)) ? std::atof(value) : 0.0;
+    }();
+    static ULONGLONG next_timed_dump = 0;
+    bool timed_dump = false;
+    if (dump_seconds > 0) {
+        const ULONGLONG now = GetTickCount64();
+        if (!next_timed_dump) next_timed_dump = now;
+        if (now >= next_timed_dump) {
+            timed_dump = true;
+            next_timed_dump += static_cast<ULONGLONG>(dump_seconds * 1000);
+        }
+    }
+    if ((g_dump_every && g_presented % g_dump_every == 0) || timed_dump) {
         dump_frame(frame);  // the game's frame at its own size, not the window
         static const bool dump_window = GetEnvironmentVariableA("MC3_DUMP_WINDOW", nullptr, 0) != 0;
         if (dump_window) {  // what the window shows, with the effects (window-NNNNN.bmp)

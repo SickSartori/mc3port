@@ -22,6 +22,7 @@ struct Setting {
 };
 
 const Setting kSettings[] = {
+    {"frame_rate", 30, "Fotogrammi al secondo del gioco: 30 come l'Xbox, 60 piu' fluido (serve un PC che regga il doppio del lavoro)."},
     {"render_scale", 2, "Risoluzione interna: 1 = come l'Xbox (640x480), 2 = 1280x960, 3, 4. Piu' alta = bordi piu' lisci."},
     {"anisotropy", 16, "Filtro anisotropico delle texture: 1 = spento, fino a 16."},
     {"effects", 1, "Effetti moderni: 1 = attivi, 0 = immagine originale (F10 li accende e spegne durante il gioco)."},
