@@ -65,12 +65,17 @@ F10: accende e spegne gli effetti moderni, per confrontarli con l'immagine origi
 ## Impostazioni
 
 Al primo avvio viene creato `mc3port.ini` accanto a `mc3.exe`, con una spiegazione per ogni voce: fotogrammi al
-secondo, calcolo dei vertici sulla scheda video (`gpu_vertices`), risoluzione interna (antialiasing), filtro
-anisotropico, effetti moderni (nitidezza, bagliore delle luci, saturazione, contrasto, vignettatura, ombreggiatura
-ambientale e suo raggio). Le voci nuove mancanti in un file già esistente valgono col loro valore predefinito.
-Con `gpu_vertices` i vertex program del gioco vengono tradotti in shader: la prima volta si compilano in
-sottofondo (intanto li esegue il processore) e restano salvati nella cartella `shader_cache` accanto a `mc3.exe`.
-Si modifica con un editor di testo e vale dal
+secondo, schermo panoramico 16:9 (`widescreen`), calcolo dei vertici sulla scheda video (`gpu_vertices`),
+risoluzione interna (antialiasing), filtro anisotropico, effetti moderni (nitidezza, bagliore delle luci,
+saturazione, contrasto, vignettatura, ombreggiatura ambientale e suo raggio). Le voci nuove mancanti in un file già
+esistente valgono col loro valore predefinito.
+
+Con `widescreen` il gioco crede di essere collegato a un televisore panoramico e usa la sua modalità 16:9: più
+campo visivo ai lati, niente bande nere né immagine stirata. Con `gpu_vertices` i vertex program del gioco vengono
+tradotti in shader: la prima volta si compilano in sottofondo (intanto li esegue il processore) e restano salvati
+nella cartella `shader_cache` accanto a `mc3.exe`.
+
+Il file si modifica con un editor di testo e vale dal
 riavvio successivo. Ogni voce si può dare anche come variabile d'ambiente `MC3_<NOME>` (per esempio `MC3_BLOOM=0`),
 che ha la precedenza sul file.
 

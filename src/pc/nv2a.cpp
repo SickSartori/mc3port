@@ -365,7 +365,10 @@ void service_present() {
             flips = presents = 0;
         }
     }
-    renderer_present(front & 0x0FFFFFFF, display.pitch / 4, 480, display.pitch);
+    // The picture can be narrower than the pitch (widescreen: 720 of 768 pixels): what the game draws into.
+    const uint32_t drawn = kelvin_drawn_width(front & 0x0FFFFFFF);
+    const uint32_t width = drawn && drawn < display.pitch / 4 ? drawn : display.pitch / 4;
+    renderer_present(front & 0x0FFFFFFF, width, 480, display.pitch);
 }
 
 // --- traps and flips: the GPU waits for the CPU ---
@@ -712,11 +715,12 @@ void window_thread(HANDLE ready) {
     window_class.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     window_class.lpszClassName = L"mc3port";
     RegisterClassW(&window_class);
-    // 4:3 client area, 85% of the screen's usable height.
+    // Client area in the picture's shape (renderer_aspect), 85% of the screen's usable height, at most its width.
     RECT work{0, 0, 1280, 1024};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    const LONG height = std::max<LONG>(480, (work.bottom - work.top) * 85 / 100);
-    RECT rect{0, 0, height * 4 / 3, height};
+    LONG height = std::max<LONG>(480, (work.bottom - work.top) * 85 / 100);
+    height = std::min<LONG>(height, static_cast<LONG>((work.right - work.left) * 95 / 100 / renderer_aspect()));
+    RECT rect{0, 0, static_cast<LONG>(height * renderer_aspect()), height};
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
     g_window = CreateWindowW(L"mc3port", L"Midnight Club 3: DUB Edition Remix", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                              CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, nullptr,

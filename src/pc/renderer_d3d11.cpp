@@ -1177,17 +1177,18 @@ void post_pass(ID3D11RenderTargetView* rtv, const D3D11_VIEWPORT& area, ID3D11Pi
     g_context->PSSetShaderResources(0, 2, none);
 }
 
-// Draws the frame into the window: the largest 4:3 rectangle that fits, centred, filtered, with the effects.
+// Draws the frame into the window: the largest rectangle of the picture's shape (renderer_aspect) that fits,
+// centred, filtered, with the effects.
 void present_frame(ID3D11ShaderResourceView* frame, uint32_t frame_width, uint32_t frame_height) {
     ensure_swap_chain_size();
     if (!g_back_buffer_rtv || !g_present_pixel_shader) return;
     if (g_effects_enabled && g_final_pixel_shader && frame_width && frame_height) {
-        constexpr float kAspect = 4.0f / 3.0f;
+        const float aspect = renderer_aspect();
         float width = static_cast<float>(g_swap_width), height = static_cast<float>(g_swap_height);
-        if (width > height * kAspect) {
-            width = height * kAspect;
+        if (width > height * aspect) {
+            width = height * aspect;
         } else {
-            height = width / kAspect;
+            height = width / aspect;
         }
         const D3D11_VIEWPORT area{std::floor((g_swap_width - width) / 2), std::floor((g_swap_height - height) / 2),
                                   width, height, 0, 1};
@@ -1220,12 +1221,12 @@ void present_frame(ID3D11ShaderResourceView* frame, uint32_t frame_width, uint32
         post_pass(g_back_buffer_rtv.Get(), area, g_final_pixel_shader.Get(), sources, 2, constants);
         return;
     }
-    constexpr float kAspect = 4.0f / 3.0f;
+    const float aspect = renderer_aspect();
     float width = static_cast<float>(g_swap_width), height = static_cast<float>(g_swap_height);
-    if (width > height * kAspect) {
-        width = height * kAspect;
+    if (width > height * aspect) {
+        width = height * aspect;
     } else {
-        height = width / kAspect;
+        height = width / aspect;
     }
     const float left = std::floor((g_swap_width - width) / 2), top = std::floor((g_swap_height - height) / 2);
     const float black[4] = {0, 0, 0, 1};
@@ -1982,6 +1983,8 @@ void renderer_blit(const BlitRequest& b) {
     }
 }
 
+float renderer_aspect() { return setting("widescreen") != 0 ? 16.0f / 9.0f : 4.0f / 3.0f; }
+
 void renderer_toggle_effects() {
     g_effects_enabled = !g_effects_enabled;
     log_line("renderer: modern effects %s", g_effects_enabled ? "on" : "off");
@@ -1995,6 +1998,36 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     if (target != g_targets.end()) {
         frame = target->second.texture.Get();
         frame_view = target->second.srv.Get();
+        // Only the picture's part of a wider surface (widescreen: 720 of 768 pixels), copied out once per present.
+        D3D11_TEXTURE2D_DESC desc{};
+        frame->GetDesc(&desc);
+        const uint32_t visible_width = width * g_scale, visible_height = std::min(height * g_scale, desc.Height);
+        if (visible_width < desc.Width) {
+            static ComPtr<ID3D11Texture2D> visible;
+            static ComPtr<ID3D11ShaderResourceView> visible_view;
+            D3D11_TEXTURE2D_DESC visible_desc{};
+            if (visible) visible->GetDesc(&visible_desc);
+            if (!visible || visible_desc.Width != visible_width || visible_desc.Height != visible_height ||
+                visible_desc.Format != desc.Format) {
+                visible_desc = desc;
+                visible_desc.Width = visible_width;
+                visible_desc.Height = visible_height;
+                visible_desc.MipLevels = 1;
+                visible_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+                visible_desc.MiscFlags = 0;
+                visible.Reset();
+                visible_view.Reset();
+                if (SUCCEEDED(g_device->CreateTexture2D(&visible_desc, nullptr, &visible))) {
+                    g_device->CreateShaderResourceView(visible.Get(), nullptr, &visible_view);
+                }
+            }
+            if (visible_view) {
+                const D3D11_BOX box{0, 0, 0, visible_width, visible_height, 1};
+                g_context->CopySubresourceRegion(visible.Get(), 0, 0, 0, 0, frame, 0, &box);
+                frame = visible.Get();
+                frame_view = visible_view.Get();
+            }
+        }
     } else {
         // Nothing rendered there: show the guest memory (32-bit pixels).
         const uint8_t* pixels = physical_pointer(address);

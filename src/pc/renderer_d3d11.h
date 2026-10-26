@@ -138,6 +138,10 @@ void renderer_blit(const BlitRequest& blit);
 // Shows the surface at `address`; falls back to the guest memory there when nothing was rendered to it.
 void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_t pitch);
 
+// The shape the picture is shown in: 16:9 with the widescreen setting (the game then draws for a widescreen TV),
+// otherwise 4:3.
+float renderer_aspect();
+
 // F10: the modern effects (mc3port.ini) off and on, to compare with the original picture.
 void renderer_toggle_effects();
 

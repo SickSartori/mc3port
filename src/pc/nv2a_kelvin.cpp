@@ -13,6 +13,7 @@
 #include <windows.h>
 #include <set>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "pc/log.h"
@@ -206,6 +207,8 @@ uint32_t dma_address(uint32_t context_dma, uint32_t offset) {
     return (context_dma == 2 ? g_k.dma_b : g_k.dma_a) + offset;
 }
 
+std::unordered_map<uint32_t, uint32_t> g_drawn_widths;  // kelvin_drawn_width, by physical address
+
 SurfaceState surface() {
     SurfaceState s{};
     s.color_address = g_k.dma_color + g_k.color_offset;
@@ -228,6 +231,8 @@ SurfaceState surface() {
         const uint32_t pitch = g_k.surface_pitch & 0xFFFF;
         s.width = std::max(pitch / bytes_per_pixel, s.clip_x + s.clip_width);
         s.height = s.clip_y + s.clip_height;
+        uint32_t& drawn = g_drawn_widths[s.color_address & 0x0FFFFFFF];
+        drawn = std::max(drawn, s.clip_x + s.clip_width);
     }
     return s;
 }
@@ -852,8 +857,9 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
     }
     if (g_debug_draws > 0 && (fixed_function || !fixed_function_only)) {
         --g_debug_draws;
-        log_line("draw %llu: primitive %u, %u vertices, surface %08X %ux%u, clip max %g", static_cast<unsigned long long>(g_draws),
-                 g_k.primitive, count, target.color_address, target.width, target.height, g_k.clip_max);
+        log_line("draw %llu: primitive %u, %u vertices, surface %08X %ux%u (clip %u,%u %ux%u), clip max %g",
+                 static_cast<unsigned long long>(g_draws), g_k.primitive, count, target.color_address, target.width,
+                 target.height, target.clip_x, target.clip_y, target.clip_width, target.clip_height, g_k.clip_max);
         for (uint32_t i = 0; i < count && i < 3; ++i) {
             const RenderVertex& v = vertices[i];
             log_line("  v%u: clip (%g %g %g %g) d0 (%.2f %.2f %.2f %.2f) t0 (%g %g %g %g)", i, v.position[0],
@@ -1055,6 +1061,11 @@ void end_primitive() {
 }
 
 }  // namespace
+
+uint32_t kelvin_drawn_width(uint32_t address) {
+    const auto found = g_drawn_widths.find(address & 0x0FFFFFFF);
+    return found != g_drawn_widths.end() ? found->second : 0;
+}
 
 void kelvin_initialise(DmaResolver resolver) {
     g_k.dma = resolver;

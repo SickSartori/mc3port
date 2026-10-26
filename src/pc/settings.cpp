@@ -23,6 +23,7 @@ struct Setting {
 
 const Setting kSettings[] = {
     {"frame_rate", 30, "Fotogrammi al secondo del gioco: 30 come l'Xbox, 60 piu' fluido (serve un PC che regga il doppio del lavoro)."},
+    {"widescreen", 1, "Schermo panoramico 16:9: 1 = il gioco usa la sua modalita' panoramica (piu' campo visivo, niente bande nere), 0 = 4:3 come un televisore classico."},
     {"gpu_vertices", 1, "Calcolo dei vertici sulla scheda video: 1 = si' (piu' veloce), 0 = sul processore come prima."},
     {"render_scale", 2, "Risoluzione interna: 1 = come l'Xbox (640x480), 2 = 1280x960, 3, 4. Piu' alta = bordi piu' lisci."},
     {"anisotropy", 16, "Filtro anisotropico delle texture: 1 = spento, fino a 16."},
