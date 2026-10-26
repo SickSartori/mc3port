@@ -2,12 +2,17 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <mutex>
 #include <windows.h>
 #include <set>
+#include <thread>
 #include <vector>
 
 #include "pc/log.h"
@@ -16,6 +21,7 @@
 #include "pc/nv2a_vsh.h"
 #include "pc/physical_memory.h"
 #include "pc/renderer_d3d11.h"
+#include "pc/xbox_thread.h"
 
 namespace mc3::pc {
 namespace {
@@ -105,8 +111,89 @@ int g_probe_x = -1, g_probe_y = -1;
 uint32_t g_last_probe[2] = {0xFFFFFFFF, 0xFFFFFFFF};
 
 void log_once(uint32_t key, const char* message) {
+    static std::mutex mutex;  // vertex work runs on several threads
+    std::lock_guard<std::mutex> lock(mutex);
     if (g_logged.insert(key).second) log_line("nv2a: %s", message);
 }
+
+// Helper threads for the vertex work of large draws: vertices are independent, and their transformation on the CPU
+// was most of the GPU thread's time (half a second per second in split screen). The GPU thread takes part; the
+// helpers run on the emulation cores, away from the game's.
+class VertexWorkers {
+public:
+    // Calls work(first, end) over [0, count) in chunks, on the helpers and the calling thread; returns when done.
+    void run(uint32_t count, const std::function<void(uint32_t, uint32_t)>& work) {
+        start();
+        if (threads_.empty()) {
+            work(0, count);
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            work_ = &work;
+            count_ = count;
+            next_.store(0);
+            busy_ = static_cast<uint32_t>(threads_.size());
+            ++generation_;
+        }
+        wake_.notify_all();
+        take_chunks();
+        std::unique_lock<std::mutex> lock(mutex_);
+        done_.wait(lock, [&] { return busy_ == 0; });
+        work_ = nullptr;
+    }
+
+private:
+    static constexpr uint32_t kChunk = 128;
+
+    void start() {
+        if (started_) return;
+        started_ = true;
+        const unsigned long cores = emulation_cores();
+        uint32_t available = 0;
+        for (unsigned long mask = cores; mask; mask &= mask - 1) ++available;
+        if (!cores) available = std::max(1u, std::thread::hardware_concurrency()) - 1;
+        const uint32_t helpers = std::min<uint32_t>(available > 1 ? available - 1 : 0, 7);  // one is the GPU thread's
+        for (uint32_t i = 0; i < helpers; ++i) {
+            threads_.emplace_back([this, cores] {
+                if (cores) SetThreadAffinityMask(GetCurrentThread(), cores);
+                uint64_t seen = 0;
+                for (;;) {
+                    {
+                        std::unique_lock<std::mutex> lock(mutex_);
+                        wake_.wait(lock, [&] { return generation_ != seen; });
+                        seen = generation_;
+                    }
+                    take_chunks();
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    if (--busy_ == 0) done_.notify_one();
+                }
+            });
+            threads_.back().detach();
+        }
+        log_line("nv2a: %zu helper threads for vertex work", threads_.size());
+    }
+
+    void take_chunks() {
+        for (;;) {
+            const uint32_t first = next_.fetch_add(kChunk);
+            if (first >= count_) return;
+            (*work_)(first, std::min(count_, first + kChunk));
+        }
+    }
+
+    bool started_ = false;
+    std::vector<std::thread> threads_;
+    std::mutex mutex_;
+    std::condition_variable wake_, done_;
+    const std::function<void(uint32_t, uint32_t)>* work_ = nullptr;
+    uint32_t count_ = 0;
+    std::atomic<uint32_t> next_{0};
+    uint32_t busy_ = 0;
+    uint64_t generation_ = 0;
+};
+
+VertexWorkers g_vertex_workers;
 
 float as_float(uint32_t bits) {
     float value;
@@ -508,20 +595,28 @@ void draw(uint32_t count, Fetch fetch) {
     if (!target.width || !target.height) return;
 
     std::vector<RenderVertex> vertices(count);
-    Vec4 inputs[kVshAttributes];
-    Vec4 outputs[kVshOutputs];
     LARGE_INTEGER vertex_start, vertex_end;
     QueryPerformanceCounter(&vertex_start);
-    for (uint32_t i = 0; i < count; ++i) {
-        std::copy(std::begin(g_k.attribute), std::end(g_k.attribute), inputs);
-        fetch(i, inputs);
-        if (fixed_function) {
-            transform_fixed_function(inputs, outputs);
-        } else {
-            g_k.vertex_program.execute(inputs, g_k.constants, outputs);
+    const auto transform = [&](uint32_t first, uint32_t end) {
+        Vec4 inputs[kVshAttributes];
+        Vec4 outputs[kVshOutputs];
+        for (uint32_t i = first; i < end; ++i) {
+            std::copy(std::begin(g_k.attribute), std::end(g_k.attribute), inputs);
+            fetch(i, inputs);
+            if (fixed_function) {
+                transform_fixed_function(inputs, outputs);
+            } else {
+                g_k.vertex_program.execute(inputs, g_k.constants, outputs);
+            }
+            outputs[kOutFog][0] = fog_factor(outputs[kOutFog][0]);
+            vertices[i] = to_render_vertex(outputs);
         }
-        outputs[kOutFog][0] = fog_factor(outputs[kOutFog][0]);
-        vertices[i] = to_render_vertex(outputs);
+    };
+    constexpr uint32_t kParallelVertices = 192;  // below this, waking the helpers costs more than it saves
+    if (count >= kParallelVertices) {
+        g_vertex_workers.run(count, transform);
+    } else {
+        transform(0, count);
     }
     QueryPerformanceCounter(&vertex_end);
     renderer_note_vertex_work(static_cast<uint64_t>(vertex_end.QuadPart - vertex_start.QuadPart), count);
