@@ -4,6 +4,7 @@
 // (module path, image size, command line) happens before map_xbe() overwrites the image with the XBE.
 
 #include <windows.h>
+#include <dbghelp.h>
 #include <shellapi.h>
 
 #include <algorithm>
@@ -169,11 +170,74 @@ XbeTlsTemplate prepare_tls(const Xbe& xbe) {
     return tls;
 }
 
+// A C++ exception carries the MSVC throw information: its first catchable type names the thrown class.
+void log_cpp_exception(const EXCEPTION_RECORD* record) {
+    struct TypeDescriptor {
+        const void* vtable;
+        void* spare;
+        char name[1];
+    };
+    struct CatchableType {
+        uint32_t properties;
+        const TypeDescriptor* type;
+    };
+    struct CatchableTypeArray {
+        int32_t count;
+        const CatchableType* types[1];
+    };
+    struct ThrowInfo {
+        uint32_t attributes;
+        const void* unwind;
+        const void* forward_compat;
+        const CatchableTypeArray* catchable;
+    };
+    const auto* throw_info = reinterpret_cast<const ThrowInfo*>(record->ExceptionInformation[2]);
+    const auto* object = reinterpret_cast<const std::exception*>(record->ExceptionInformation[1]);
+    if (!throw_info || !throw_info->catchable || throw_info->catchable->count < 1) return;
+    const char* name = throw_info->catchable->types[0]->type->name;
+    // Every catchable type of a std::exception lists std::exception last.
+    const CatchableType* last = throw_info->catchable->types[throw_info->catchable->count - 1];
+    const bool standard = std::strcmp(last->type->name, ".?AVexception@std@@") == 0;
+    log_line("  C++ exception %s%s%s", name, standard ? ": " : "", standard ? object->what() : "");
+}
+
+// Host code frames, named from the PDBs next to the program (RelWithDebInfo builds).
+void log_host_backtrace(const CONTEXT* context) {
+    HANDLE process = GetCurrentProcess();
+    static const bool symbols = SymInitialize(process, nullptr, TRUE) != FALSE;
+    CONTEXT copy = *context;
+    STACKFRAME64 frame{};
+    frame.AddrPC = {copy.Eip, 0, AddrModeFlat};
+    frame.AddrFrame = {copy.Ebp, 0, AddrModeFlat};
+    frame.AddrStack = {copy.Esp, 0, AddrModeFlat};
+    for (int depth = 0; depth < 24 && StackWalk64(IMAGE_FILE_MACHINE_I386, process, GetCurrentThread(), &frame, &copy,
+                                                  nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr);
+         ++depth) {
+        alignas(SYMBOL_INFO) char buffer[sizeof(SYMBOL_INFO) + 256] = {};
+        auto* symbol = reinterpret_cast<SYMBOL_INFO*>(buffer);
+        symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+        symbol->MaxNameLen = 255;
+        DWORD64 displacement = 0;
+        IMAGEHLP_LINE64 line{sizeof(line)};
+        DWORD column = 0;
+        const DWORD64 pc = frame.AddrPC.Offset;
+        const bool named = symbols && SymFromAddr(process, pc, &displacement, symbol);
+        const bool lined = symbols && SymGetLineFromAddr64(process, pc, &column, &line);
+        log_line("  at %08X %s%s%s:%lu", static_cast<uint32_t>(pc), named ? symbol->Name : "?", lined ? " " : "",
+                 lined ? line.FileName : "", lined ? line.LineNumber : 0ul);
+    }
+}
+
 LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
     const CONTEXT* context = info->ContextRecord;
     log_line("");
     log_line("unhandled exception %08lX at %08X", record->ExceptionCode, address_of(record->ExceptionAddress));
+    constexpr DWORD kMsvcCppException = 0xE06D7363;
+    if (record->ExceptionCode == kMsvcCppException && record->NumberParameters >= 3) {
+        log_cpp_exception(record);
+        log_host_backtrace(context);
+    }
     if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters >= 2) {
         const uint32_t address = static_cast<uint32_t>(record->ExceptionInformation[1]);
         log_line("  %s of address %08X", record->ExceptionInformation[0] ? "write" : "read", address);
@@ -326,6 +390,8 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
         code == DBG_PRINTEXCEPTION_WIDE_C) {
         return EXCEPTION_CONTINUE_SEARCH;
     }
+    // Windows components (the file dialog's shell and RPC code) raise and handle their own: only game threads.
+    if (!current_xbox_thread()) return EXCEPTION_CONTINUE_SEARCH;
     if (InterlockedIncrement(&reported) <= 20) {
         log_line("first-chance exception:");
         on_unhandled_exception(info);

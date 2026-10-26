@@ -169,7 +169,9 @@ float ease_out(float t) {
 
 // --- shared state with the window thread ---
 
-std::mutex g_ui_mutex;                 // ImGui's input queue is filled by the window thread
+// ImGui's input queue is filled by the window thread. Recursive: ImGui's own calls (SetCapture on a click) send\r
+// messages straight back into window_hook on the same thread.\r
+std::recursive_mutex g_ui_mutex;
 std::atomic<int> g_captured_key{0};    // the key pressed while rebinding (0: none)
 std::atomic<bool> g_capturing{false};
 
@@ -191,7 +193,7 @@ bool window_hook(HWND window, UINT message, WPARAM wparam, LPARAM lparam, LRESUL
         *result = 0;
         return true;
     }
-    std::lock_guard<std::mutex> lock(g_ui_mutex);
+    std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
     if (ImGui::GetCurrentContext() && ImGui_ImplWin32_WndProcHandler(window, message, wparam, lparam)) {
         *result = 1;
         return true;
@@ -446,7 +448,10 @@ private:
     void page_about();
     void update_row(bool always);
     void page_wizard();
-    void choose_disc();
+    // The file dialog makes the game window its owner, which needs the window thread: never while g_ui_mutex is
+    // held (that thread waits for it in window_hook). Clicks only ask for it; run() opens it between frames.
+    void choose_disc() { choose_disc_requested_ = true; }
+    void run_disc_dialog();
     void set_setting(const char* key, float value) { setting_save(key, value); }
     int quality_preset() const;
     void apply_quality(int preset);
@@ -492,7 +497,7 @@ private:
     int wizard_step_ = 0;
     int rebinding_ = -1;
     float rebinding_since_ = 0;
-    bool done_ = false, play_ = false;
+    bool done_ = false, play_ = false, choose_disc_requested_ = false;
     float start_time_ = 0;
 
     ImDrawList* list_ = nullptr;
@@ -624,7 +629,7 @@ void Launcher::stop_graphics() {
     if (update_thread_.joinable()) update_thread_.join();
     if (download_thread_.joinable()) download_thread_.join();
     {
-        std::lock_guard<std::mutex> lock(g_ui_mutex);
+        std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
         nv2a_set_window_hook(nullptr);
     }
     ImGui_ImplDX11_Shutdown();
@@ -977,8 +982,16 @@ void Launcher::apply_quality(int preset) {
     set_setting("ambient_occlusion", q.ambient_occlusion);
 }
 
-void Launcher::choose_disc() {
-    const std::filesystem::path chosen = ask_for_disc_image(window_);
+void Launcher::run_disc_dialog() {
+    log_line("launcher: opening the file dialog");
+    std::filesystem::path chosen;
+    try {
+        chosen = ask_for_disc_image(window_);
+    } catch (const std::exception& e) {
+        log_line("launcher: file dialog failed: %s (%s)", e.what(), typeid(e).name());
+        return;
+    }
+    log_line("launcher: file dialog closed (%s)", chosen.empty() ? "nothing chosen" : "file chosen");
     if (chosen.empty()) return;
     std::string problem;
     if (std::optional<GameDisc> disc = check_game_disc(chosen, problem)) {
@@ -1539,7 +1552,7 @@ std::optional<GameDisc> Launcher::run() {
             }
         }
         {
-            std::lock_guard<std::mutex> lock(g_ui_mutex);
+            std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
             ImGui_ImplDX11_NewFrame();
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
@@ -1550,6 +1563,10 @@ std::optional<GameDisc> Launcher::run() {
         draw_background(time);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         swap_chain_->Present(1, 0);
+        if (choose_disc_requested_) {  // outside the lock: see choose_disc
+            choose_disc_requested_ = false;
+            run_disc_dialog();
+        }
     }
     log_line("launcher: %s", play_ ? "play" : "quit");
     stop_graphics();
