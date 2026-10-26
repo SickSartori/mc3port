@@ -20,6 +20,9 @@ void register_kernel(uint32_t ordinal, Function* function) {
 void register_dispatcher_functions();
 void register_thread_functions();
 void register_memory_functions();
+// A read fault at `address`: if the page is reserved by the game's memory (the tail NtAllocateVirtualMemory adds
+// to new regions), commits it zero-filled and returns true so that the read can be retried.
+bool commit_reserved_page(uint32_t address);
 void register_system_functions();
 void register_io_functions();
 void register_crypto_functions();

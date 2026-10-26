@@ -21,6 +21,10 @@ bool start_nv2a();
 // Called from the vectored exception handler; true if the fault was a register access and has been emulated.
 bool nv2a_handle_access_violation(CONTEXT* context, uint32_t address);
 
+// Loads the window's icons from mc3.exe's resources. Must run before the XBE is mapped over the exe's image,
+// which erases them.
+void nv2a_load_icons();
+
 // From AvSetDisplayMode: what the video encoder would scan out.
 void nv2a_set_display_mode(uint32_t mode, uint32_t format, uint32_t pitch, uint32_t frame_buffer);
 

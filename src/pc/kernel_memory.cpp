@@ -34,10 +34,27 @@ NTSTATUS status_from_last_error() {
     }
 }
 
+// A new region gets this much more reserved after it: Windows leaves unusable gaps between regions (64 KB
+// granularity) where the Xbox has the next pages, and the game reads a little past some buffers (zlib reads
+// ahead of its input). Reads there commit a zero page (commit_reserved_page).
+constexpr uint32_t kTailReserve = 64 * 1024;
+
 NTSTATUS __stdcall NtAllocateVirtualMemory(uint32_t* base_address, uint32_t /*zero_bits*/, uint32_t* region_size,
                                            uint32_t allocation_type, uint32_t protect) {
+    const DWORD type = allocation_type & ~kXboxMemNoZero;
+    if (*base_address == 0 && (type & MEM_RESERVE) && *region_size) {
+        const uint32_t size = (*region_size + 0xFFF) & ~0xFFFu;
+        void* reserved = VirtualAlloc(nullptr, size + kTailReserve, MEM_RESERVE, windows_protection(protect));
+        if (reserved && (!(type & MEM_COMMIT) ||
+                         VirtualAlloc(reserved, size, MEM_COMMIT | (type & MEM_TOP_DOWN), windows_protection(protect)))) {
+            *base_address = address_of(reserved);
+            *region_size = size;
+            return kStatusSuccess;
+        }
+        if (reserved) VirtualFree(reserved, 0, MEM_RELEASE);
+    }
     void* result = VirtualAlloc(reinterpret_cast<void*>(static_cast<uintptr_t>(*base_address)), *region_size,
-                                allocation_type & ~kXboxMemNoZero, windows_protection(protect));
+                                type, windows_protection(protect));
     if (!result) {
         log_line("NtAllocateVirtualMemory(%08X, %08X, type %08X, protect %08X) failed: error %lu", *base_address,
                  *region_size, allocation_type, protect, GetLastError());
@@ -163,6 +180,21 @@ uint32_t __stdcall ExQueryPoolBlockSize(uint32_t pool) {
 }
 
 }  // namespace
+
+bool commit_reserved_page(uint32_t address) {
+    MEMORY_BASIC_INFORMATION info;
+    if (!VirtualQuery(reinterpret_cast<void*>(static_cast<uintptr_t>(address)), &info, sizeof(info)) ||
+        info.State != MEM_RESERVE) {
+        return false;
+    }
+    void* page = reinterpret_cast<void*>(static_cast<uintptr_t>(address & ~0xFFFu));
+    if (!VirtualAlloc(page, 4096, MEM_COMMIT, PAGE_READWRITE)) return false;
+    static volatile long logged = 0;
+    if (InterlockedIncrement(&logged) <= 10) {
+        log_line("memory: read past committed memory at %08X: page committed (zeros)", address);
+    }
+    return true;
+}
 
 void register_memory_functions() {
     register_kernel(184, &NtAllocateVirtualMemory);

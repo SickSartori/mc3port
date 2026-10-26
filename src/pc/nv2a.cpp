@@ -703,18 +703,22 @@ LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam, LPAR
     return DefWindowProcW(window, message, wparam, lparam);
 }
 
+HICON g_icon = nullptr, g_small_icon = nullptr;  // nv2a_load_icons
+
 void window_thread(HANDLE ready) {
     // Real pixels on scaled displays (150% and so on): otherwise Windows renders the window small and enlarges it,
     // blurring the picture.
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    WNDCLASSW window_class{};
+    WNDCLASSEXW window_class{};
+    window_class.cbSize = sizeof(window_class);
     window_class.lpfnWndProc = window_procedure;
     window_class.hInstance = GetModuleHandleW(nullptr);
     window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    window_class.hIcon = LoadIconW(window_class.hInstance, MAKEINTRESOURCEW(1));  // res/mc3.rc, in mc3.exe
+    window_class.hIcon = g_icon;
+    window_class.hIconSm = g_small_icon;
     window_class.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     window_class.lpszClassName = L"mc3port";
-    RegisterClassW(&window_class);
+    RegisterClassExW(&window_class);
     // Client area in the picture's shape (renderer_aspect), 85% of the screen's usable height, at most its width.
     RECT work{0, 0, 1280, 1024};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
@@ -878,6 +882,18 @@ bool nv2a_handle_access_violation(CONTEXT* context, uint32_t address) {
     log_line("nv2a: cannot emulate the register access at %08lX (address %08X, code %02X %02X %02X %02X)",
              context->Eip, address, code[0], code[1], code[2], code[3]);
     return false;
+}
+
+void nv2a_load_icons() {
+    // Each size picked from the .ico (res/mc3.rc, resource 1), not shrunk from a large one.
+    HINSTANCE module = GetModuleHandleW(nullptr);
+    const UINT dpi = GetDpiForSystem();
+    g_icon = static_cast<HICON>(LoadImageW(module, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetricsForDpi(SM_CXICON, dpi),
+                                           GetSystemMetricsForDpi(SM_CYICON, dpi), 0));
+    g_small_icon = static_cast<HICON>(LoadImageW(module, MAKEINTRESOURCEW(1), IMAGE_ICON,
+                                                 GetSystemMetricsForDpi(SM_CXSMICON, dpi),
+                                                 GetSystemMetricsForDpi(SM_CYSMICON, dpi), 0));
+    if (!g_icon) log_line("window: the icon could not be loaded (error %lu)", GetLastError());
 }
 
 void nv2a_set_display_mode(uint32_t mode, uint32_t format, uint32_t pitch, uint32_t frame_buffer) {

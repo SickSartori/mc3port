@@ -198,8 +198,24 @@ LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     log_line("");
     log_line("unhandled exception %08lX at %08X", record->ExceptionCode, address_of(record->ExceptionAddress));
     if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && record->NumberParameters >= 2) {
-        log_line("  %s of address %08X", record->ExceptionInformation[0] ? "write" : "read",
-                 static_cast<uint32_t>(record->ExceptionInformation[1]));
+        const uint32_t address = static_cast<uint32_t>(record->ExceptionInformation[1]);
+        log_line("  %s of address %08X", record->ExceptionInformation[0] ? "write" : "read", address);
+        MEMORY_BASIC_INFORMATION memory{};
+        if (VirtualQuery(reinterpret_cast<void*>(static_cast<uintptr_t>(address)), &memory, sizeof(memory))) {
+            log_line("  memory there: region %08X+%lX (%s), allocation at %08X", address_of(memory.BaseAddress),
+                     static_cast<unsigned long>(memory.RegionSize),
+                     memory.State == MEM_COMMIT ? "committed" : memory.State == MEM_RESERVE ? "reserved" : "free",
+                     address_of(memory.AllocationBase));
+            // The region just below: what the game was reading past.
+            MEMORY_BASIC_INFORMATION below{};
+            if (address >= 0x1000 && VirtualQuery(reinterpret_cast<void*>(static_cast<uintptr_t>(address - 0x1000)),
+                                                  &below, sizeof(below))) {
+                log_line("  memory below: region %08X+%lX (%s), allocation at %08X", address_of(below.BaseAddress),
+                         static_cast<unsigned long>(below.RegionSize),
+                         below.State == MEM_COMMIT ? "committed" : below.State == MEM_RESERVE ? "reserved" : "free",
+                         address_of(below.AllocationBase));
+            }
+        }
     }
     log_line("  eax=%08lX ebx=%08lX ecx=%08lX edx=%08lX esi=%08lX edi=%08lX ebp=%08lX esp=%08lX", context->Eax,
              context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi, context->Ebp, context->Esp);
@@ -323,6 +339,12 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
                                      static_cast<uint32_t>(info->ExceptionRecord->ExceptionInformation[1]))) {
         return EXCEPTION_CONTINUE_EXECUTION;
     }
+    constexpr ULONG_PTR kReadFault = 0;
+    if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2 &&
+        info->ExceptionRecord->ExceptionInformation[0] == kReadFault &&
+        commit_reserved_page(static_cast<uint32_t>(info->ExceptionRecord->ExceptionInformation[1]))) {
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
     if (code == kMsvcCppException || code == kSetThreadName || code == DBG_PRINTEXCEPTION_C ||
         code == DBG_PRINTEXCEPTION_WIDE_C) {
         return EXCEPTION_CONTINUE_SEARCH;
@@ -378,6 +400,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     if (!g_xbe) fatal("default.xbe: %s", error.c_str());
     log_xbe(*g_xbe);
 
+    nv2a_load_icons();  // the exe's resources, before the XBE overwrites them
     map_xbe(*g_xbe, host);
 
     apply_hle_patches(*g_xbe);
