@@ -11,3 +11,6 @@ Vimm's Lair.txt
 
 # Runtime logs
 *.log
+
+# Release packages (tools/package.ps1)
+/dist/

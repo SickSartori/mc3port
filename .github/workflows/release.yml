@@ -1,0 +1,42 @@
+# Builds the Windows package. A tag vX.Y.Z (matching the version in CMakeLists.txt) publishes it as a GitHub
+# release with its SHA256SUMS; any other run keeps the package as a workflow artifact.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and package
+        shell: pwsh
+        run: ./tools/package.ps1
+
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(mc3port VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          if ("${{ github.ref_name }}" -ne "v$version") { throw "tag ${{ github.ref_name }} but CMakeLists.txt says $version" }
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" (Get-ChildItem dist -File).FullName --title "mc3port ${{ github.ref_name }}" --generate-notes
+
+      - name: Keep the package
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mc3port-windows
+          path: dist/*.zip

@@ -1,111 +1,146 @@
 # mc3port
 
-Port nativo di **Midnight Club 3: DUB Edition Remix** (versione Xbox originale, PAL) per **PC** e, in futuro,
-**Xbox 360**, al posto della retrocompatibilità della 360 (modalità Arcade non funzionante, problemi di caricamento).
+An unofficial native Windows port of **Midnight Club 3: DUB Edition Remix** for the original Xbox (European release).
+It runs the game from **your own disc image**, with 16:9 widescreen, up to 60 fps, a higher internal resolution and
+optional modern effects.
 
-Il repository contiene solo codice: il gioco va fornito con la propria copia del disco (`.iso` XISO o Redump).
+> [!IMPORTANT]
+> mc3port is an unofficial, non-commercial fan project. It is not affiliated with, endorsed by or sponsored by
+> Rockstar Games, Take-Two Interactive or Microsoft. Midnight Club is a trademark of Take-Two Interactive Software.
+>
+> **No game data is included or distributed**: no disc images, no executables, no textures, sounds, music or films.
+> To play you need your own, legally obtained copy of the game. mc3port reads everything it needs from your disc
+> image while it runs. Please do not ask for game files or disc images, and do not share them.
 
-Piano e stato delle fasi: [docs/ROADMAP.md](docs/ROADMAP.md). Dati ricavati dall'eseguibile: [docs/ANALISI_XBE.md](docs/ANALISI_XBE.md).
+## What it is
 
-## Come funziona (PC)
+mc3port is a port, not a remaster. It runs the original 2005 game, with its own cars, cities, physics and soundtrack.
+The game's x86 code runs natively on your PC; mc3port replaces the Xbox around it: its kernel, the NV2A graphics chip
+(on Direct3D 11), the sound chip (on XAudio2) and the controllers (on XInput).
 
-- `mc3.exe` è un launcher minuscolo linkato all'indirizzo `0x10000`, lo stesso dell'XBE: così Windows riserva
-  l'intervallo di memoria che il gioco si aspetta.
-- `mc3runtime.dll` legge `default.xbe` direttamente dalla ISO, lo copia sopra il launcher, sostituisce gli accessi
-  `fs:` del kernel Xbox, collega le 154 funzioni del kernel e salta all'entry point del gioco.
-- Le funzioni del kernel non ancora scritte fermano il gioco e scrivono in `mc3port.log` quale funzione serve,
-  da dove è stata chiamata e con quali argomenti.
+Compared with the console:
 
-## Requisiti
+- **True 16:9**: the game's own widescreen mode, with a wider view and no stretching or black bars.
+- **60 fps**, or 30 like the Xbox.
+- **Higher internal resolution** (up to 4x) with anisotropic filtering, for smooth edges and sharp textures.
+- **Modern effects**, all optional: light glow, adaptive sharpening, colour, vignette and ambient occlusion
+  (F10 switches them on and off to compare).
+- **A launcher** that checks your disc, sets everything up on the first start and holds all the settings.
+- **Keyboard support** with rebindable keys, and Xbox controllers for up to four players.
 
-Visual Studio 2026 con il carico di lavoro **"Sviluppo di applicazioni desktop con C++"**, comprensivo di:
+## Requirements
 
-- strumenti di compilazione MSVC x64/x86
-- Windows 11 SDK
-- strumenti CMake C++ per Windows
+- Windows 10 or 11, 64-bit.
+- A graphics card with Direct3D 11.
+- A disc image (`.iso`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
+  XISO and full Redump dumps both work. Other releases (for example the North American one) are not supported yet:
+  mc3port checks the game's executable (`default.xbe`, SHA-256 `29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09`)
+  and tells you if the disc is a different version.
 
-Python 3 solo per gli strumenti in `tools/`.
+## Installing
 
-## Compilazione
+**With Quiver Launcher**: find mc3port in the catalog and install it. Quiver keeps it up to date.
 
-Da un "Developer PowerShell for VS 2026", nella cartella del progetto:
+**By hand**: download `mc3port-<version>-windows-x86.zip` from the [releases page](https://github.com/SickSartori/mc3port/releases),
+extract it into a folder of your choice and start `mc3.exe`. To check the download, compare its SHA-256 with the
+`SHA256SUMS` file of the release. The files are not code signed, so Windows SmartScreen may ask once whether you
+trust them ("More info", then "Run anyway").
 
-```
-cmake --preset pc-x86
-cmake --build --preset pc-x86-debug
-```
+To update, extract the new version over the old one. Your settings (`mc3port.ini`) and saves (`xbox_hdd`) stay.
 
-## Avvio
+## First start
 
-```
-build\pc-x86\Debug\mc3.exe "percorso\del\gioco.iso"
-```
+The launcher opens and asks for your disc image. Choose the `.iso` file: mc3port checks it and remembers where it is.
+Then pick a quality preset, the aspect ratio and the frame rate, and press **PLAY**. Next time the launcher opens on
+its main page; **PLAY** (or Enter, or A on a controller) starts the game.
 
-Senza argomenti usa la prima `.iso` trovata accanto a `mc3.exe` o nella cartella corrente.
+## Controls
 
-L'hard disk dell'Xbox (salvataggi in `UDATA`, dati del titolo in `TDATA`, cache `Z:`) è la cartella `xbox_hdd`
-accanto a `mc3.exe`. Il log di ogni avvio è `mc3port.log`, nella stessa cartella.
+Xbox controllers (Xbox 360, One and Series, or anything XInput) work as on the console, on ports 1 to 4. PlayStation
+and other controllers work through Steam Input or DS4Windows, which present them as Xbox controllers.
 
-Controlli: i controller XInput (Xbox 360/One/Series) sono le porte 1-4; Bianco e Nero diventano LB e RB. Senza
-controller, la porta 1 è la tastiera (solo quando la finestra del gioco è in primo piano):
+Without a controller, the keyboard is controller 1. Every key can be changed in the launcher's **Controls** page.
 
-| Tasto | Pulsante Xbox |
+| Key | Xbox controller |
 |---|---|
-| Frecce | croce direzionale |
-| Invio / Backspace | START / BACK |
-| Spazio / Esc / Z / C | A / B / X / Y |
-| W / S | grilletto destro (gas) / sinistro (freno) |
-| A / D | levetta sinistra (sterzo) |
-| I / J / K / L | levetta destra |
-| Shift sinistro / Ctrl sinistro | Nero / Bianco |
+| W / S | right trigger (accelerate) / left trigger (brake, reverse) |
+| A / D | left stick (steer) |
+| Space / Esc / Z / C | A / B / X / Y |
+| Left Shift / Left Ctrl | Black / White |
+| Enter / Backspace | Start / Back |
+| Arrow keys | D-pad |
+| I / J / K / L | right stick |
 
-Alt+Invio o F11: schermo intero (senza bordi) e ritorno alla finestra. L'immagine resta 4:3 con bande nere.
-F10: accende e spegne gli effetti moderni, per confrontarli con l'immagine originale.
-
-## Impostazioni
-
-Al primo avvio viene creato `mc3port.ini` accanto a `mc3.exe`, con una spiegazione per ogni voce: fotogrammi al
-secondo, schermo panoramico 16:9 (`widescreen`), calcolo dei vertici sulla scheda video (`gpu_vertices`),
-risoluzione interna (antialiasing), filtro anisotropico, effetti moderni (nitidezza, bagliore delle luci,
-saturazione, contrasto, vignettatura, ombreggiatura ambientale e suo raggio). Le voci nuove mancanti in un file già
-esistente valgono col loro valore predefinito.
-
-Con `widescreen` il gioco crede di essere collegato a un televisore panoramico e usa la sua modalità 16:9: più
-campo visivo ai lati, niente bande nere né immagine stirata. Con `gpu_vertices` i vertex program del gioco vengono
-tradotti in shader: la prima volta si compilano in sottofondo (intanto li esegue il processore) e restano salvati
-nella cartella `shader_cache` accanto a `mc3.exe`.
-
-Il file si modifica con un editor di testo e vale dal
-riavvio successivo. Ogni voce si può dare anche come variabile d'ambiente `MC3_<NOME>` (per esempio `MC3_BLOOM=0`),
-che ha la precedenza sul file.
-
-Variabili d'ambiente:
-
-| Variabile | Effetto |
+| PC key | Action |
 |---|---|
-| `MC3_<VOCE>` | qualunque voce di `mc3port.ini` (per esempio `MC3_RENDER_SCALE=1`, `MC3_AMBIENT_OCCLUSION=0`) |
-| `MC3_DUMP_WINDOW=1` | con `MC3_DUMP_FRAMES`, salva anche l'immagine della finestra con gli effetti (`window-NNNNN.bmp`) |
-| `MC3_AO_VIEW=1` | mostra solo l'ombreggiatura ambientale, in grigio, al posto della scena (per regolarla) |
-| `MC3_LANGUAGE` | lingua del sistema: 1 inglese, 3 tedesco, 4 francese, 5 spagnolo, 6 italiano (predefinito) |
-| `MC3_MULTICORE=1` | usa tutti i core; per default il gioco gira su un core solo, come sull'Xbox |
-| `MC3_NO_DIALOG=1` | niente finestra in caso di errore fatale (per i test automatici) |
-| `MC3_DUMP_FRAMES=<n>` | salva un frame presentato ogni `n` come `frame-NNNNN.bmp` nella cartella di lavoro |
-| `MC3_DEBUG_DRAWS=<n>` | descrive nel log i primi `n` draw (vertici, combiner, texture, stati); con `MC3_DEBUG_DRAWS_FF=1` solo quelli fixed-function |
-| `MC3_DUMP_TARGET=<indirizzo hex>` | con ogni frame salvato, anche la render target a quell'indirizzo fisico (`target-NNNNN.bmp`) |
-| `MC3_DEBUG_FRAME_AT=<s>[+<durata>]` | una riga per draw (e per clear) durante 1 s, o `durata` secondi, a partire da `s` secondi dopo il primo draw (rettangolo a schermo, coordinate di texture, stati) |
-| `MC3_DEBUG_PROBE=<x>,<y>` | con il precedente, registra il pixel (x, y) ogni volta che un draw lo cambia |
-| `MC3_DUMP_TEXTURE=<indirizzo hex>` | salva le texture decodificate di quella pagina di 4 KB come `texture-<indirizzo>.bmp` (con l'alfa) |
-| `MC3_GPU_STATS=1` | ogni 10 s, i metodi GPU più usati |
-| `MC3_INPUT_SCRIPT=<s>:<pulsante>,<da>-<a>:<pulsante>,...` | preme (0,2 s) o tiene premuti pulsanti del controller 1 a quei secondi dall'avvio, per i test (`start back a b x y black white up down left right lt rt`, `sl`/`sr` per sterzare). Con `@<file>[#n]+<s>[~<durata>]:<pulsante>` il tempo conta da quando il gioco apre un file con quel nome (per esempio `@bg_main+5:down`). Con il prefisso `p2`...`p4` (`p2start`, `p2rt`) i pulsanti vanno ai controller 2-4, che compaiono collegati anche senza un controller vero; con un controller vero sulla porta 1 le pressioni si sommano alle sue |
-| `MC3_DUMP_BUFFER=<byte>` | salva i dati grezzi dei buffer audio di quella dimensione in `buffer-<byte>-<indirizzo>.bin` (cartella di lavoro) |
-| `MC3_TRACE_WAITS=1` | registra le attese del kernel che durano più di 5 s, con gli ultimi eventi segnalati |
-| `MC3_AUDIO_DUMP=<s>` | i primi `s` secondi dell'audio in uscita in `audio.wav` (cartella di lavoro) |
-| `MC3_AUDIO_VOICES=1` | ogni 10 s, l'elenco delle voci audio attive con formato, volume, tono, regioni, età e uscite |
-| `MC3_SKIP=<texture>:<superficie>:<fusione>` / `MC3_DUMP_DRAW=...` | salta, o salva prima e dopo, i draw corrispondenti (per isolare un difetto grafico) |
-| `MC3_WATCHDOG=<s>` | ogni `s` secondi, dove si trovano i thread del gioco (cambia la temporizzazione) |
+| F11 or Alt+Enter | full screen on and off |
+| F10 | modern effects on and off |
 
-## Strumenti
+## Settings
 
-- `python -I tools/xiso_inspect.py <iso> [default.xbe di output]`: elenca i file del disco, analizza l'XBE ed eventualmente lo estrae.
-- `python -I tools/check_xbe.py <default.xbe>`: verifica la tabella del kernel e la scansione `fs:` del loader sull'XBE reale.
-- `python -I tools/xbe_to_pe.py <default.xbe> <out.exe>`: impacchetta l'XBE come PE per disassemblarlo agli indirizzi reali, per esempio con `dumpbin /disasm /range:0x13600,0x13700 out.exe`.
+Everything is in the launcher's **Settings** page, and in `mc3port.ini` next to `mc3.exe` (each key is explained
+there). The main ones:
+
+| Setting | What it does |
+|---|---|
+| Game language | English, French, German, Spanish or Italian; by default like Windows |
+| Frames per second | 60, or 30 like the Xbox |
+| Aspect ratio | 16:9 (the game's widescreen mode) or 4:3 |
+| Quality | Original (like the Xbox), Balanced or High: resolution, filtering and effects together |
+| Internal resolution | 1x (640x480) to 4x |
+| Modern effects | glow, sharpening, saturation, contrast, vignette, ambient occlusion, each adjustable |
+| Vertices on the graphics card | on by default; switch it off only to troubleshoot |
+
+## Performance
+
+The game itself is light; most of the work goes into turning the Xbox's graphics commands into Direct3D 11, much
+of it on the graphics card. So far mc3port has been tested on few machines: if the game is not smooth on yours,
+choose the **Balanced** or **Original** preset, or 30 fps, and please report how it runs.
+
+The first time each graphics shader is needed it is compiled in the background (meanwhile the processor does that
+work); the results are kept in the `shader_cache` folder, so later runs start without hitches.
+
+## Known issues
+
+- Only the European release is supported.
+- In 16:9 the game stretches its HUD (radar, speedometer) to the wider screen, as it did on a widescreen TV:
+  round dials look slightly oval. A fix that keeps them round is planned.
+- Online play (Xbox Live) is not available. Split screen works.
+- On monitors wider than 16:9 there are thin black bars at the sides (full screen on a 16:9 monitor has none).
+
+## Reporting a problem
+
+Open the launcher's **About** page and press **Log folder**: attach `mc3port.log` from that folder to an
+[issue](https://github.com/SickSartori/mc3port/issues), with your Windows version, graphics card and what you were doing.
+
+## Building from source
+
+Visual Studio 2022 or newer with "Desktop development with C++" (MSVC x86 tools, Windows SDK, CMake tools).
+From a Developer PowerShell in the project folder:
+
+```
+cmake -S . -B build/pc-x86 -A Win32
+cmake --build build/pc-x86 --config Release
+```
+
+`tools/package.ps1` builds the release zip and its `SHA256SUMS` in `dist/`. Technical notes, test switches and
+debugging tools are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (in Italian).
+
+## How this was made
+
+mc3port was written with heavy use of AI (Anthropic's Claude), directed and tested by the author on real hardware.
+xemu and other open-source Xbox projects were studied as references only; no code was copied from them.
+
+## Credits
+
+- [Dear ImGui](https://github.com/ocornut/imgui) by Omar Cornut, MIT licence: the launcher's interface.
+- [Barlow](https://github.com/jpt/barlow) by Jeremy Tribby, SIL Open Font License: the launcher's font.
+- The launcher's background music was generated for mc3port with ElevenLabs Music (through Magnific).
+- The program icon comes from SteamGridDB.
+- The launcher's logo and pictures are the game's own, read from your disc while it runs; they are not part of
+  mc3port.
+
+## Licence
+
+mc3port's code is released under the [MIT licence](LICENSE). Third-party parts keep their own licences, listed in
+[THIRD_PARTY.md](THIRD_PARTY.md). The game itself, and everything read from your disc, belongs to its owners.
