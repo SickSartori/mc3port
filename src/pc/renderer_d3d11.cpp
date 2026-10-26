@@ -11,7 +11,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
+#include <mutex>
+#include <string>
+#include <thread>
 #include <tuple>
 #include <unordered_map>
 
@@ -63,10 +69,10 @@ PSInput main(VSInput i) {
 }
 )";
 
-// The fixed-function transform on the GPU: the same computations as read_attribute, transform_fixed_function,
-// light_vertex, fog_factor and to_render_vertex in nv2a_kelvin.cpp (keep them in step), reading the guest's vertex
-// bytes as they are.
-constexpr char kFixedFunctionVertexShader[] = R"(
+// The start of the vertex shaders that read the guest's vertex bytes as they are (fixed function and vertex
+// programs): attribute decoding, fog factor and final position, the same computations as read_attribute,
+// fog_factor and to_render_vertex in nv2a_kelvin.cpp (keep them in step). Each shader's own constants (b1) follow.
+constexpr char kVertexDataShader[] = R"(
 struct PSInput {
     float4 position : SV_Position;
     float4 d0 : COLOR0;
@@ -78,33 +84,8 @@ struct PSInput {
     float fog : FOG;
 };
 cbuffer Surface : register(b0) { float4 scale; };
-cbuffer FixedFunction : register(b1) {
-    float4 composite[4];
-    float4 model_view[4];
-    float4 inverse_model_view[4];
-    float4 texture_matrix[16];
-    float4 texgen_plane[16];
-    int4 texgen_mode[4];
-    float4 attribute_default[16];
-    int4 attribute_layout[16];  // byte offset of vertex 0, stride, format, from the data
-    float4 light[64];
-    float4 viewport_offset;
-    float4 eye_position;
-    float4 scene_ambient;
-    float4 material_emission;
-    float4 specular_params[2];
-    float4 fog_plane;
-    float4 fog_params;
-    uint4 settings;  // flags, colour material, light enable mask, fog generation mode
-    uint fog_mode;
-    uint texture_matrix_mask;
-    uint padding;
-    float clip_max;
-};
 cbuffer Draw : register(b2) { uint first; };  // byte offset of this draw's vertex data (changes every draw)
 ByteAddressBuffer vertex_data : register(t0);
-
-static const uint kLighting = 1, kSpecular = 2, kFog = 4, kNormalize = 8, kSeparateSpecular = 16, kLocalEye = 32;
 
 uint load32(uint address) {  // attributes are not always 4-byte aligned (3 shorts)
     const uint aligned = address & ~3u, shift = (address & 3u) * 8;
@@ -115,9 +96,9 @@ float signed_bits(uint value, uint bits) {
     const int shifted = (int)(value << (32 - bits)) >> (32 - bits);
     return max(-1, shifted / (float)((1 << (bits - 1)) - 1));
 }
-float4 attribute(uint vertex, uint a) {
-    const int4 l = attribute_layout[a];
-    if (l.w == 0) return attribute_default[a];
+// l: byte offset of vertex 0, stride, format, from the data (0: `fallback`, the attribute without an array).
+float4 decode_attribute(uint vertex, int4 l, float4 fallback) {
+    if (l.w == 0) return fallback;
     const uint address = (uint)((int)first + l.x + (int)vertex * l.y);
     const uint type = l.z & 15, size = (l.z >> 4) & 15;
     float4 decoded = float4(0, 0, 0, 1);
@@ -141,6 +122,57 @@ float4 attribute(uint vertex, uint a) {
     [unroll] for (uint i = 0; i < 4; ++i) if (i < size) v[i] = decoded[i];
     return v;
 }
+
+float fog_factor(float distance, bool enabled, uint mode, float4 params) {
+    if (!enabled) return 1;
+    if (isinf(distance)) return mode == 0x801 || mode == 0x803 ? 0 : 1;
+    float factor = 1;
+    if (mode == 0x2601 || mode == 0x804) factor = params.x + distance * params.y - 1;
+    else if (mode == 0x800 || mode == 0x802) factor = params.x + exp2(distance * params.y * 16) - 1.5;
+    else if (mode == 0x801 || mode == 0x803) factor = params.x + exp2(-distance * distance * params.y * params.y * 32) - 1.5;
+    if (mode == 0x802 || mode == 0x803 || mode == 0x804) factor = abs(factor);
+    return isnan(factor) ? 1 : factor;
+}
+
+// A screen-space position (pixels; w apart) to clip space, as to_render_vertex and then the main vertex shader do.
+float4 clip_position(float4 screen, float clip_max) {
+    float w = screen.w;
+    if (!isfinite(w) || abs(w) < 5.42101e-20) w = w < 0 ? -5.42101e-20 : 5.42101e-20;
+    const float z = clip_max != 0 ? screen.z / clip_max : screen.z;
+    return float4(screen.x * w * scale.x - w, w - screen.y * w * scale.y, z * w, w);
+}
+)";
+
+// The fixed-function transform on the GPU: the same computations as transform_fixed_function and light_vertex in
+// nv2a_kelvin.cpp (keep them in step). Follows kVertexDataShader.
+constexpr char kFixedFunctionVertexShader[] = R"(
+cbuffer FixedFunction : register(b1) {
+    float4 composite[4];
+    float4 model_view[4];
+    float4 inverse_model_view[4];
+    float4 texture_matrix[16];
+    float4 texgen_plane[16];
+    int4 texgen_mode[4];
+    float4 attribute_default[16];
+    int4 attribute_layout[16];  // byte offset of vertex 0, stride, format, from the data
+    float4 light[64];
+    float4 viewport_offset;
+    float4 eye_position;
+    float4 scene_ambient;
+    float4 material_emission;
+    float4 specular_params[2];
+    float4 fog_plane;
+    float4 fog_params;
+    uint4 settings;  // flags, colour material, light enable mask, fog generation mode
+    uint fog_mode;
+    uint texture_matrix_mask;
+    uint padding;
+    float clip_max;
+};
+
+static const uint kLighting = 1, kSpecular = 2, kFog = 4, kNormalize = 8, kSeparateSpecular = 16, kLocalEye = 32;
+
+float4 attribute(uint vertex, uint a) { return decode_attribute(vertex, attribute_layout[a], attribute_default[a]); }
 float4 rows4(float4 r0, float4 r1, float4 r2, float4 r3, float4 v) {
     return float4(dot(r0, v), dot(r1, v), dot(r2, v), dot(r3, v));
 }
@@ -148,18 +180,6 @@ float light_value(uint i, uint k) { return light[i * 8 + k / 4][k % 4]; }
 float3 light_vector(uint i, uint k) { return float3(light_value(i, k), light_value(i, k + 1), light_value(i, k + 2)); }
 float specular_value(uint k) { return specular_params[k / 4][k % 4]; }
 float3 safe_normalize(float3 v) { const float l = length(v); return l > 0 ? v / l : v; }
-
-float fog_factor(float distance) {
-    if ((settings.x & kFog) == 0) return 1;
-    const uint mode = fog_mode;
-    if (isinf(distance)) return mode == 0x801 || mode == 0x803 ? 0 : 1;
-    float factor = 1;
-    if (mode == 0x2601 || mode == 0x804) factor = fog_params.x + distance * fog_params.y - 1;
-    else if (mode == 0x800 || mode == 0x802) factor = fog_params.x + exp2(distance * fog_params.y * 16) - 1.5;
-    else if (mode == 0x801 || mode == 0x803) factor = fog_params.x + exp2(-distance * distance * fog_params.y * fog_params.y * 32) - 1.5;
-    if (mode == 0x802 || mode == 0x803 || mode == 0x804) factor = abs(factor);
-    return isnan(factor) ? 1 : factor;
-}
 
 PSInput main(uint vertex : SV_VertexID) {
     const float4 position = attribute(vertex, 0);
@@ -280,18 +300,56 @@ PSInput main(uint vertex : SV_VertexID) {
         else if (generation == 6) fog = attribute(vertex, 5).x;
     }
 
-    // to_render_vertex, then pixels to clip space like the main vertex shader.
-    const float z = clip_max != 0 ? screen.z / clip_max : screen.z;
     PSInput o;
-    o.position = float4(screen.x * w * scale.x - w, w - screen.y * w * scale.y, z * w, w);
+    o.position = clip_position(float4(screen, w), clip_max);
     o.d0 = out_diffuse;
     o.d1 = out_specular;
     o.t0 = textures[0];
     o.t1 = textures[1];
     o.t2 = textures[2];
     o.t3 = textures[3];
-    o.fog = fog_factor(fog);
+    o.fog = fog_factor(fog, (settings.x & kFog) != 0, fog_mode, fog_params);
     return o;
+}
+)";
+
+// The start of a vertex program's shader (follows kVertexDataShader); the program's own code, generated by
+// VertexProgram::hlsl, comes after. The helpers mirror the special cases of nv2a_vsh.cpp.
+constexpr char kVertexProgramShader[] = R"(
+cbuffer Program : register(b1) {
+    float4 c[192];
+    float4 attribute_default[16];
+    int4 attribute_layout[16];
+    float4 fog_params;
+    uint fog_enabled;
+    uint fog_mode;
+    uint padding;
+    float clip_max;
+};
+
+static const float kInfinity = asfloat(0x7F800000);
+
+float4 attribute(uint vertex, uint a) { return decode_attribute(vertex, attribute_layout[a], attribute_default[a]); }
+// 0 * anything is 0 on NV2A, even for infinities, which programs rely on.
+float4 mul0(float4 a, float4 b) { return (a == 0 || b == 0) ? 0 : a * b; }
+float4 rcc(float s) {
+    const float r = 1 / s;
+    if (isnan(r)) return 5.42101e-20;
+    const float magnitude = clamp(abs(r), 5.42101e-20, 1.884467e+19);
+    return (asuint(r) >> 31) ? -magnitude : magnitude;
+}
+float4 rsq(float s) { return s == 0 ? kInfinity : isinf(s) ? 0 : 1 / sqrt(abs(s)); }
+float4 exp_ilu(float s) { const float f = floor(s); return float4(exp2(f), s - f, exp2(s), 1); }
+float4 log_ilu(float s) {
+    const float t = abs(s);
+    if (t == 0) return float4(-kInfinity, 1, -kInfinity, 1);
+    const float e = floor(log2(t));
+    return float4(e, t / exp2(e), log2(t), 1);
+}
+float4 lit(float4 v) {
+    const float epsilon = 1.0 / 256;
+    const float x = max(v.x, 0), y = max(v.y, 0), w = clamp(v.w, -(128 - epsilon), 128 - epsilon);
+    return float4(1, x, x > 0 ? exp2(w * log2(y)) : 0, 1);
 }
 )";
 
@@ -327,6 +385,7 @@ ComPtr<ID3D11InputLayout> g_input_layout;
 ComPtr<ID3D11VertexShader> g_fixed_function_vertex_shader;  // null: the transform stays on the CPU
 ComPtr<ID3D11Buffer> g_fixed_function_constants;
 ComPtr<ID3D11Buffer> g_fixed_function_draw_constants;  // where the draw's vertex data starts
+ComPtr<ID3D11Buffer> g_program_constants;              // the vertex programs' constants (ProgramConstants)
 ComPtr<ID3D11Buffer> g_vertex_buffer;
 uint32_t g_vertex_capacity = 0;
 uint32_t g_vertex_used = 0;  // bytes of the ring buffer written since the last DISCARD
@@ -1292,8 +1351,8 @@ bool renderer_start(HWND window) {
     static_assert(sizeof(RenderVertex) == 116);
     g_device->CreateInputLayout(layout, 8, vs->GetBufferPointer(), vs->GetBufferSize(), &g_input_layout);
 
-    if (ComPtr<ID3DBlob> ff = compile(kFixedFunctionVertexShader, sizeof(kFixedFunctionVertexShader) - 1, "vs_5_0",
-                                      "fixed-function vertex")) {
+    const std::string fixed_function = std::string(kVertexDataShader) + kFixedFunctionVertexShader;
+    if (ComPtr<ID3DBlob> ff = compile(fixed_function.data(), fixed_function.size(), "vs_5_0", "fixed-function vertex")) {
         g_device->CreateVertexShader(ff->GetBufferPointer(), ff->GetBufferSize(), nullptr, &g_fixed_function_vertex_shader);
     }
     D3D11_BUFFER_DESC transform_constants{};
@@ -1303,6 +1362,8 @@ bool renderer_start(HWND window) {
     g_device->CreateBuffer(&transform_constants, nullptr, &g_fixed_function_constants);
     transform_constants.ByteWidth = 16;
     g_device->CreateBuffer(&transform_constants, nullptr, &g_fixed_function_draw_constants);
+    transform_constants.ByteWidth = sizeof(ProgramConstants);
+    g_device->CreateBuffer(&transform_constants, nullptr, &g_program_constants);
     // Writing to a buffer the vertex shader reads, without waiting (NO_OVERWRITE), needs this feature.
     D3D11_FEATURE_DATA_D3D11_OPTIONS options{};
     g_device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS, &options, sizeof(options));
@@ -1653,14 +1714,30 @@ RingBuffer g_attribute_ring, g_index_ring;
 FixedFunctionConstants g_fixed_function_uploaded{};
 bool g_fixed_function_valid = false;
 
-}  // namespace
+// Vertex programs translated to HLSL, by VertexProgram key. Compiled on helper threads, and kept on disk so that
+// later runs find them at once; until ready (or if they do not compile) the CPU runs the program.
+struct ProgramShader {
+    ComPtr<ID3D11VertexShader> shader;
+    enum { kPending, kReady, kFailed } state = kPending;
+};
+std::mutex g_program_mutex;
+std::unordered_map<uint64_t, ProgramShader> g_program_shaders;  // under g_program_mutex
 
-bool renderer_has_fixed_function() { return g_fixed_function_vertex_shader != nullptr; }
+std::filesystem::path program_cache_folder() {
+    wchar_t path[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, path, MAX_PATH);
+    return std::filesystem::path(path).parent_path() / "shader_cache";
+}
+ProgramConstants g_program_uploaded{};
+bool g_program_valid = false;
 
-void renderer_draw_fixed_function(const SurfaceState& surface, const DrawState& state,
-                                  const FixedFunctionConstants& constants, const void* vertex_data,
-                                  uint32_t vertex_bytes, const std::vector<uint32_t>& indices) {
-    if (indices.empty() || !g_fixed_function_vertex_shader) return;
+// A draw whose vertex shader reads the guest's vertex bytes (kVertexDataShader): uploads them and the indices,
+// and the shader's constants (b1) when they differ from the last ones uploaded into `buffer`.
+template <typename Constants>
+void draw_vertex_data(const SurfaceState& surface, const DrawState& state, ID3D11VertexShader* shader,
+                      ID3D11Buffer* buffer, const Constants& constants, Constants& uploaded, bool& valid,
+                      const void* vertex_data, uint32_t vertex_bytes, const std::vector<uint32_t>& indices) {
+    if (indices.empty() || !shader) return;
     const uint64_t draw_start = ticks();
     PreparedDraw draw;
     if (!prepare_draw(surface, state, draw)) return;
@@ -1673,25 +1750,100 @@ void renderer_draw_fixed_function(const SurfaceState& surface, const DrawState& 
                                               D3D11_BIND_INDEX_BUFFER, 4);
     if (index_offset == ~0u) return;
     // The transform state changes far less often than draws: uploaded only when different.
-    if (!g_fixed_function_valid || std::memcmp(&constants, &g_fixed_function_uploaded, sizeof(constants)) != 0) {
-        g_context->UpdateSubresource(g_fixed_function_constants.Get(), 0, nullptr, &constants, 0, 0);
-        g_fixed_function_uploaded = constants;
-        g_fixed_function_valid = true;
+    if (!valid || std::memcmp(&constants, &uploaded, sizeof(constants)) != 0) {
+        g_context->UpdateSubresource(buffer, 0, nullptr, &constants, 0, 0);
+        uploaded = constants;
+        valid = true;
     }
     const uint32_t draw_constants[4] = {first, 0, 0, 0};
     g_context->UpdateSubresource(g_fixed_function_draw_constants.Get(), 0, nullptr, draw_constants, 0, 0);
     g_stats.part_ticks[1] += ticks() - draw_start;
     bind_draw_state(surface, state, draw);
-    ID3D11Buffer* transform[2] = {g_fixed_function_constants.Get(), g_fixed_function_draw_constants.Get()};
-    g_context->VSSetConstantBuffers(1, 2, transform);
+    ID3D11Buffer* buffers[2] = {buffer, g_fixed_function_draw_constants.Get()};
+    g_context->VSSetConstantBuffers(1, 2, buffers);
     ID3D11ShaderResourceView* view = g_attribute_ring.view.Get();
     g_context->VSSetShaderResources(0, 1, &view);
     g_context->IASetInputLayout(nullptr);
     g_context->IASetIndexBuffer(g_index_ring.buffer.Get(), DXGI_FORMAT_R32_UINT, 0);
     g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    g_context->VSSetShader(g_fixed_function_vertex_shader.Get(), nullptr, 0);
+    g_context->VSSetShader(shader, nullptr, 0);
     g_context->DrawIndexed(static_cast<UINT>(indices.size()), index_offset / 4, 0);
     g_stats.draw_ticks += ticks() - draw_start;
+}
+
+}  // namespace
+
+bool renderer_has_fixed_function() { return g_fixed_function_vertex_shader != nullptr; }
+
+void renderer_draw_fixed_function(const SurfaceState& surface, const DrawState& state,
+                                  const FixedFunctionConstants& constants, const void* vertex_data,
+                                  uint32_t vertex_bytes, const std::vector<uint32_t>& indices) {
+    draw_vertex_data(surface, state, g_fixed_function_vertex_shader.Get(), g_fixed_function_constants.Get(), constants,
+                     g_fixed_function_uploaded, g_fixed_function_valid, vertex_data, vertex_bytes, indices);
+}
+
+bool renderer_prepare_program(uint64_t key, const std::function<std::string()>& source) {
+    if (!g_fixed_function_vertex_shader || !g_program_constants) return false;  // no GPU vertex path at all
+    {
+        std::lock_guard<std::mutex> lock(g_program_mutex);
+        const auto found = g_program_shaders.find(key);
+        if (found != g_program_shaders.end()) return found->second.state == ProgramShader::kReady;
+        g_program_shaders[key].state = ProgramShader::kPending;
+    }
+    const std::string text = std::string(kVertexDataShader) + kVertexProgramShader + source();
+    uint64_t hash = 14695981039346656037ull;  // the file name: any change of the shader text is a new file
+    for (const char ch : text) hash = (hash ^ static_cast<uint8_t>(ch)) * 1099511628211ull;
+    char file_name[40];
+    std::snprintf(file_name, sizeof(file_name), "vp-%016llX.cso", static_cast<unsigned long long>(hash));
+    const std::filesystem::path file = program_cache_folder() / file_name;
+    const auto finish = [key](ComPtr<ID3D11VertexShader> shader) {
+        std::lock_guard<std::mutex> lock(g_program_mutex);
+        ProgramShader& entry = g_program_shaders[key];
+        entry.shader = shader;
+        entry.state = shader ? ProgramShader::kReady : ProgramShader::kFailed;
+    };
+
+    std::ifstream cached(file, std::ios::binary);
+    const std::vector<char> code((std::istreambuf_iterator<char>(cached)), std::istreambuf_iterator<char>());
+    ComPtr<ID3D11VertexShader> shader;
+    if (!code.empty() && SUCCEEDED(g_device->CreateVertexShader(code.data(), code.size(), nullptr, &shader))) {
+        finish(shader);
+        return true;
+    }
+    // Compiling takes a few hundred milliseconds: on a helper thread, while the CPU draws with this program.
+    std::thread([key, text, file, finish] {
+        char name[48];
+        std::snprintf(name, sizeof(name), "vertex program %016llX", static_cast<unsigned long long>(key));
+        const uint64_t start = ticks();
+        ComPtr<ID3D11VertexShader> shader;
+        if (ComPtr<ID3DBlob> code = compile(text.data(), text.size(), "vs_5_0", name)) {
+            if (SUCCEEDED(g_device->CreateVertexShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr,
+                                                       &shader))) {
+                std::error_code error;
+                std::filesystem::create_directories(file.parent_path(), error);
+                std::ofstream(file, std::ios::binary)
+                    .write(static_cast<const char*>(code->GetBufferPointer()), code->GetBufferSize());
+            }
+        }
+        log_line("renderer: %s %s in %.1f ms", name, shader ? "compiled" : "stays on the CPU",
+                 milliseconds(ticks() - start));
+        if (!shader) log_line("%s", text.c_str() + std::strlen(kVertexDataShader) + std::strlen(kVertexProgramShader));
+        finish(shader);
+    }).detach();
+    return false;
+}
+
+void renderer_draw_program(const SurfaceState& surface, const DrawState& state, uint64_t key,
+                           const ProgramConstants& constants, const void* vertex_data, uint32_t vertex_bytes,
+                           const std::vector<uint32_t>& indices) {
+    ID3D11VertexShader* shader = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_program_mutex);
+        const auto found = g_program_shaders.find(key);
+        if (found != g_program_shaders.end()) shader = found->second.shader.Get();
+    }
+    draw_vertex_data(surface, state, shader, g_program_constants.Get(), constants, g_program_uploaded, g_program_valid,
+                     vertex_data, vertex_bytes, indices);
 }
 
 void renderer_draw(const SurfaceState& surface, const DrawState& state, const std::vector<RenderVertex>& triangles) {

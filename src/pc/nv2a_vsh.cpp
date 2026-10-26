@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 
 namespace mc3::pc {
@@ -41,8 +42,10 @@ float multiply(float a, float b) { return (a == 0.0f || b == 0.0f) ? 0.0f : a * 
 
 void VertexProgram::decode(const uint32_t* slots, uint32_t start) {
     instructions_.clear();
+    key_ = 14695981039346656037ull;  // FNV-1a over the instruction words
     for (uint32_t slot = start; slot < kVshProgramSlots; ++slot) {
         const uint32_t* w = slots + slot * 4;
+        for (int i = 1; i < 4; ++i) key_ = (key_ ^ w[i]) * 1099511628211ull;
         VshInstruction in{};
         in.ilu = static_cast<uint8_t>(field(w, 1, 25, 3));
         in.mac = static_cast<uint8_t>(field(w, 1, 21, 4));
@@ -198,6 +201,129 @@ void VertexProgram::execute(const Vec4* inputs, const Vec4* constants, Vec4* out
         }
         if (in.final) break;
     }
+}
+
+std::string VertexProgram::hlsl() const {
+    std::string s;
+    char line[256];
+    const auto add = [&](const char* format, auto... values) {
+        std::snprintf(line, sizeof(line), format, values...);
+        s += line;
+    };
+    const auto mask = [](uint8_t bits) {
+        std::string m;
+        for (int component = 0; component < 4; ++component) {
+            if (bits & (8 >> component)) m += "xyzw"[component];
+        }
+        return m;
+    };
+    const auto operand = [&](const VshInstruction& in, const VshInstruction::Operand& op) {
+        std::string source;
+        switch (op.mux) {
+            case kMuxTemp:
+                source = op.reg == 12 ? "o0" : op.reg < kTemps ? "r" + std::to_string(op.reg) : "float4(0, 0, 0, 0)";
+                break;
+            case kMuxInput: source = "v" + std::to_string(in.input); break;
+            case kMuxConstant:
+                source = in.relative ? "c[clamp(" + std::to_string(in.constant) + " + a0, 0, 191)]"
+                                     : "c[" + std::to_string(in.constant) + "]";
+                break;
+            default: source = "float4(0, 0, 0, 0)"; break;
+        }
+        std::string swizzle = ".";
+        for (uint8_t component : op.swizzle) swizzle += "xyzw"[component];
+        return (op.negate ? "-" : "") + source + swizzle;
+    };
+
+    uint32_t inputs = 0;
+    for (const VshInstruction& in : instructions_) {
+        for (const VshInstruction::Operand* op : {&in.a, &in.b, &in.c}) {
+            if (op->mux == kMuxInput) inputs |= 1u << in.input;
+        }
+    }
+    s += "PSInput main(uint vertex : SV_VertexID) {\n";
+    for (uint32_t i = 0; i < kVshAttributes; ++i) {
+        if (inputs & (1u << i)) add("    const float4 v%u = attribute(vertex, %u);\n", i, i);
+    }
+    s += "    float4 r0 = 0, r1 = 0, r2 = 0, r3 = 0, r4 = 0, r5 = 0, r6 = 0, r7 = 0, r8 = 0, r9 = 0, r10 = 0, r11 = 0;\n";
+    for (uint32_t i = 0; i < kVshOutputs; ++i) add("    float4 o%u = float4(0, 0, 0, 1);\n", i);
+    s += "    int a0 = 0;\n";
+
+    for (const VshInstruction& in : instructions_) {
+        s += "    {\n";
+        s += "        const float4 A = " + operand(in, in.a) + ";\n";
+        s += "        const float4 B = " + operand(in, in.b) + ";\n";
+        s += "        const float4 C = " + operand(in, in.c) + ";\n";
+        s += "        const float4 P = mul0(A, B);\n";
+        const char* mac = "float4(0, 0, 0, 0)";
+        switch (in.mac) {
+            case kMacMov: mac = "A"; break;
+            case kMacMul: mac = "P"; break;
+            case kMacAdd: mac = "A + C"; break;
+            case kMacMad: mac = "P + C"; break;
+            case kMacDp3: mac = "(P.x + P.y + P.z).xxxx"; break;
+            case kMacDph: mac = "(P.x + P.y + P.z + B.w).xxxx"; break;
+            case kMacDp4: mac = "(P.x + P.y + P.z + P.w).xxxx"; break;
+            case kMacDst: mac = "float4(1, P.y, A.z, B.w)"; break;
+            case kMacMin: mac = "min(A, B)"; break;
+            case kMacMax: mac = "max(A, B)"; break;
+            case kMacSlt: mac = "float4(A < B)"; break;
+            case kMacSge: mac = "float4(A >= B)"; break;
+            default: break;
+        }
+        const char* ilu = "float4(0, 0, 0, 0)";
+        switch (in.ilu) {
+            case kIluMov: ilu = "C"; break;
+            case kIluRcp: ilu = "(1 / C.x).xxxx"; break;
+            case kIluRcc: ilu = "rcc(C.x)"; break;
+            case kIluRsq: ilu = "rsq(C.x)"; break;
+            case kIluExp: ilu = "exp_ilu(C.x)"; break;
+            case kIluLog: ilu = "log_ilu(C.x)"; break;
+            case kIluLit: ilu = "lit(C)"; break;
+            default: break;
+        }
+        add("        const float4 M = %s;\n", mac);
+        add("        const float4 I = %s;\n", ilu);
+        // Writes happen after both units have read their inputs (the operands above are copies).
+        const bool both = in.mac != kMacNop && in.ilu != kIluNop;
+        const auto temp = [](uint32_t index) {
+            return index == 12 ? std::string("o0") : index < kTemps ? "r" + std::to_string(index) : std::string();
+        };
+        if (in.mac == kMacArl) {
+            s += "        a0 = (int)floor(A.x + 0.001);\n";
+        } else if (in.mac != kMacNop && in.mac_mask && !(both && in.temp == 1)) {
+            const std::string destination = temp(in.temp);
+            if (!destination.empty()) {
+                const std::string m = mask(in.mac_mask);
+                add("        %s.%s = M.%s;\n", destination.c_str(), m.c_str(), m.c_str());
+            }
+        }
+        if (in.ilu != kIluNop && in.ilu_mask) {
+            const std::string destination = temp(both ? 1 : in.temp);  // paired with a MAC op, the ILU writes r1
+            if (!destination.empty()) {
+                const std::string m = mask(in.ilu_mask);
+                add("        %s.%s = I.%s;\n", destination.c_str(), m.c_str(), m.c_str());
+            }
+        }
+        if (in.out_mask && in.out_to_output) {
+            const std::string m = mask(in.out_mask);
+            add("        o%u.%s = %s.%s;\n", in.out_address & 0xF, m.c_str(), in.out_from_ilu ? "I" : "M", m.c_str());
+        }
+        s += "    }\n";
+    }
+
+    s += "    PSInput o;\n"
+         "    o.position = clip_position(o0, clip_max);\n"
+         "    o.d0 = o3;\n"
+         "    o.d1 = o4;\n"
+         "    o.t0 = o9;\n"
+         "    o.t1 = o10;\n"
+         "    o.t2 = o11;\n"
+         "    o.t3 = o12;\n"
+         "    o.fog = fog_factor(o5.x, fog_enabled != 0, fog_mode, fog_params);\n"
+         "    return o;\n"
+         "}\n";
+    return s;
 }
 
 }  // namespace mc3::pc

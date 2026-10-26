@@ -5,6 +5,8 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <functional>
+#include <string>
 #include <vector>
 
 #include "pc/nv2a_combiner.h"
@@ -106,6 +108,22 @@ bool renderer_has_fixed_function();
 void renderer_draw_fixed_function(const SurfaceState& surface, const DrawState& state,
                                   const FixedFunctionConstants& constants, const void* vertex_data,
                                   uint32_t vertex_bytes, const std::vector<uint32_t>& indices);
+// A vertex program on the GPU: its constant memory, and the attributes as for the fixed function.
+struct alignas(16) ProgramConstants {
+    float constants[192][4];
+    float attribute_default[16][4];
+    int32_t attribute_layout[16][4];  // as FixedFunctionConstants::attribute_layout
+    float fog_params[4];
+    uint32_t fog_enabled, fog_mode, padding;
+    float clip_max;
+};
+// Makes the vertex program `key` ready on the GPU, compiling `source()` (VertexProgram::hlsl) the first time.
+// False when it cannot run there (it did not compile): the CPU then runs it.
+bool renderer_prepare_program(uint64_t key, const std::function<std::string()>& source);
+// A draw whose vertices go through the prepared vertex program `key`; the rest as renderer_draw_fixed_function.
+void renderer_draw_program(const SurfaceState& surface, const DrawState& state, uint64_t key,
+                           const ProgramConstants& constants, const void* vertex_data, uint32_t vertex_bytes,
+                           const std::vector<uint32_t>& indices);
 // A rectangle copy between two surfaces (NV09F image blit, SRCCOPY). Addresses are physical.
 struct BlitRequest {
     uint32_t source, destination;

@@ -595,10 +595,10 @@ void update_debug_window() {
     g_debug_window_open = now >= g_window_start && now < g_window_end;
 }
 
-// DEBUG: vertex time per second by kind of draw (0 fixed function on the CPU, 1 vertex program, 2 fixed function
-// on the GPU: only the attribute packing).
+// DEBUG: vertex time per second by kind of draw (0 fixed function on the CPU, 1 vertex program on the CPU, 2 fixed
+// function and 3 vertex program on the GPU: there only the CPU's preparation).
 void debug_vertex_work(int kind, uint64_t elapsed, uint32_t count) {
-    static uint64_t ticks[3] = {}, vertices[3] = {}, draws[3] = {};
+    static uint64_t ticks[4] = {}, vertices[4] = {}, draws[4] = {};
     static ULONGLONG last = GetTickCount64();
     ticks[kind] += elapsed;
     vertices[kind] += count;
@@ -609,10 +609,11 @@ void debug_vertex_work(int kind, uint64_t elapsed, uint32_t count) {
     const double seconds = (GetTickCount64() - last) / 1000.0;
     const auto ms = [&](int k) { return ticks[k] * 1000.0 / frequency.QuadPart / seconds; };
     log_line("DEBUG vertex work per second: fixed-function %.0f ms (%.0f draws, %.0f vertices), program %.0f ms "
-             "(%.0f draws, %.0f vertices), fixed-function on the GPU %.0f ms (%.0f draws, %.0f vertices)",
+             "(%.0f draws, %.0f vertices), on the GPU: fixed-function %.0f ms (%.0f draws, %.0f vertices), program "
+             "%.0f ms (%.0f draws, %.0f vertices)",
              ms(0), draws[0] / seconds, vertices[0] / seconds, ms(1), draws[1] / seconds, vertices[1] / seconds, ms(2),
-             draws[2] / seconds, vertices[2] / seconds);
-    for (int k = 0; k < 3; ++k) ticks[k] = vertices[k] = draws[k] = 0;
+             draws[2] / seconds, vertices[2] / seconds, ms(3), draws[3] / seconds, vertices[3] / seconds);
+    for (int k = 0; k < 4; ++k) ticks[k] = vertices[k] = draws[k] = 0;
     last = GetTickCount64();
 }
 
@@ -635,7 +636,7 @@ bool gpu_fixed_function() {
 constexpr uint32_t kGpuAttributes = 1u << kInPosition | 1u << kInNormal | 1u << kInDiffuse | 1u << kInSpecular |
                                     1u << kInFog | 0xFu << kInTexture0;
 
-// Where a draw's vertices are, for the fixed-function path on the GPU (whose shader decodes the guest's bytes).
+// Where a draw's vertices are, for the paths on the GPU (whose shaders decode the guest's bytes).
 struct VertexSource {
     const std::vector<uint32_t>* indices = nullptr;  // draw_indexed: vertex numbers into the vertex arrays
     const uint8_t* inline_bytes = nullptr;            // draw_inline: the vertices themselves...
@@ -643,29 +644,25 @@ struct VertexSource {
     const uint32_t* inline_offsets = nullptr;         // ...and each attribute's offset in a vertex
 };
 
-// The fixed-function draw with the transform done by the renderer's vertex shader: here the state is copied into
-// the shader's constants, and the guest memory the vertices occupy is uploaded as it is. False when the vertices
-// cannot be uploaded that way (the CPU then does the draw).
-bool draw_fixed_function_on_gpu(const SurfaceState& target, uint32_t count, const VertexSource& source) {
-    LARGE_INTEGER pack_start, pack_end;
-    QueryPerformanceCounter(&pack_start);
-    static FixedFunctionConstants c;  // GPU thread only
-    static std::vector<uint8_t> data;
+// Collects what a GPU vertex shader needs to read a draw's vertices: `data` (the guest memory they occupy, as it is),
+// `layout` (per attribute, see FixedFunctionConstants::attribute_layout; only those in `attributes` with an array),
+// `defaults` and `order` (the triangle list of vertex numbers). False when the vertices cannot be read that way.
+bool gather_vertex_data(uint32_t count, const VertexSource& source, uint32_t attributes, int32_t (*layout)[4],
+                        float (*defaults)[4], std::vector<uint8_t>& data, std::vector<uint32_t>& order) {
     data.clear();
-    std::vector<uint32_t> order;
+    order.clear();
     append_triangles(g_k.primitive, count, order);
-
     for (uint32_t a = 0; a < kVshAttributes; ++a) {
-        std::memcpy(c.attribute_default[a], g_k.attribute[a].data(), 16);
+        std::memcpy(defaults[a], g_k.attribute[a].data(), 16);
         const uint32_t format = g_k.array_format[a];
-        const bool from_array = ((kGpuAttributes >> a) & 1) && ((format >> 4) & 0xF);
-        c.attribute_layout[a][0] = 0;
-        c.attribute_layout[a][1] = static_cast<int32_t>(source.inline_bytes ? source.inline_stride : format >> 8);
-        c.attribute_layout[a][2] = static_cast<int32_t>(format & 0xFF);
-        c.attribute_layout[a][3] = from_array ? 1 : 0;
+        const bool from_array = ((attributes >> a) & 1) && ((format >> 4) & 0xF);
+        layout[a][0] = 0;
+        layout[a][1] = static_cast<int32_t>(source.inline_bytes ? source.inline_stride : format >> 8);
+        layout[a][2] = static_cast<int32_t>(format & 0xFF);
+        layout[a][3] = from_array ? 1 : 0;
     }
     if (source.inline_bytes) {
-        for (uint32_t a = 0; a < kVshAttributes; ++a) c.attribute_layout[a][0] = static_cast<int32_t>(source.inline_offsets[a]);
+        for (uint32_t a = 0; a < kVshAttributes; ++a) layout[a][0] = static_cast<int32_t>(source.inline_offsets[a]);
         data.assign(source.inline_bytes, source.inline_bytes + static_cast<size_t>(count) * source.inline_stride);
     } else {
         // Only the part of each array between the lowest and the highest index is uploaded; arrays close together
@@ -678,7 +675,7 @@ bool draw_fixed_function_on_gpu(const SurfaceState& target, uint32_t count, cons
         Range ranges[kVshAttributes];
         uint32_t used = 0;
         for (uint32_t a = 0; a < kVshAttributes; ++a) {
-            if (!c.attribute_layout[a][3]) continue;
+            if (!layout[a][3]) continue;
             const uint32_t format = g_k.array_format[a], offset = g_k.array_offset[a], stride = format >> 8;
             const uint32_t base = (offset & 0x80000000) ? g_k.dma_vertex_b : g_k.dma_vertex_a;
             const uint64_t address = (base + (offset & 0x7FFFFFFF)) & 0x7FFFFFFF;
@@ -697,7 +694,7 @@ bool draw_fixed_function_on_gpu(const SurfaceState& target, uint32_t count, cons
             const uint8_t* bytes = physical_pointer(ranges[i].start);
             data.insert(data.end(), bytes, bytes + (end - ranges[i].start));
             for (uint32_t k = i; k < j; ++k) {
-                c.attribute_layout[ranges[k].attribute][0] =
+                layout[ranges[k].attribute][0] =
                     static_cast<int32_t>(static_cast<int64_t>(at) + ranges[k].address - ranges[i].start);
             }
             i = j;
@@ -705,6 +702,20 @@ bool draw_fixed_function_on_gpu(const SurfaceState& target, uint32_t count, cons
         for (uint32_t& vertex : order) vertex = indices[vertex];
     }
     data.resize((data.size() + 3) / 4 * 4 + 8);  // whole words, and room for the shader's two-word reads
+    return true;
+}
+
+// The fixed-function draw with the transform done by the renderer's vertex shader: here the state is copied into
+// the shader's constants. False when the vertices cannot be read by the GPU (the CPU then does the draw).
+bool draw_fixed_function_on_gpu(const SurfaceState& target, uint32_t count, const VertexSource& source) {
+    LARGE_INTEGER pack_start, pack_end;
+    QueryPerformanceCounter(&pack_start);
+    static FixedFunctionConstants c;  // GPU thread only
+    static std::vector<uint8_t> data;
+    static std::vector<uint32_t> order;
+    if (!gather_vertex_data(count, source, kGpuAttributes, c.attribute_layout, c.attribute_default, data, order)) {
+        return false;
+    }
 
     if (g_k.skin_mode) log_once(0x2001, "fixed-function skinning is not supported yet; the first matrix is used");
     std::memcpy(c.composite, g_k.composite, sizeof(c.composite));
@@ -758,6 +769,32 @@ bool draw_fixed_function_on_gpu(const SurfaceState& target, uint32_t count, cons
     return true;
 }
 
+// The vertex program draw on the GPU: the program translated to HLSL (once per program), its constant memory and
+// the vertices' bytes. False when it cannot run there (the CPU then does the draw).
+bool draw_program_on_gpu(const SurfaceState& target, uint32_t count, const VertexSource& source) {
+    const VertexProgram& program = g_k.vertex_program;
+    if (!renderer_prepare_program(program.key(), [&] { return program.hlsl(); })) return false;
+    LARGE_INTEGER pack_start, pack_end;
+    QueryPerformanceCounter(&pack_start);
+    static ProgramConstants c;  // GPU thread only
+    static std::vector<uint8_t> data;
+    static std::vector<uint32_t> order;
+    if (!gather_vertex_data(count, source, ~0u, c.attribute_layout, c.attribute_default, data, order)) return false;
+    static_assert(sizeof(c.constants) == sizeof(g_k.constants));
+    std::memcpy(c.constants, g_k.constants, sizeof(c.constants));
+    std::memcpy(c.fog_params, g_k.fog_params, sizeof(g_k.fog_params));
+    c.fog_enabled = g_k.fog ? 1 : 0;
+    c.fog_mode = g_k.fog_mode;
+    c.clip_max = g_k.clip_max;
+    QueryPerformanceCounter(&pack_end);
+    const uint64_t elapsed = static_cast<uint64_t>(pack_end.QuadPart - pack_start.QuadPart);
+    renderer_note_vertex_work(elapsed, count);
+    debug_vertex_work(3, elapsed, count);
+    prepare_draw_state();
+    renderer_draw_program(target, g_k.draw, program.key(), c, data.data(), static_cast<uint32_t>(data.size()), order);
+    return true;
+}
+
 // Runs the vertex program over `count` vertices obtained from `fetch` and draws the primitive.
 template <typename Fetch>
 void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
@@ -773,8 +810,8 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
     const SurfaceState target = surface();
     if (!target.width || !target.height) return;
 
-    if (fixed_function && gpu_fixed_function() && !g_debug_window_open &&
-        draw_fixed_function_on_gpu(target, count, source)) {
+    if (gpu_fixed_function() && !g_debug_window_open &&
+        (fixed_function ? draw_fixed_function_on_gpu(target, count, source) : draw_program_on_gpu(target, count, source))) {
         ++g_draws;
         update_debug_window();
         return;

@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace mc3::pc {
@@ -55,11 +56,17 @@ public:
     // Decodes from `start` up to the instruction marked final.
     void decode(const uint32_t* slots, uint32_t start);
     bool empty() const { return instructions_.empty(); }
+    // The same instruction words give the same key: for caching the program's translation.
+    uint64_t key() const { return key_; }
 
     void execute(const Vec4* inputs, const Vec4* constants, Vec4* outputs) const;
+    // The program as the main function of an HLSL vertex shader doing what execute does, for the renderer
+    // (which supplies the helpers and the constants: kVertexProgramShader in renderer_d3d11.cpp).
+    std::string hlsl() const;
 
 private:
     std::vector<VshInstruction> instructions_;
+    uint64_t key_ = 0;
 };
 
 }  // namespace mc3::pc
