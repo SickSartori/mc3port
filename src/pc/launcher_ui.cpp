@@ -32,6 +32,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "pc/game_pause.h"
+#include "pc/input_hle.h"
 #include "pc/keyboard_bindings.h"
 #include "pc/launcher_art.h"
 #include "pc/launcher_music.h"
@@ -2234,6 +2235,7 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
     QueryPerformanceCounter(&counter);
     const float now = static_cast<float>(counter.QuadPart - clock_start_.QuadPart) / static_cast<float>(frequency.QuadPart);
     now_ = now;
+    input_menu_combo_poll();  // Back+Start, at the frame rate rather than the game's polling pace
 
     if (toggle_requested_.exchange(false)) {
         if (visible_) {

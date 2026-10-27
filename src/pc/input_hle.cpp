@@ -280,33 +280,70 @@ XboxGamepad from_xinput(const XINPUT_GAMEPAD& in) {
     return pad;
 }
 
-// Back+Start opens the in-game menu; the game sees neither. Tapped, the two are rarely down at the same poll, so
-// Back is held back from the game for a moment while Start may follow. If it does not, the game gets the Back press
-// afterwards (one poll long, enough for its edge detection); held longer than that, Back reaches the game as usual.
-constexpr ULONGLONG kComboMs = 250;
-ULONGLONG g_back_down_ms[kPorts] = {};  // when Back went down; 0 = not waiting for Start
-bool g_back_was_down[kPorts] = {};
-bool g_back_replay[kPorts] = {};
+// Back+Start opens the in-game menu; the game sees neither. The two are watched from every frame the port shows
+// (input_menu_combo_poll) as well as from the game's own polls, so a tap is seen whatever the game's pace: the menu
+// opens when both are down, or when one goes down within kComboMs of the other. Meanwhile the game gets neither
+// button for up to kComboMs after it went down; a lone tap reaches the game afterwards (one poll long, enough for
+// its edge detection), a longer hold reaches it as usual.
+constexpr ULONGLONG kComboMs = 150;
+struct Combo {
+    ULONGLONG back_at = 0, start_at = 0;  // when each went down (0: never)
+    bool back_down = false, start_down = false;
+    bool fired = false;                   // the menu was opened; until both are let go
+    bool back_replay = false, start_replay = false;  // a lone tap the game has not seen yet
+};
+Combo g_combo[kPorts];
 
-void menu_combo(uint32_t index, WORD& buttons, ULONGLONG now) {
+void combo_track(uint32_t index, WORD buttons, ULONGLONG now) {
+    Combo& c = g_combo[index];
     const bool back = (buttons & XINPUT_GAMEPAD_BACK) != 0, start = (buttons & XINPUT_GAMEPAD_START) != 0;
-    if (back && !g_back_was_down[index]) g_back_down_ms[index] = now;
-    g_back_was_down[index] = back;
-    const bool waiting = g_back_down_ms[index] != 0 && now - g_back_down_ms[index] < kComboMs;
-    if (start && (back || waiting)) {
-        buttons &= ~(XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START);
-        g_back_down_ms[index] = 0;
-        g_back_replay[index] = false;
+    if (back && !c.back_down) c.back_at = now;
+    if (start && !c.start_down) c.start_at = now;
+    if (!back && c.back_down && !c.fired && now - c.back_at < kComboMs) c.back_replay = true;
+    if (!start && c.start_down && !c.fired && now - c.start_at < kComboMs) c.start_replay = true;
+    c.back_down = back;
+    c.start_down = start;
+    const bool back_recent = c.back_at != 0 && now - c.back_at < kComboMs;
+    const bool start_recent = c.start_at != 0 && now - c.start_at < kComboMs;
+    if (!c.fired && ((back && start) || (start && back_recent) || (back && start_recent))) {
+        c.fired = true;
+        c.back_replay = c.start_replay = false;
         game_menu_open();
-    } else if (waiting) {
-        buttons &= ~XINPUT_GAMEPAD_BACK;
-        if (!back) g_back_replay[index] = true;  // a tap: replayed once the wait is over
-    } else if (g_back_down_ms[index] != 0) {  // the wait is over without Start
-        g_back_down_ms[index] = 0;
-        if (g_back_replay[index] && !back) buttons |= XINPUT_GAMEPAD_BACK;
-        g_back_replay[index] = false;
+    }
+    if (c.fired && !back && !start) c.fired = false;
+}
+
+// What the game sees of Back and Start.
+WORD combo_filter(uint32_t index, WORD buttons, ULONGLONG now) {
+    Combo& c = g_combo[index];
+    if (c.fired || (c.back_down && now - c.back_at < kComboMs)) buttons &= ~XINPUT_GAMEPAD_BACK;
+    if (c.fired || (c.start_down && now - c.start_at < kComboMs)) buttons &= ~XINPUT_GAMEPAD_START;
+    if (c.back_replay && !c.back_down && !c.fired) {
+        buttons |= XINPUT_GAMEPAD_BACK;
+        c.back_replay = false;
+    }
+    if (c.start_replay && !c.start_down && !c.fired) {
+        buttons |= XINPUT_GAMEPAD_START;
+        c.start_replay = false;
+    }
+    return buttons;
+}
+
+}  // namespace
+
+// Called from every frame the port shows, whether or not the game is reading its controllers just then.
+void input_menu_combo_poll() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    if (!g_xinput_get_state) return;
+    const ULONGLONG now = GetTickCount64();
+    for (uint32_t i = 0; i < kPorts; ++i) {
+        if (!g_host_connected[i]) continue;
+        XINPUT_STATE state{};
+        if (g_xinput_get_state(i, &state) == ERROR_SUCCESS) combo_track(i, state.Gamepad.wButtons, now);
     }
 }
+
+namespace {
 
 // Reads port `index` from the host. Port 0 falls back to the virtual pad; other ports to the script's presses when
 // the script uses them (to test split screen without a second controller).
@@ -317,7 +354,8 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
         g_host_connected[index] = g_xinput_get_state(index, &state) == ERROR_SUCCESS;
         if (!g_host_connected[index]) g_next_scan_ms[index] = now + 1000;
         if (g_host_connected[index]) {
-            menu_combo(index, state.Gamepad.wButtons, now);
+            combo_track(index, state.Gamepad.wButtons, now);
+            state.Gamepad.wButtons = combo_filter(index, state.Gamepad.wButtons, now);
             pad = from_xinput(state.Gamepad);
             apply_script(pad, index);
             return true;

@@ -18,4 +18,8 @@ void install_input_hle(const Xbe& xbe);
 // For "@<file>" entries of MC3_INPUT_SCRIPT (times relative to the game opening a file).
 void input_note_file_opened(const std::string& path);
 
+// Watches the controllers' Back+Start (the in-game menu) from every frame the port shows, so a tap counts whatever
+// the game's own polling pace.
+void input_menu_combo_poll();
+
 }  // namespace mc3::pc
