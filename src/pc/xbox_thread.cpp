@@ -18,6 +18,7 @@
 #include "core/byteorder.h"
 #include "pc/exec_memory.h"
 #include "pc/log.h"
+#include "pc/profile.h"
 #include "pc/xbox_types.h"
 
 namespace mc3::pc {
@@ -106,6 +107,7 @@ XboxThreadContext* attach_xbox_thread_context(const XbeTlsTemplate& tls, uint32_
 
     t_context = context;
     __writefsdword(kXboxContextFsSlot, address_of(kpcr));
+    profile_name_thread(true, "thread %u", context->thread_id);
     {
         std::lock_guard<std::mutex> lock(g_threads_mutex);
         g_threads.push_back(context);
@@ -127,7 +129,10 @@ uint8_t current_irql() { return t_context ? t_context->kpcr[kKpcrIrql] : kPassiv
 
 uint8_t raise_irql(uint8_t new_irql) {
     const uint8_t old_irql = current_irql();
-    if (old_irql < kDispatchLevel && new_irql >= kDispatchLevel) g_dispatch_level_lock.lock();
+    if (old_irql < kDispatchLevel && new_irql >= kDispatchLevel && !g_dispatch_level_lock.try_lock()) {
+        ProfileScope scope(ProfileTime::dispatch_lock);
+        g_dispatch_level_lock.lock();
+    }
     if (t_context) t_context->kpcr[kKpcrIrql] = new_irql;
     return old_irql;
 }

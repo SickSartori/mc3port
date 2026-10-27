@@ -35,6 +35,7 @@
 #include "pc/paths.h"
 #include "pc/physical_memory.h"
 #include "pc/privileged.h"
+#include "pc/profile.h"
 #include "pc/settings.h"
 #include "pc/xbox_thread.h"
 
@@ -373,6 +374,7 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
     static volatile long reported = 0;
     const DWORD code = info->ExceptionRecord->ExceptionCode;
     if (code == STATUS_PRIVILEGED_INSTRUCTION && emulate_privileged_instruction(info->ContextRecord)) {
+        profile_privileged_instruction();
         return EXCEPTION_CONTINUE_EXECUTION;
     }
     if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2 &&
@@ -402,6 +404,7 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
 DWORD WINAPI xbox_main_thread(void* parameter) {
     const auto* start = static_cast<const MainThreadStart*>(parameter);
     attach_xbox_thread_context(start->tls, 0);
+    profile_name_thread(true, "main");
     log_line("jumping to the XBE entry point %08X", start->entry_point);
     using EntryPoint = void(__stdcall*)();
     reinterpret_cast<EntryPoint>(static_cast<uintptr_t>(start->entry_point))();

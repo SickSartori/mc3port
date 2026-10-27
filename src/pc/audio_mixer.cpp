@@ -17,6 +17,7 @@
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
+#include "pc/profile.h"
 #include "pc/settings.h"
 #include "pc/xbox_types.h"
 
@@ -485,6 +486,7 @@ private:
 };
 
 void output_thread(HANDLE ready, bool* ok) {
+    profile_name_thread(false, "audio");
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     IXAudio2* engine = nullptr;
     IXAudio2MasteringVoice* master = nullptr;

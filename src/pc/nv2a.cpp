@@ -21,6 +21,7 @@
 #include "pc/nv2a_kelvin.h"
 #include "pc/renderer_d3d11.h"
 #include "pc/physical_memory.h"
+#include "pc/profile.h"
 #include "pc/settings.h"
 
 namespace mc3::pc {
@@ -367,7 +368,10 @@ void service_present() {
             ++flips, ++g_frames_shown, last_front = front;
             static uint64_t last_flip_vblank = 0;  // blanks between shown frames set the game's time step
             const uint64_t vblank = g_frames;
-            if (last_flip_vblank) time_frame_shown(static_cast<uint32_t>(vblank - last_flip_vblank));
+            if (last_flip_vblank) {
+                time_frame_shown(static_cast<uint32_t>(vblank - last_flip_vblank));
+                profile_frame_shown(static_cast<uint32_t>(vblank - last_flip_vblank));
+            }
             last_flip_vblank = vblank;
         }
         if (++presents == 600) {
@@ -378,6 +382,7 @@ void service_present() {
     // The picture can be narrower than the pitch (widescreen: 720 of 768 pixels): what the game draws into.
     const uint32_t drawn = kelvin_drawn_width(front & 0x0FFFFFFF);
     const uint32_t width = drawn && drawn < display.pitch / 4 ? drawn : display.pitch / 4;
+    ProfileScope scope(ProfileTime::present);
     renderer_present(front & 0x0FFFFFFF, width, 480, display.pitch);
 }
 
@@ -395,7 +400,10 @@ void set_flip_field(uint32_t shift, uint32_t value) {
 // While the driver keeps PGRAPH's FIFO access off (kPgraphFifo), no method runs.
 void wait_for_pgraph_access() {
     while (!g_pgraph_fifo_enabled) {
-        WaitForSingleObject(g_gpu_resume, 1);
+        {
+            ProfileScope scope(ProfileTime::access_waits);
+            WaitForSingleObject(g_gpu_resume, 1);
+        }
         service_present();
     }
 }
@@ -445,7 +453,10 @@ void trap_software_method(uint32_t subchannel, uint32_t method, uint32_t argumen
                 return;
             }
         }
-        WaitForSingleObject(g_gpu_resume, 5);
+        {
+            ProfileScope scope(ProfileTime::trap_waits);
+            WaitForSingleObject(g_gpu_resume, 5);
+        }
         service_present();
         if (waited == 2000) log_line("nv2a: software method %04X(%08X) not acknowledged after 2 s", method, argument);
     }
@@ -460,7 +471,10 @@ void flip_stall() {
             const uint32_t surface = reg(kPgraphSurface);
             if (((surface >> 20) & 7) != ((surface >> 24) & 7)) return;
         }
-        WaitForSingleObject(g_gpu_resume, 5);
+        {
+            ProfileScope scope(ProfileTime::flip_waits);
+            WaitForSingleObject(g_gpu_resume, 5);
+        }
         service_present();
         if (waited == 2000) log_line("nv2a: FLIP_STALL still waiting after 2 s");
     }
@@ -647,11 +661,16 @@ void gpu_thread() {
     // anyway: when it has to share the core, it must preempt a thread spinning on a register.
     if (const unsigned long cores = emulation_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    profile_name_thread(false, "gpu");
     g_renderer_ready = renderer_start(g_window);
     bool started = false;
     for (;;) {
-        WaitForSingleObject(g_put_written, 5);
+        {
+            ProfileScope scope(ProfileTime::idle);
+            WaitForSingleObject(g_put_written, 5);
+        }
         service_present();
+        profile_log_if_due();
         uint32_t put = 0;
         {
             std::lock_guard<std::mutex> lock(g_register_mutex);
@@ -816,6 +835,7 @@ void interrupt_thread() {
     // The interrupt service routine is game code: it needs an Xbox thread context like any game thread.
     constexpr uint32_t kTlsAreaSize = 0x100;
     attach_xbox_thread_context(XbeTlsTemplate{}, kTlsAreaSize);
+    profile_name_thread(true, "interrupt");
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
     static const bool interrupts_disabled = GetEnvironmentVariableW(L"MC3_NO_GPU_IRQ", nullptr, 0) != 0;
 
@@ -828,7 +848,10 @@ void interrupt_thread() {
         const auto now = Clock::now();
         const DWORD wait = now >= next ? 0 : static_cast<DWORD>(
             std::chrono::duration_cast<std::chrono::milliseconds>(next - now).count() + 1);
-        WaitForSingleObject(g_interrupt_request, wait);
+        {
+            ProfileScope scope(ProfileTime::idle);
+            WaitForSingleObject(g_interrupt_request, wait);
+        }
         const bool vblank = Clock::now() >= next;
         // A paused game gets no interrupts (they stay pending until it resumes); the picture is still presented,
         // with the in-game menu over it.
@@ -905,6 +928,7 @@ bool start_nv2a() {
 bool nv2a_handle_access_violation(CONTEXT* context, uint32_t address) {
     const uint32_t offset = address - kNv2aRegisterBase;
     if (offset >= kNv2aRegisterSize || (offset >= kPraminBase && offset < kPraminBase + kPraminSize)) return false;
+    profile_register_access(offset, context->Eip);
     if (emulate_mmio_access(context, address, kDevice)) return true;
     const auto* code = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(context->Eip));
     log_line("nv2a: cannot emulate the register access at %08lX (address %08X, code %02X %02X %02X %02X)",

@@ -72,6 +72,7 @@ if(WIN32)
         src/pc/paths.cpp
         src/pc/physical_memory.cpp
         src/pc/privileged.cpp
+        src/pc/profile.cpp
         src/pc/renderer_d3d11.cpp
         src/pc/runtime.cpp
         src/pc/settings.cpp

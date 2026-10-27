@@ -21,6 +21,7 @@
 #include "pc/nv2a_texture.h"
 #include "pc/nv2a_vsh.h"
 #include "pc/physical_memory.h"
+#include "pc/profile.h"
 #include "pc/renderer_d3d11.h"
 #include "pc/settings.h"
 #include "pc/xbox_thread.h"
@@ -157,8 +158,9 @@ private:
         if (!cores) available = std::max(1u, std::thread::hardware_concurrency()) - 1;
         const uint32_t helpers = std::min<uint32_t>(available > 1 ? available - 1 : 0, 7);  // one is the GPU thread's
         for (uint32_t i = 0; i < helpers; ++i) {
-            threads_.emplace_back([this, cores] {
+            threads_.emplace_back([this, cores, i] {
                 if (cores) SetThreadAffinityMask(GetCurrentThread(), cores);
+                profile_name_thread(false, "vertices %u", i);
                 uint64_t seen = 0;
                 for (;;) {
                     {

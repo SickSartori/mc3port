@@ -24,6 +24,7 @@
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
+#include "pc/profile.h"
 
 namespace mc3::pc {
 namespace {
@@ -230,10 +231,14 @@ void run_queued_dpcs_locked(std::unique_lock<std::mutex>& lock) {
 // Timer DPCs (and any DPC queued outside an interrupt) run here.
 void dpc_thread(XbeTlsTemplate tls) {
     attach_xbox_thread_context(tls, 0);
+    profile_name_thread(true, "dpc");
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
     std::unique_lock<std::mutex> lock(g_mutex);
     for (;;) {
-        g_dpc_queued.wait(lock, [] { return !g_dpc_queue.empty(); });
+        {
+            ProfileScope scope(ProfileTime::idle);
+            g_dpc_queued.wait(lock, [] { return !g_dpc_queue.empty(); });
+        }
         if (game_paused()) {
             lock.unlock();
             game_pause_point();
@@ -545,7 +550,11 @@ NTSTATUS wait_unpaused(uint32_t count, const uint32_t* objects, bool wait_all, c
 // A paused game's threads stop here, before and after waiting: no host lock is held at either point.
 NTSTATUS wait_for_objects(uint32_t count, const uint32_t* objects, bool wait_all, const int64_t* timeout) {
     game_pause_point();
-    const NTSTATUS status = wait_unpaused(count, objects, wait_all, timeout);
+    NTSTATUS status;
+    {
+        ProfileScope scope(ProfileTime::object_waits);
+        status = wait_unpaused(count, objects, wait_all, timeout);
+    }
     game_pause_point();
     return status;
 }

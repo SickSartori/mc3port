@@ -23,6 +23,8 @@
   the side menu follows the mouse after a brief rest on an item instead of flipping pages as it passes; a hand
   cursor over everything clickable; with a controller the bottom bar says how to get into a page.
 - The build is checked on every change, not only at release time.
+- The log notes every 10 seconds the game's frame rate, how evenly its frames come and how busy the game and the
+  emulated graphics chip are, which helps when reporting a performance problem.
 
 ### Fixed
 
