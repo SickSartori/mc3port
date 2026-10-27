@@ -603,6 +603,7 @@ private:
     float pad_rescan_ = -10;
     int stick_x_ = 0, stick_y_ = 0;  // the left stick as a d-pad direction, with hysteresis
     float stick_repeat_at_ = 0;      // when the held stick next counts as a press (kStickDelay, then kStickRate)
+    bool opening_buttons_held_ = false;  // Back+Start opened the menu: ignored until let go, or Start would resume it
 
     Page page_ = Page::kPlay;
     float page_since_ = 0;
@@ -1893,6 +1894,12 @@ void Launcher::poll_gamepads(float now) {
         stick_x_ = stick_y_ = 0;
         return;
     }
+    // The Back and Start that opened the menu are still down for a while: the menu must not see them as new presses.
+    constexpr WORD kOpening = XINPUT_GAMEPAD_START | XINPUT_GAMEPAD_BACK;
+    if (opening_buttons_held_) {
+        if (pad.wButtons & kOpening) pad.wButtons &= ~kOpening;
+        else opening_buttons_held_ = false;
+    }
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     const auto axis = [](SHORT value, int& direction) {
         const float v = static_cast<float>(value) / 32767.0f;
@@ -2254,6 +2261,7 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
         menu_cursor_ = 0;
         game_pause(true);
         stop_rumble();
+        opening_buttons_held_ = true;
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
         ImGui::GetIO().ClearInputKeys();  // the key that opened the menu, and keys held in the game
         log_line("game menu: open");
