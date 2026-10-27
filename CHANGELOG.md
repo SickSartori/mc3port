@@ -18,6 +18,10 @@
   with a pulsing marker, and marks the About entry of the menu; before, the notice sat low on the page.
 - `mc3.exe` and `mc3runtime.dll` now carry their version number: Windows shows it in the file's properties, which
   helps when reporting a problem.
+- Launcher polish: the Settings tabs' content fades in like a page; while choosing a key, Esc, a click elsewhere or
+  B cancels, and the box says so (before, any key was taken, Esc included, and cancelling meant waiting);
+  the side menu follows the mouse after a brief rest on an item instead of flipping pages as it passes; a hand
+  cursor over everything clickable; with a controller the bottom bar says how to get into a page.
 - The build is checked on every change, not only at release time.
 
 ### Fixed

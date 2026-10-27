@@ -73,7 +73,7 @@ struct Texts {
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
     const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint, *tabs_hint, *play_hint;
-    const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad;
+    const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
 };
 
 const Texts kEnglish = {
@@ -92,7 +92,7 @@ const Texts kEnglish = {
     "Modern effects", "Bloom, sharpening, colour and shading (F10 while playing)", "On", "Off",
     "Sharpening", "Light glow", "Glow threshold", "Saturation", "Contrast", "Vignette", "Ambient occlusion",
     "Occlusion size",
-    "Restore defaults", "Xbox controllers work as they are. Choose the keyboard keys here.", "Press a key...",
+    "Restore defaults", "Xbox controllers work as they are. Choose the keyboard keys here.", "Key? Esc cancels",
     "Restore keys", "PC KEYS", "Full screen on and off", "Modern effects on and off", "Menus: move, select, back",
     "PlayStation and other pads: through Steam Input or DS4Windows, which present them as Xbox controllers.",
     "Unofficial native Windows port. No game files included: you need your own copy.", "Looking for updates...",
@@ -111,6 +111,7 @@ const Texts kEnglish = {
     "Frame counter", "In a corner while playing", "Pause in the background",
     "Opens the menu when you switch windows", "Resume", "Tabs", "Play",
     "D-pad \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: move, select, back, tabs, play", "Motion blur", "Pages", "Move", "D-pad",
+    "Move \xC2\xB7 right: into the page",
 };
 
 const Texts kItalian = {
@@ -131,7 +132,7 @@ const Texts kItalian = {
     "Nitidezza", "Bagliore delle luci", "Soglia del bagliore", "Saturazione", "Contrasto", "Vignettatura",
     "Ombreggiatura ambientale", "Ampiezza dell'ombreggiatura",
     "Valori predefiniti", "I controller Xbox funzionano cos\xC3\xAC come sono. Qui scegli i tasti della tastiera.",
-    "Premi un tasto...", "Tasti predefiniti", "TASTI DEL PC", "Schermo intero s\xC3\xAC/no", "Effetti moderni s\xC3\xAC/no",
+    "Tasto? Esc annulla", "Tasti predefiniti", "TASTI DEL PC", "Schermo intero s\xC3\xAC/no", "Effetti moderni s\xC3\xAC/no",
     "Menu: muoversi, scegliere, tornare",
     "Controller PlayStation e altri: tramite Steam Input o DS4Windows, che li presentano come controller Xbox.",
     "Port nativo non ufficiale per Windows. Nessun file del gioco incluso: serve la tua copia.",
@@ -153,7 +154,7 @@ const Texts kItalian = {
     "Contatore FPS", "In un angolo durante il gioco", "Pausa in secondo piano",
     "Apre il menu se cambi finestra", "Riprendi", "Schede", "Gioca",
     "Croce \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: muoversi, scegliere, tornare, schede, gioca", "Sfocatura in velocit\xC3\xA0", "Pagine", "Muovi",
-    "Croce",
+    "Croce", "Muovi \xC2\xB7 destra: nella pagina",
 };
 
 const Texts& T() {
@@ -216,7 +217,7 @@ int key_from_message(WPARAM wparam, LPARAM lparam) {
 
 bool window_hook(HWND window, UINT message, WPARAM wparam, LPARAM lparam, LRESULT* result) {
     if (g_capturing && (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)) {
-        g_captured_key = key_from_message(wparam, lparam);
+        g_captured_key = wparam == VK_ESCAPE ? -1 : key_from_message(wparam, lparam);  // Esc cancels
         g_capturing = false;
         *result = 0;
         return true;
@@ -596,6 +597,11 @@ private:
     Page page_ = Page::kPlay;
     float page_since_ = 0;
     int settings_tab_ = 0;
+    float tab_since_ = 0;                 // the settings tab's content fades in from here
+    int hover_item_ = -1;                 // side menu: the item the mouse rests on, selected after a short dwell
+    float hover_since_ = 0;
+    bool hover_armed_ = false;
+    int cancel_frame_ = -1;               // the frame a rebinding was cancelled on: B does nothing else then
     bool wizard_ = false;
     int wizard_step_ = 0;
     int rebinding_ = -1;
@@ -939,6 +945,7 @@ bool Launcher::small_button(const char* label, ImVec2 at, const char* id, ImVec2
     claim_focus();
     const bool pressed = ImGui::InvisibleButton(id, box, kNavigable);
     const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
+    if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     list_->AddRectFilled(at, ImVec2(at.x + box.x, at.y + box.y), fade(kRed, hot * 0.25f));
     list_->AddRect(at, ImVec2(at.x + box.x, at.y + box.y), fade(mix(IM_COL32(255, 255, 255, 60), kRed, hot)), 0, 0, px(1.5f));
     text(body_bold_, px(18), ImVec2(at.x + px(14), at.y + px(6)), mix(kInk, IM_COL32(255, 120, 125, 255), hot), label);
@@ -978,6 +985,7 @@ bool Launcher::big_button(const char* label, const char* id, bool pulse) {
     claim_focus();
     const bool pressed = ImGui::InvisibleButton(id, ImVec2(b.x - a.x + px(14), b.y - a.y), kNavigable);
     const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
+    if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     if (pulse) {
         const float p = std::fmod(static_cast<float>(ImGui::GetTime()), 2.2f) / 2.2f / 0.7f;
         if (p < 1) {
@@ -1005,6 +1013,7 @@ bool Launcher::tabs(const char* const* labels, int count, int* current) {
             changed = true;
         }
         const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
+        if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         ImGui::PopID();
         const bool on = *current == i;
         text(heading_, px(22), ImVec2(x, origin_.y + cursor_), on ? kInk : mix(kDim, kInk, hot), labels[i]);
@@ -1043,6 +1052,7 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
             changed = true;
         }
         const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
+        if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         const float on = anim(ImGui::GetItemID() + 1, *current == i, 16);
         ImGui::PopID();
         if (on > 0.01f || hot > 0.01f) {
@@ -1170,6 +1180,8 @@ void Launcher::page_play() {
 
 void Launcher::page_settings() {
     const Texts& t = T();
+    const float now = static_cast<float>(ImGui::GetTime());
+    const int tab_before = settings_tab_;
     title(t.settings);
     const char* tab_labels[] = {t.tab_game, t.tab_display, t.tab_graphics, t.tab_effects};
     // LB and RB (L1 and R1), Q and E: the previous and next tab.
@@ -1183,6 +1195,13 @@ void Launcher::page_settings() {
         }
     }
     tabs(tab_labels, 4, &settings_tab_);
+    if (settings_tab_ != tab_before) tab_since_ = now;
+    // The tab's content comes in like a page: fading, from a little to the right.
+    const float tab_enter = ease_out((now - tab_since_) / 0.3f);
+    const float panel_alpha = g_alpha, origin_x = origin_.x;
+    g_alpha *= tab_enter;
+    origin_.x += px(24) * (1 - tab_enter);
+    ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_alpha);
     if (settings_tab_ == 0) {
         row(t.game_language, t.game_language_sub, true);
         static const int kLanguages[] = {0, 1, 4, 3, 5, 6};
@@ -1295,6 +1314,9 @@ void Launcher::page_settings() {
         renderer_set_effects(setting("effects") != 0);
     }
     cursor_ += px(48);
+    ImGui::PopStyleVar();
+    g_alpha = panel_alpha;
+    origin_.x = origin_x;
 }
 
 void Launcher::page_controls() {
@@ -1303,8 +1325,13 @@ void Launcher::page_controls() {
     lead(t.controls_lead);
     const int captured = g_captured_key.exchange(0);
     if (rebinding_ >= 0 && captured) {
-        bind_key(static_cast<PadInput>(rebinding_), captured);
+        if (captured > 0) bind_key(static_cast<PadInput>(rebinding_), captured);  // -1: Esc, cancelled
         rebinding_ = -1;
+    }
+    if (rebinding_ >= 0 && (ImGui::IsMouseClicked(0) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight))) {  // a click elsewhere or B
+        g_capturing = false;
+        rebinding_ = -1;
+        cancel_frame_ = ImGui::GetFrameCount();
     }
     if (rebinding_ >= 0 && ImGui::GetTime() - rebinding_since_ > 6) {  // forgotten
         g_capturing = false;
@@ -1334,6 +1361,7 @@ void Launcher::page_controls() {
             g_capturing = true;
         }
         const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused() || waiting);
+        if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         ImGui::PopID();
         list_->AddRectFilled(box_a, box_b, fade(mix(IM_COL32(255, 255, 255, 14), kRed, hot * (waiting ? 0.8f : 0.35f))));
         text(body_bold_, px(16), ImVec2(box_b.x - key_size.x - px(9), y + (row_height - key_size.y) / 2), kInk, key.c_str());
@@ -1613,7 +1641,8 @@ void Launcher::after_frame(float now, float since) {
     if (!wizard_ && disc_ && rebinding_ < 0 && ImGui::IsKeyPressed(ImGuiKey_GamepadStart)) play_ = done_ = true;
 
     // Back: from the page to the menu, then to the first page; a step back in the guide.
-    if (rebinding_ < 0 && (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight))) {
+    if (rebinding_ < 0 && cancel_frame_ != ImGui::GetFrameCount() &&
+        (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight))) {
         if (wizard_) {
             if (wizard_step_ > 0) {
                 --wizard_step_;
@@ -1715,7 +1744,17 @@ void Launcher::side_menu(float now, float since, const char* const* labels, cons
         const bool hovered = ImGui::IsItemHovered();
         ImGui::PopID();
         const ImVec2 mouse = ImGui::GetIO().MouseDelta;
-        if (hovered && mouse.x * mouse.x + mouse.y * mouse.y > 0) select(i);
+        if (hovered && mouse.x * mouse.x + mouse.y * mouse.y > 0 && hover_item_ != i) {  // the mouse arrived here
+            hover_item_ = i;
+            hover_since_ = now;
+            hover_armed_ = true;
+        }
+        if (hovered && hover_armed_ && hover_item_ == i && now - hover_since_ > 0.12f) {  // and rested a moment
+            hover_armed_ = false;
+            select(i);
+        }
+        if (!hovered && hover_item_ == i) hover_item_ = -1;
+        if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         if (pressed) {
             select(i);
             act(i);
@@ -1791,7 +1830,8 @@ void Launcher::bottom_bar(float since) {
     if (!wizard_) hint(pad ? "LB RB" : "Q E", kChrome, page_ == Page::kSettings ? t.tabs_hint : t.pages_hint);
     hint(pad ? "B" : "Esc", IM_COL32(255, 90, 90, 255), t.back);
     hint(pad ? "A" : (italian() ? "Invio" : "Enter"), kGreen, t.select);
-    hint(pad ? t.dpad : "\xE2\x86\x91\xE2\x86\x93\xE2\x86\x90\xE2\x86\x92", kChrome, t.move_hint);
+    hint(pad ? t.dpad : "\xE2\x86\x91\xE2\x86\x93\xE2\x86\x90\xE2\x86\x92", kChrome,
+         pad && menu_has_focus_ && !wizard_ ? t.enter_hint : t.move_hint);
 }
 
 // --- in game ---
@@ -1889,6 +1929,7 @@ void Launcher::poll_gamepads(float now) {
 // ImGui's own navigation rectangle is off.
 void Launcher::focus_ring() {
     const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
+    if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     if (hot < 0.01f) return;
     const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
     list_->AddRect(ImVec2(a.x - px(2), a.y - px(2)), ImVec2(b.x + px(2), b.y + px(2)), fade(kRed, hot), 0, 0, px(1.5f));
@@ -2084,7 +2125,7 @@ void Launcher::frame_in_game(float now) {
     ImGui::End();
 
     // Back: from the page to the menu, then to the pause page, then to the game. Start resumes from anywhere.
-    if (rebinding_ < 0 && !resuming_) {
+    if (rebinding_ < 0 && !resuming_ && cancel_frame_ != ImGui::GetFrameCount()) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
             if (!menu_has_focus_) {
                 back_to_menu();
