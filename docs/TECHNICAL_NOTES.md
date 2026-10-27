@@ -26,6 +26,7 @@ Il codice del gioco è x86 a 32 bit, come il PC: non va tradotto, va solo "ospit
 | 3 | Grafica: emulazione della GPU NV2A (registri, push buffer, interrupt) con il Direct3D originale del gioco, rendering su D3D11 | fatto |
 | 4 | DirectSound + XACT -> XAudio2, XInput, salvataggi su disco, XOnline disattivato | fatto (DirectSound sostituito, XACT e Bink girano sopra, suono su XAudio2; XInput, vibrazione, tastiera; salvataggi su `xbox_hdd`) |
 | 5 | Miglioramenti e distribuzione: risoluzione interna, 16:9, 60 fps, vertici sulla GPU, effetti, launcher, installer | fatto (versione 0.1.1) |
+| 6 | Menu in gioco (F1, Back+Start) con pausa del gioco, comandi da console nel launcher, velocità reale a 60 fps (passo di tempo dai fotogrammi mostrati), motion blur corretto e regolabile | fatto (versione 0.2.0) |
 
 ### Grafica: perché si emula la GPU e non Direct3D
 
