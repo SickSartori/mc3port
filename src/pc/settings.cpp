@@ -42,6 +42,7 @@ const Setting kSettings[] = {
     {"saturation", 1.12f, "Colour saturation: 1 = original, higher = more vivid."},
     {"contrast", 1.06f, "Contrast: 1 = original."},
     {"vignette", 0.15f, "Slight darkening of the picture's edges: 0 = off."},
+    {"motion_blur", 0.5f, "The game's speed blur: 0 = off, 1 = as strong as on the Xbox."},
     {"ambient_occlusion", 0.6f, "Ambient occlusion (darker corners and contact areas): 0 = off, 1 = strong."},
     {"ambient_occlusion_radius", 1, "Ambient occlusion size: 0.5 = tight, 2 = wide."},
 };

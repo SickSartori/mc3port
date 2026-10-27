@@ -261,6 +261,7 @@ std::string generate_pixel_shader(const CombinerProgram& p) {
             code += format("    if (!(alpha %s reference)) discard;\n", kCompare[function]);
         }
     }
+    code += "    result.rgb *= 1 - alpha_reference.y;\n";  // fades one draw: the renderer's motion blur strength
     code += "    return result;\n}\n";
     return code;
 }

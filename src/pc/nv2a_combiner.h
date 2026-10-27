@@ -30,7 +30,7 @@ struct CombinerConstants {
     float final_factor0[4];
     float final_factor1[4];
     float fog_color[4];
-    float alpha_reference[4];  // x = reference 0..1
+    float alpha_reference[4];  // x = reference 0..1; y = how much the draw's colour fades (0 = none)
     float texture_scale[4][4];  // xy multiply the coordinates: 1/size for rectangle (linear) textures, else 1
 };
 

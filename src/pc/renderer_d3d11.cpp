@@ -669,6 +669,7 @@ ComPtr<ID3D11Buffer> g_occlusion_constants;
 ComPtr<ID3D11BlendState> g_multiply_blend;  // destination colour times the source (alpha untouched)
 std::atomic<bool> g_effects_enabled{true};  // F10
 std::atomic<RendererOverlay> g_overlay{nullptr};  // renderer_set_overlay
+uint32_t g_blur_surface = 0;  // the surface a draw read while drawing into it: MC3's motion blur buffer
 
 // Per depth buffer, since its last clear (the start of a scene; presents do not line up with scenes): 3D drawn,
 // occlusion applied.
@@ -1668,6 +1669,12 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
         constants_data.texture_scale[i][0] = 1.0f / rendered->second.width;
         constants_data.texture_scale[i][1] = 1.0f / rendered->second.height;
     }
+    // The motion blur: the blur buffer added to the frame, weighted by the frame's alpha (DST_ALPHA, ONE). Setting
+    // motion_blur scales it (1 = like the Xbox, 0 = off).
+    if (g_blur_surface && surface.color_address != g_blur_surface && state.blend_enable && state.blend_source == 0x304 &&
+        state.blend_destination == 1 && state.textures[0].enabled && state.textures[0].descriptor.address == g_blur_surface) {
+        constants_data.alpha_reference[1] = 1 - std::clamp(setting("motion_blur"), 0.0f, 1.0f);
+    }
     g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
     ID3D11Buffer* constants = g_constants.Get();
     g_context->PSSetConstantBuffers(0, 1, &constants);
@@ -1681,7 +1688,10 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
         samplers[i] = sampler(state.textures[i]);
         // The draw reads its own target: the NV2A then sees what is there now (MC3's motion blur writes its mask
         // into the frame's alpha this way). Direct3D cannot read and write one texture, so it reads a copy.
-        if (views[i] == target->srv.Get()) views[i] = target_copy(*target);
+        if (views[i] == target->srv.Get()) {
+            views[i] = target_copy(*target);
+            g_blur_surface = surface.color_address;
+        }
     }
     g_context->PSSetShaderResources(0, 4, views);
     g_context->PSSetSamplers(0, 4, samplers);

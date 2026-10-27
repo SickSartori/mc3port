@@ -73,7 +73,7 @@ struct Texts {
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
     const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint, *tabs_hint, *play_hint;
-    const char *pad_keys, *pad_menu_keys;
+    const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad;
 };
 
 const Texts kEnglish = {
@@ -110,7 +110,7 @@ const Texts kEnglish = {
     "Progress since the last save will be lost.", "EXIT", "Applies the next time the game starts", "In-game menu",
     "Frame counter", "In a corner while playing", "Pause in the background",
     "Opens the menu when you switch windows", "Resume", "Tabs", "Play",
-    "D-pad \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: move, select, back, tabs, play",
+    "D-pad \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: move, select, back, tabs, play", "Motion blur", "Pages", "Move", "D-pad",
 };
 
 const Texts kItalian = {
@@ -152,7 +152,8 @@ const Texts kItalian = {
     "I progressi dall'ultimo salvataggio andranno persi.", "ESCI", "Vale dal prossimo avvio del gioco", "Menu in gioco",
     "Contatore FPS", "In un angolo durante il gioco", "Pausa in secondo piano",
     "Apre il menu se cambi finestra", "Riprendi", "Schede", "Gioca",
-    "Croce \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: muoversi, scegliere, tornare, schede, gioca",
+    "Croce \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: muoversi, scegliere, tornare, schede, gioca", "Sfocatura in velocit\xC3\xA0", "Pagine", "Muovi",
+    "Croce",
 };
 
 const Texts& T() {
@@ -479,6 +480,7 @@ private:
         }
     }
     void draw_frame_counter(float now);
+    void draw_menu_hint(float now);
     void side_menu(float now, float since, const char* const* labels, const Page* targets, int count);
     void bottom_bar(float since);
     void resume();
@@ -1242,6 +1244,7 @@ void Launcher::page_settings() {
             {t.sharpen, "sharpen", 0, 1},           {t.bloom, "bloom", 0, 1},
             {t.bloom_threshold, "bloom_threshold", 0, 1}, {t.saturation, "saturation", 0.5f, 1.5f},
             {t.contrast, "contrast", 0.8f, 1.3f},   {t.vignette, "vignette", 0, 0.5f},
+            {t.motion_blur, "motion_blur", 0, 1},
             {t.occlusion, "ambient_occlusion", 0, 1}, {t.occlusion_radius, "ambient_occlusion_radius", 0.5f, 2},
         };
         for (const Slider& s : sliders) {
@@ -1257,7 +1260,7 @@ void Launcher::page_settings() {
         for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background", "widescreen",
                                 "fullscreen", "fps_counter", "render_scale",
                                 "anisotropy", "gpu_vertices", "effects", "sharpen", "bloom", "bloom_threshold",
-                                "saturation", "contrast", "vignette", "ambient_occlusion", "ambient_occlusion_radius"}) {
+                                "saturation", "contrast", "vignette", "motion_blur", "ambient_occlusion", "ambient_occlusion_radius"}) {
             set_setting(key, setting_default(key));
         }
         nv2a_set_full_screen(setting("fullscreen") != 0);
@@ -1727,11 +1730,18 @@ void Launcher::bottom_bar(float since) {
         text(body_bold_, px(15), ImVec2(right + (key_width - key_size.x) / 2, text_y + (px(22) - key_size.y) / 2), IM_COL32(6, 6, 7, 255), key);
         right -= px(24);
     };
-    hint(pad_connected_ ? "B" : "Esc", IM_COL32(255, 90, 90, 255), t.back);
-    hint(pad_connected_ ? "A" : (italian() ? "Invio" : "Enter"), kGreen, t.select);
-    if (in_game_) hint(pad_connected_ ? "Start" : "F1", kChrome, t.resume_hint);
-    if (page_ == Page::kSettings && !wizard_) hint(pad_connected_ ? "LB RB" : "Q E", kChrome, t.tabs_hint);
-    if (!in_game_ && !wizard_ && disc_ && pad_connected_) hint("Start", kChrome, t.play_hint);
+    // Every key of this screen, read left to right: move, select, back, tabs or pages, play or resume (drawn from the
+    // right). The controller's buttons when one is connected, else the keyboard's.
+    const bool pad = pad_connected_;
+    if (in_game_) {
+        hint(pad ? "Start" : "F1", kChrome, t.resume_hint);
+    } else if (!wizard_ && disc_) {
+        hint(pad ? "Start" : (italian() ? "Invio" : "Enter"), kChrome, t.play_hint);
+    }
+    if (!wizard_) hint(pad ? "LB RB" : "Q E", kChrome, page_ == Page::kSettings ? t.tabs_hint : t.pages_hint);
+    hint(pad ? "B" : "Esc", IM_COL32(255, 90, 90, 255), t.back);
+    hint(pad ? "A" : (italian() ? "Invio" : "Enter"), kGreen, t.select);
+    hint(pad ? t.dpad : "\xE2\x86\x91\xE2\x86\x93\xE2\x86\x90\xE2\x86\x92", kChrome, t.move_hint);
 }
 
 // --- in game ---
@@ -1839,6 +1849,28 @@ void Launcher::frame_in_game(float now) {
     leave_page_on_left();
 }
 
+constexpr float kMenuHintEnd = 10;  // seconds after the game's first frame
+
+// "F1 · Back+Start: in-game menu" in the top left corner while the game starts, fading in and out.
+void Launcher::draw_menu_hint(float now) {
+    g_alpha = std::clamp(std::min(now - 1.0f, kMenuHintEnd - now) / 0.6f, 0.0f, 1.0f);
+    const float size = std::max(15.0f, px(20)), pad = size * 0.45f;
+    const char* keys = "F1 \xC2\xB7 Back+Start";
+    const char* label = T().menu_key;
+    const ImVec2 key_size = body_bold_->CalcTextSizeA(size, FLT_MAX, 0, keys);
+    const ImVec2 label_size = body_->CalcTextSizeA(size, FLT_MAX, 0, label);
+    const ImVec2 a(px(32), px(28));
+    const ImVec2 b(a.x + key_size.x + label_size.x + pad * 5, a.y + key_size.y + pad * 2);
+    ImDrawList* list = ImGui::GetForegroundDrawList();
+    list->AddRectFilled(a, b, fade(IM_COL32(8, 8, 10, 190)), size * 0.25f);
+    list->AddRectFilled(a, ImVec2(a.x + size * 0.18f, b.y), fade(kRed));
+    const ImVec2 key_a(a.x + pad * 1.5f, a.y + pad * 0.6f);
+    list->AddRectFilled(key_a, ImVec2(key_a.x + key_size.x + pad * 1.2f, b.y - pad * 0.6f), fade(kChrome), size * 0.2f);
+    list->AddText(body_bold_, size, ImVec2(key_a.x + pad * 0.6f, a.y + pad), fade(IM_COL32(6, 6, 7, 255)), keys);
+    list->AddText(body_, size, ImVec2(key_a.x + key_size.x + pad * 2.2f, a.y + pad), fade(kInk), label);
+    g_alpha = 1;
+}
+
 // Frames per second in the top right corner (setting fps_counter): the game's frames, not the presents.
 void Launcher::draw_frame_counter(float now) {
     const uint32_t frames = nv2a_frames_shown();
@@ -1908,7 +1940,8 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
         log_line("game menu: closed");
     }
     const bool counter_on = setting("fps_counter") != 0;
-    if (!visible_ && !counter_on) return;
+    const bool hint_on = now < kMenuHintEnd;  // how to open the menu, for the first seconds of the game
+    if (!visible_ && !counter_on && !hint_on) return;
 
     width_ = width;
     height_ = height;
@@ -1929,7 +1962,8 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
         if (visible_) {
             frame_in_game(now);
         } else {
-            draw_frame_counter(now);
+            if (counter_on) draw_frame_counter(now);
+            if (hint_on) draw_menu_hint(now);
         }
         ImGui::Render();
     }

@@ -126,6 +126,7 @@ the others at once. The main ones:
 | Internal resolution | 1x (640x480) to 4x |
 | Modern effects | glow, sharpening, saturation, contrast, vignette, ambient occlusion, each adjustable |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
+| Motion blur | the game's speed blur: 0 off, 1 as strong as on the Xbox; 0.5 by default |
 | Frame counter | frames per second in a corner while playing; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 
