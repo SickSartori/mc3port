@@ -501,7 +501,8 @@ private:
     // Panel content: cursor_ moves down.
     void title(const char* str);
     void lead(const char* str);
-    bool status(bool good, const char* heading, const char* detail, const char* button_label, const char* id);
+    bool status(bool good, const char* heading, const char* detail, const char* button_label, const char* id,
+                bool pulse = false);
     bool small_button(const char* label, ImVec2 at, const char* id, ImVec2* size_out = nullptr);
     bool big_button(const char* label, const char* id, bool pulse);
     bool tabs(const char* const* labels, int count, int* current);
@@ -516,6 +517,7 @@ private:
     void page_controls();
     void page_about();
     void update_row(bool always);
+    bool update_available();
     void page_wizard();
     void page_paused();
     void page_exit();
@@ -926,14 +928,20 @@ bool Launcher::small_button(const char* label, ImVec2 at, const char* id, ImVec2
     return pressed;
 }
 
-bool Launcher::status(bool good, const char* heading, const char* detail, const char* button_label, const char* id) {
+bool Launcher::status(bool good, const char* heading, const char* detail, const char* button_label, const char* id,
+                      bool pulse) {
     const float height = px(64);
     const ImVec2 a(origin_.x, origin_.y + cursor_), b(origin_.x + panel_width_, a.y + height);
     const ImU32 accent = good ? kGreen : kAmber;
-    list_->AddRectFilled(a, b, fade(IM_COL32(255, 255, 255, 10)));
+    list_->AddRectFilled(a, b, fade(pulse ? IM_COL32(255, 178, 30, 22) : IM_COL32(255, 255, 255, 10)));
     list_->AddRectFilled(a, ImVec2(a.x + px(4), b.y), fade(accent));
-    list_->AddCircleFilled(ImVec2(a.x + px(26), a.y + height / 2), px(6), fade(accent));
-    list_->AddCircleFilled(ImVec2(a.x + px(26), a.y + height / 2), px(12), fade(accent, 0.18f));
+    const ImVec2 dot(a.x + px(26), a.y + height / 2);
+    list_->AddCircleFilled(dot, px(6), fade(accent));
+    list_->AddCircleFilled(dot, px(12), fade(accent, 0.18f));
+    if (pulse) {
+        const float p = std::fmod(static_cast<float>(ImGui::GetTime()), 1.8f) / 1.8f;
+        list_->AddCircle(dot, px(12) + px(14) * p, fade(accent, 0.6f * (1 - p)), 0, px(2));
+    }
     text(body_bold_, px(21), ImVec2(a.x + px(46), a.y + px(9)), kInk, heading);
     text(body_, px(17), ImVec2(a.x + px(46), a.y + px(35)), kDim, detail);
     bool pressed = false;
@@ -1115,6 +1123,7 @@ void Launcher::page_play() {
     const Texts& t = T();
     title(t.ready);
     lead(t.ready_lead);
+    update_row(false);
     if (disc_) {
         if (status(true, t.disc_ok, "Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 PAL", t.change, "##disc")) choose_disc();
     } else if (status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), t.choose_iso, "##disc")) {
@@ -1130,7 +1139,6 @@ void Launcher::page_play() {
         page_ = Page::kSettings;
         page_since_ = static_cast<float>(ImGui::GetTime());
     }
-    update_row(false);
     ImGui::SetCursorScreenPos(ImVec2(origin_.x, origin_.y + cursor_));
     if (big_button(t.play, "##play", disc_.has_value())) {
         if (disc_) {
@@ -1361,7 +1369,7 @@ void Launcher::update_row(bool always) {
         status(false, t.downloading, found, nullptr, nullptr);
     } else if (state == 2) {
         if (status(false, download == 3 ? t.update_failed : found, self_update ? t.update_install_sub : t.update_sub,
-                   self_update ? t.update_now : t.open, "##update")) {
+                   self_update ? t.update_now : t.open, "##update", download != 3)) {
             if (self_update) {
                 std::lock_guard<std::mutex> lock(updates_.mutex);
                 updates_.download = 1;
@@ -1374,6 +1382,14 @@ void Launcher::update_row(bool always) {
     } else {
         status(true, state == 0 ? t.checking : t.up_to_date, "", nullptr, nullptr);
     }
+}
+
+// A newer release is known and not being installed: the first page and the guide show the notice at the top, the
+// side menu marks About.
+bool Launcher::update_available() {
+    if (setting("check_updates") == 0) return false;
+    std::lock_guard<std::mutex> lock(updates_.mutex);
+    return updates_.state == 2 && updates_.download != 2;
 }
 
 void Launcher::page_about() {
@@ -1402,6 +1418,7 @@ void Launcher::page_wizard() {
     if (wizard_step_ == 0) {
         title(t.welcome);
         lead(t.welcome_lead);
+        update_row(false);
         if (disc_) {
             if (status(true, t.disc_ok, "Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 PAL", t.change, "##disc")) choose_disc();
         } else if (status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), t.choose_iso,
@@ -1696,6 +1713,12 @@ void Launcher::side_menu(float now, float since, const char* const* labels, cons
                         fade(kChrome, on * (0.4f + 0.6f * lit)), fade(kChrome, on * (0.4f + 0.6f * lit)));
         }
         text(black_, px(36), ImVec2(a.x + px(22) + shift, a.y + px(7)), mix(hovered ? kInk : kDim, IM_COL32_WHITE, on), labels[i]);
+        if (targets[i] == Page::kAbout && update_available()) {  // a newer version: a dot after the label
+            const ImVec2 dot(a.x + px(22) + shift + measure(black_, px(36), labels[i]).x + px(16), a.y + px(16));
+            const float p = std::fmod(static_cast<float>(ImGui::GetTime()), 1.8f) / 1.8f;
+            list_->AddCircleFilled(dot, px(6), fade(kAmber));
+            list_->AddCircle(dot, px(6) + px(10) * p, fade(kAmber, 0.6f * (1 - p)), 0, px(2));
+        }
     }
 }
 

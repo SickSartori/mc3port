@@ -91,3 +91,14 @@ begin
     if CompareText(ParamStr(I), '/UPDATE') = 0 then
       Result := True;
 end;
+
+// Windows caches the icons it has shown; after mc3.exe is replaced, the desktop and Start menu shortcuts kept the
+// old one. Telling the shell that associations changed makes it reload them.
+procedure SHChangeNotify(wEventId: Integer; uFlags: Cardinal; dwItem1, dwItem2: Cardinal);
+  external 'SHChangeNotify@shell32.dll stdcall';
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    SHChangeNotify($08000000, 0, 0, 0);  { SHCNE_ASSOCCHANGED, SHCNF_IDLIST }
+end;

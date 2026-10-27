@@ -2,11 +2,22 @@
 
 ## 0.2.1 (2026-10-27)
 
+### New
+
+- A new program icon and logo, in the spirit of the game's: chrome "MC" and a big red "3".
+
 ### Improved
 
+- When a newer version is out, the launcher says so at the top of its first page (and of the first-run guide),
+  with a pulsing marker, and marks the About entry of the menu; before, the notice sat low on the page.
 - `mc3.exe` and `mc3runtime.dll` now carry their version number: Windows shows it in the file's properties, which
   helps when reporting a problem.
 - The build is checked on every change, not only at release time.
+
+### Fixed
+
+- After an update, the desktop and Start menu shortcuts kept the old icon: the installer now asks Windows to
+  refresh its icons.
 
 ## 0.2.0 (2026-10-27)
 
