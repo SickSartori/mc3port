@@ -1,0 +1,36 @@
+# Changelog
+
+## 0.2.0 (2026-10-27)
+
+### New
+
+- **In-game menu**: F1, or Back+Start on a controller. Settings, controls, resume and exit, in the launcher's style.
+  The game pauses while it is open (timers, clocks and sound included) and resumes once the key is let go.
+- In the in-game menu, settings the game reads only when it starts (language, frame rate, aspect ratio, quality,
+  resolution, filtering) say so; the others apply at once.
+- **Motion blur strength** (Settings, Effects): 0 off, 1 as strong as on the Xbox, 0.5 by default.
+- **Frame counter** (Settings, Display), off by default.
+- **Pause in the background**: switching to another window opens the in-game menu (on by default).
+- A hint at the start of the game shows how to open the menu.
+
+### Improved
+
+- Launcher and menu controls work like a console's: up and down through the menu, right into the page, left or B
+  back out, LB/RB (Q/E) switch tabs, Start plays. The bottom bar lists every key, for the keyboard or the connected
+  controller.
+- Long setting descriptions wrap instead of running under the controls.
+
+### Fixed
+
+- At 60 fps the game ran up to twice as fast while driving. Game time now follows real time at 30 and 60 fps.
+- The game's motion blur read an empty picture; it now reads the frame, as on the Xbox.
+- Keyboard and controller navigation skipped the launcher's buttons.
+
+## 0.1.1 (2026-10-27)
+
+First public release.
+
+- Native Windows port of the European Xbox release, run from your own disc image.
+- 16:9, 60 fps, internal resolution up to 4x, anisotropic filtering, optional modern effects.
+- Launcher with disc check, first-run guide, settings, rebindable keys and updates; installer and portable zip.
+- Fixed: the launcher closed when clicking "Choose ISO" (in the withdrawn 0.1.0).

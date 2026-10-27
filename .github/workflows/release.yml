@@ -1,5 +1,5 @@
-# Builds the Windows package. A tag vX.Y.Z (matching the version in CMakeLists.txt) publishes it as a GitHub
-# release with its SHA256SUMS; any other run keeps the package as a workflow artifact.
+# Builds the Windows package. A tag vX.Y.Z (matching the version in CMakeLists.txt, with a section in CHANGELOG.md)
+# publishes it as a GitHub release with its SHA256SUMS and notes; any other run keeps the package as an artifact.
 name: Release
 
 on:
@@ -35,7 +35,10 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" (Get-ChildItem dist -File).FullName --title "mc3port ${{ github.ref_name }}" --generate-notes
+        # The notes: the version's section of CHANGELOG.md (tools/release_notes.ps1), then GitHub's compare link.
+        run: |
+          ./tools/release_notes.ps1 -Version ("${{ github.ref_name }}".TrimStart("v")) -Out notes.md
+          gh release create "${{ github.ref_name }}" (Get-ChildItem dist -File).FullName --title "mc3port ${{ github.ref_name }}" --notes-file notes.md --generate-notes
 
       - name: Keep the package
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}

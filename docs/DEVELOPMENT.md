@@ -34,6 +34,10 @@ cmake --build --preset pc-x86-debug
 
 Pacchetto della release (zip e SHA256SUMS in `dist/`): `powershell -File tools/package.ps1`.
 
+Pubblicare una versione: aggiornare `project(... VERSION x.y.z)` in `CMakeLists.txt`, aggiungere la sezione
+`## x.y.z` in `CHANGELOG.md`, poi inviare il tag `vx.y.z`. Il workflow `release.yml` compila e pubblica la release con
+le note prese dal CHANGELOG (`tools/release_notes.ps1`).
+
 ## Avvio
 
 ```
