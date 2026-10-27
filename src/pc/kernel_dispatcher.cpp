@@ -20,6 +20,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "pc/game_pause.h"
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
@@ -158,9 +159,26 @@ void arm_timer_locked(uint32_t timer_address, Clock::time_point due) {
     g_timer_changed.notify_one();
 }
 
+// After a pause the timers are due as much later as the game stood still.
+void delay_timers_locked(Clock::duration delay) {
+    std::multimap<Clock::time_point, uint32_t> delayed;
+    for (const auto& [due, timer_address] : g_timer_queue) delayed.emplace(due + delay, timer_address);
+    g_timer_queue.swap(delayed);
+    g_active_timers.clear();
+    for (auto it = g_timer_queue.begin(); it != g_timer_queue.end(); ++it) g_active_timers[it->second] = it;
+}
+
 void timer_thread() {
     std::unique_lock<std::mutex> lock(g_mutex);
     for (;;) {
+        if (game_paused()) {
+            const Clock::time_point paused = Clock::now();
+            lock.unlock();
+            game_pause_point();
+            lock.lock();
+            delay_timers_locked(Clock::now() - paused);
+            continue;
+        }
         if (g_timer_queue.empty()) {
             g_timer_changed.wait(lock);
             continue;
@@ -216,6 +234,11 @@ void dpc_thread(XbeTlsTemplate tls) {
     std::unique_lock<std::mutex> lock(g_mutex);
     for (;;) {
         g_dpc_queued.wait(lock, [] { return !g_dpc_queue.empty(); });
+        if (game_paused()) {
+            lock.unlock();
+            game_pause_point();
+            lock.lock();
+        }
         run_queued_dpcs_locked(lock);
     }
 }
@@ -228,10 +251,13 @@ void clock_thread() {
     QueryPerformanceFrequency(&frequency);
     QueryPerformanceCounter(&start_counter);
     for (;;) {
-        g_tick_count = static_cast<uint32_t>(GetTickCount64() - start);
+        // The game's clocks leave out the time it stood paused (the in-game menu).
+        const int64_t paused = game_paused_ticks();
+        g_tick_count = static_cast<uint32_t>(GetTickCount64() - start - paused * 1000 / frequency.QuadPart);
         LARGE_INTEGER counter;
         QueryPerformanceCounter(&counter);
-        const int64_t interrupt_time = (counter.QuadPart - start_counter.QuadPart) * 10000000 / frequency.QuadPart;
+        const int64_t interrupt_time =
+            (counter.QuadPart - paused - start_counter.QuadPart) * 10000000 / frequency.QuadPart;
         store_system_time(g_interrupt_time, interrupt_time);
         store_system_time(g_system_time, current_file_time());
         Sleep(1);
@@ -512,9 +538,21 @@ uint8_t __stdcall RtlTryEnterCriticalSection(XCriticalSection* section) {
     return 0;
 }
 
+NTSTATUS wait_unpaused(uint32_t count, const uint32_t* objects, bool wait_all, const int64_t* timeout);
+
 }  // namespace
 
+// A paused game's threads stop here, before and after waiting: no host lock is held at either point.
 NTSTATUS wait_for_objects(uint32_t count, const uint32_t* objects, bool wait_all, const int64_t* timeout) {
+    game_pause_point();
+    const NTSTATUS status = wait_unpaused(count, objects, wait_all, timeout);
+    game_pause_point();
+    return status;
+}
+
+namespace {
+
+NTSTATUS wait_unpaused(uint32_t count, const uint32_t* objects, bool wait_all, const int64_t* timeout) {
     const uint32_t me = kthread_address(current_xbox_thread());
     const bool infinite = timeout == nullptr;
     const Clock::time_point deadline = infinite ? Clock::time_point::max() : deadline_from(timeout);
@@ -554,6 +592,8 @@ NTSTATUS wait_for_objects(uint32_t count, const uint32_t* objects, bool wait_all
         }
     }
 }
+
+}  // namespace
 
 bool trigger_interrupt(uint32_t bus_interrupt_level) {
     XKInterrupt* interrupt = nullptr;

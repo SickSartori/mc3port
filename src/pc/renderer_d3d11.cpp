@@ -668,6 +668,7 @@ ComPtr<ID3D11PixelShader> g_occlusion_pixel_shader;
 ComPtr<ID3D11Buffer> g_occlusion_constants;
 ComPtr<ID3D11BlendState> g_multiply_blend;  // destination colour times the source (alpha untouched)
 std::atomic<bool> g_effects_enabled{true};  // F10
+std::atomic<RendererOverlay> g_overlay{nullptr};  // renderer_set_overlay
 
 // Per depth buffer, since its last clear (the start of a scene; presents do not line up with scenes): 3D drawn,
 // occlusion applied.
@@ -837,7 +838,7 @@ ID3D11SamplerState* sampler(const TextureStage& stage) {
     desc.Filter = kFilters[(linear_min ? 4 : 0) | (linear_mag ? 2 : 0) | (linear_mip ? 1 : 0)];
     // Smooth (trilinear) filtering becomes anisotropic: textures seen at a slant (roads, walls) stay sharp
     // (setting anisotropy, 1..16, 1 = off).
-    static const UINT anisotropy = std::clamp<UINT>(static_cast<UINT>(setting("anisotropy")), 1, 16);
+    static const UINT anisotropy = std::clamp<UINT>(static_cast<UINT>(setting_at_start("anisotropy")), 1, 16);
     if (linear_min && linear_mag && mipmaps && anisotropy > 1) {
         desc.Filter = D3D11_FILTER_ANISOTROPIC;
         desc.MaxAnisotropy = anisotropy;
@@ -1306,7 +1307,7 @@ void upload_scaled(Target& to, uint32_t x, uint32_t y, uint32_t width, uint32_t 
 }  // namespace
 
 bool renderer_start(HWND window) {
-    g_scale = std::clamp<uint32_t>(static_cast<uint32_t>(setting("render_scale")), 1, 4);
+    g_scale = std::clamp<uint32_t>(static_cast<uint32_t>(setting_at_start("render_scale")), 1, 4);
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0};
     if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 1,
                                  D3D11_SDK_VERSION, &g_device, nullptr, &g_context))) {
@@ -1980,12 +1981,16 @@ void renderer_blit(const BlitRequest& b) {
     }
 }
 
-float renderer_aspect() { return setting("widescreen") != 0 ? 16.0f / 9.0f : 4.0f / 3.0f; }
+float renderer_aspect() { return setting_at_start("widescreen") != 0 ? 16.0f / 9.0f : 4.0f / 3.0f; }
 
-void renderer_toggle_effects() {
-    g_effects_enabled = !g_effects_enabled;
-    log_line("renderer: modern effects %s", g_effects_enabled ? "on" : "off");
+void renderer_toggle_effects() { renderer_set_effects(!g_effects_enabled); }
+
+void renderer_set_effects(bool on) {
+    g_effects_enabled = on;
+    log_line("renderer: modern effects %s", on ? "on" : "off");
 }
+
+void renderer_set_overlay(RendererOverlay overlay) { g_overlay = overlay; }
 
 void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_t pitch) {
     if (!g_device || !width || !height) return;
@@ -2084,6 +2089,9 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
         }
         const auto extra = g_targets.find(g_dump_target);
         if (extra != g_targets.end()) dump_frame(extra->second.texture.Get(), "target");
+    }
+    if (const RendererOverlay overlay = g_overlay.load(); overlay && g_back_buffer_rtv) {
+        overlay(g_device.Get(), g_context.Get(), g_back_buffer_rtv.Get(), g_swap_width, g_swap_height);
     }
     g_swap_chain->Present(0, 0);
 }

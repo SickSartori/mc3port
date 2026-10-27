@@ -12,6 +12,11 @@ void settings_load(const std::filesystem::path& file);
 
 // The value of a key listed in settings.cpp (its default when the file and the environment do not set it).
 float setting(const char* key);
+// Keys the game reads once (language, 16:9, frame rate, resolution...): the value when the game started, so that
+// changing them in the in-game menu takes effect only at the next start. settings_freeze marks that moment; before
+// it, the current value.
+void settings_freeze();
+float setting_at_start(const char* key);
 // The key's default value.
 float setting_default(const char* key);
 // Stores a new value into the file (the other lines and their comments stay as they are).

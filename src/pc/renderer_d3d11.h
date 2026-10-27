@@ -3,6 +3,7 @@
 // Direct3D 11 back end for the emulated NV2A. Called only from the GPU thread.
 
 #include <windows.h>
+#include <d3d11.h>
 
 #include <cstdint>
 #include <functional>
@@ -144,5 +145,12 @@ float renderer_aspect();
 
 // F10: the modern effects (mc3port.ini) off and on, to compare with the original picture.
 void renderer_toggle_effects();
+void renderer_set_effects(bool on);
+
+// Drawn over every presented frame (the in-game menu, the frame counter), on the GPU thread, into the window's back
+// buffer of `width` x `height` pixels. nullptr removes it.
+using RendererOverlay = void (*)(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11RenderTargetView* target,
+                                 uint32_t width, uint32_t height);
+void renderer_set_overlay(RendererOverlay overlay);
 
 }  // namespace mc3::pc

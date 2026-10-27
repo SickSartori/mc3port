@@ -42,6 +42,7 @@ if(WIN32)
         src/pc/exec_memory.cpp
         src/pc/fs_patch.cpp
         src/pc/game_disc.cpp
+        src/pc/game_pause.cpp
         src/pc/handles.cpp
         src/pc/hle_patches.cpp
         src/pc/input_hle.cpp

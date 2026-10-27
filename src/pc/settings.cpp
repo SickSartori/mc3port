@@ -29,6 +29,8 @@ const Setting kSettings[] = {
     {"fullscreen", 0, "Start in full screen: 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},
     {"volume", 100, "Overall volume, 0 to 100."},
     {"launcher_music", 70, "Volume of the launcher's background music, 0 to 100 (0 = off)."},
+    {"fps_counter", 0, "Frames per second shown in a corner while playing: 1 = yes, 0 = no."},
+    {"pause_in_background", 1, "Pause the game (in-game menu) when its window goes to the background: 1 = yes, 0 = no."},
     {"check_updates", 1, "Look for a newer mc3port release on GitHub when the launcher opens: 1 = yes, 0 = no."},
     {"gpu_vertices", 1, "Vertex processing on the graphics card: 1 = yes (faster), 0 = on the processor."},
     {"render_scale", 2, "Internal resolution: 1 = like the Xbox (640x480), 2 = 1280x960, 3, 4. Higher = smoother edges."},
@@ -56,6 +58,7 @@ const TextSetting kTextSettings[] = {
 
 std::filesystem::path g_file;
 std::map<std::string, float> g_values;
+std::map<std::string, float> g_start_values;  // settings_freeze
 std::map<std::string, std::string> g_texts;
 
 std::string environment_name(const char* key) {
@@ -129,6 +132,13 @@ float setting(const char* key) {
         if (std::strcmp(s.key, key) == 0) return s.value;
     }
     return 0;
+}
+
+void settings_freeze() { g_start_values = g_values; }
+
+float setting_at_start(const char* key) {
+    const auto found = g_start_values.find(key);
+    return found != g_start_values.end() ? found->second : setting(key);
 }
 
 std::string setting_text(const char* key) {

@@ -40,6 +40,8 @@ Compared with the console:
 - **Modern effects**, all optional: light glow, adaptive sharpening, colour, vignette and ambient occlusion
   (F10 switches them on and off to compare).
 - **A launcher** that checks your disc, sets everything up on the first start and holds all the settings.
+- **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
+- **A frame counter**, optional.
 - **Keyboard support** with rebindable keys, and Xbox controllers for up to four players.
 
 ## Requirements
@@ -96,13 +98,15 @@ Without a controller, the keyboard is controller 1. Every key can be changed in 
 
 | PC key | Action |
 |---|---|
+| F1 (controller: Back+Start) | in-game menu: settings, controls, resume, exit; the game pauses meanwhile |
 | F11 or Alt+Enter | full screen on and off |
 | F10 | modern effects on and off |
 
 ## Settings
 
-Everything is in the launcher's **Settings** page, and in `mc3port.ini` next to `mc3.exe` (each key is explained
-there). The main ones:
+Everything is in the launcher's **Settings** page, in the game's in-game menu (F1), and in `mc3port.ini` (each key
+is explained there). Language, frame rate, aspect ratio, resolution and filtering apply the next time the game starts;
+the others at once. The main ones:
 
 | Setting | What it does |
 |---|---|
@@ -113,6 +117,8 @@ there). The main ones:
 | Internal resolution | 1x (640x480) to 4x |
 | Modern effects | glow, sharpening, saturation, contrast, vignette, ambient occlusion, each adjustable |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
+| Frame counter | frames per second in a corner while playing; off by default |
+| Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 
 ## Performance
 

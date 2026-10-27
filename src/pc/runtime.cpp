@@ -444,6 +444,8 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
         ExitProcess(0);
     }
     log_line("disc image: %s", reinterpret_cast<const char*>(disc->path.u8string().c_str()));
+    settings_freeze();  // from here on, keys the game reads once change only for the next start
+    const std::filesystem::path disc_path = disc->path;
     g_disc = std::move(disc->image);
     g_xbe = std::move(disc->xbe);
     log_xbe(*g_xbe);
@@ -472,6 +474,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     if (!map_physical_memory()) fatal("cannot map the Xbox physical memory window at %08X", kPhysicalMapBase);
     map_kernel_image_header();
     if (!start_nv2a()) fatal("cannot start the NV2A emulation");
+    start_game_menu(nv2a_open_window(), disc_path);
     map_audio_placeholder();
 
     g_main_thread_start = MainThreadStart{g_xbe->entry_point(), prepare_tls(*g_xbe)};

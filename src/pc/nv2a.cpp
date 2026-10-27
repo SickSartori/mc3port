@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+#include "pc/game_pause.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
 #include "pc/mmio.h"
@@ -122,6 +123,7 @@ constexpr uint32_t kClassKelvin = 0x97;
 uint8_t g_subchannel_class[8] = {};
 bool g_renderer_ready = false;
 std::atomic<bool> g_present_requested{false};
+std::atomic<uint32_t> g_frames_shown{0};  // game frames: changes of the shown buffer (nv2a_frames_shown)
 
 struct DisplayMode {
     uint32_t mode = 0;
@@ -360,7 +362,7 @@ void service_present() {
     if (!front || !display.pitch) return;
     {  // DEBUG: game frames (changes of the shown buffer) per 10 s
         static uint32_t last_front = 0, flips = 0, presents = 0;
-        if (front != last_front) ++flips, last_front = front;
+        if (front != last_front) ++flips, ++g_frames_shown, last_front = front;
         if (++presents == 600) {
             log_line("DEBUG display: %u flips in %u presents", flips, presents);
             flips = presents = 0;
@@ -813,7 +815,7 @@ void interrupt_thread() {
     using Clock = std::chrono::steady_clock;
     // The game shows a frame every second vertical blank: 30 fps at the Xbox's 60 Hz. Its logic runs on real time
     // (the same acceleration at 60 and 120 Hz), so 120 Hz blanks give 60 game frames per second (setting frame_rate).
-    static const int vblank_hz = setting("frame_rate") >= 60 ? 120 : 60;
+    static const int vblank_hz = setting_at_start("frame_rate") >= 60 ? 120 : 60;
     const auto period = std::chrono::nanoseconds(1000000000 / vblank_hz);
     auto next = Clock::now() + period;
     for (;;) {
@@ -822,9 +824,12 @@ void interrupt_thread() {
             std::chrono::duration_cast<std::chrono::milliseconds>(next - now).count() + 1);
         WaitForSingleObject(g_interrupt_request, wait);
         const bool vblank = Clock::now() >= next;
+        // A paused game gets no interrupts (they stay pending until it resumes); the picture is still presented,
+        // with the in-game menu over it.
+        const bool paused = game_paused();
 
         bool raise = false;
-        {
+        if (!paused) {
             std::lock_guard<std::mutex> lock(g_register_mutex);
             if (vblank) reg(kPcrtcIntr0) |= kPcrtcIntrVblank;
             raise = pending_interrupts() && reg(kPmcIntrEn0);
@@ -840,6 +845,7 @@ void interrupt_thread() {
         } else {
             present_front_buffer();
         }
+        if (paused) continue;
         if (++g_frames % 600 == 0) {
             log_line("nv2a: %llu vblanks, push buffer GET %08X, front buffer %08X",
                      static_cast<unsigned long long>(g_frames.load()), g_push.get.load(), reg(kPcrtcStart));
@@ -911,6 +917,8 @@ HWND nv2a_open_window() {
 }
 
 void nv2a_set_window_hook(WindowHook hook) { g_window_hook = hook; }
+
+uint32_t nv2a_frames_shown() { return g_frames_shown; }
 
 void nv2a_set_full_screen(bool full_screen) {
     if (g_window && full_screen != g_full_screen) toggle_full_screen(g_window);

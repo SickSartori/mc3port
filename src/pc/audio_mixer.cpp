@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+#include "pc/game_pause.h"
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
@@ -371,12 +372,12 @@ void mix(float* out, uint32_t frames) {
     // Master level (the Xbox keeps headroom too), then a soft limiter instead of hard clipping: linear up to 0.8,
     // a smooth knee above, so many voices at once round off instead of crackling.
     constexpr float kKnee = 0.8f;
-    // 0.4 at full volume: 0.5 still kept the limiter busy while driving.
-    static const float kMasterGain = 0.4f * std::clamp(setting("volume"), 0.0f, 100.0f) / 100.0f;
+    // 0.4 at full volume: 0.5 still kept the limiter busy while driving. Read every chunk: the in-game menu changes it.
+    const float master_gain = 0.4f * std::clamp(setting("volume"), 0.0f, 100.0f) / 100.0f;
     float peak = 0;
     uint32_t limited = 0;
     for (uint32_t i = 0; i < frames * 2; ++i) {
-        float x = out[i] * kMasterGain;
+        float x = out[i] * master_gain;
         const float magnitude = std::abs(x);
         if (magnitude > kKnee) {
             x = std::copysign(kKnee + (1.0f - kKnee) * std::tanh((magnitude - kKnee) / (1.0f - kKnee)), x);
@@ -518,7 +519,11 @@ void output_thread(HANDLE ready, bool* ok) {
         while (state.BuffersQueued < kQueuedChunks) {
             auto& chunk = ring[next];
             next = (next + 1) % kChunkRing;
-            mix(chunk.data(), kFramesPerChunk);
+            if (game_paused()) {
+                chunk.fill(0);  // silence, and no voice moves on
+            } else {
+                mix(chunk.data(), kFramesPerChunk);
+            }
             dump.add(chunk.data(), kFramesPerChunk);
             XAUDIO2_BUFFER buffer{};
             buffer.AudioBytes = kFramesPerChunk * 8;

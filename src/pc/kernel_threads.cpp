@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "pc/game_pause.h"
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
@@ -124,13 +125,16 @@ int32_t __stdcall KeSetBasePriorityThread(uint32_t kthread, int32_t increment) {
 }
 
 NTSTATUS __stdcall KeDelayExecutionThread(uint8_t /*wait_mode*/, uint8_t /*alertable*/, const int64_t* interval) {
+    game_pause_point();
     const int64_t milliseconds = timeout_to_milliseconds(interval);
     Sleep(milliseconds < 0 ? INFINITE : static_cast<DWORD>(std::min<int64_t>(milliseconds, 0x7FFFFFFF)));
+    game_pause_point();
     return kStatusSuccess;
 }
 
 NTSTATUS __stdcall NtYieldExecution() {
     constexpr NTSTATUS kStatusNoYieldPerformed = 0x40000024;
+    game_pause_point();
     return SwitchToThread() ? kStatusSuccess : kStatusNoYieldPerformed;
 }
 

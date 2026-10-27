@@ -19,6 +19,7 @@
 
 #include "pc/exec_memory.h"
 #include "pc/keyboard_bindings.h"
+#include "pc/launcher_ui.h"
 #include "pc/log.h"
 
 namespace mc3::pc {
@@ -287,6 +288,12 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
         g_host_connected[index] = g_xinput_get_state(index, &state) == ERROR_SUCCESS;
         if (!g_host_connected[index]) g_next_scan_ms[index] = now + 1000;
         if (g_host_connected[index]) {
+            // Back+Start opens the in-game menu; the game sees neither.
+            constexpr WORD kMenuButtons = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
+            if ((state.Gamepad.wButtons & kMenuButtons) == kMenuButtons) {
+                state.Gamepad.wButtons &= ~kMenuButtons;
+                game_menu_open();
+            }
             pad = from_xinput(state.Gamepad);
             apply_script(pad, index);
             return true;

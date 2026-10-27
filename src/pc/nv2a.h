@@ -27,6 +27,8 @@ HWND nv2a_open_window();
 // It runs on the window's thread. nullptr removes it.
 using WindowHook = bool (*)(HWND window, UINT message, WPARAM wparam, LPARAM lparam, LRESULT* result);
 void nv2a_set_window_hook(WindowHook hook);
+// Game frames shown so far (changes of the displayed buffer): the frame rate the player sees.
+uint32_t nv2a_frames_shown();
 // Borderless full screen on the window's monitor, or back to the window.
 void nv2a_set_full_screen(bool full_screen);
 

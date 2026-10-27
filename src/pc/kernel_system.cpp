@@ -11,6 +11,7 @@
 #include <cstring>
 #include <string>
 
+#include "pc/game_pause.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
 #include "pc/nv2a.h"
@@ -23,10 +24,11 @@ const Xbe* g_xbe = nullptr;
 
 // --- time ---
 
+// The game's counter stands still while it is paused (the in-game menu).
 uint64_t __stdcall KeQueryPerformanceCounter() {
     LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
-    return static_cast<uint64_t>(counter.QuadPart);
+    return static_cast<uint64_t>(counter.QuadPart - game_paused_ticks());
 }
 
 uint64_t __stdcall KeQueryPerformanceFrequency() {
@@ -146,7 +148,7 @@ constexpr uint32_t kAvFlagsWidescreen = 0x00010000;
 
 // The dashboard's video settings (XGetVideoFlags reads them from the AV capabilities): 60 Hz allowed, and the
 // widescreen TV setting when mc3port.ini asks for it.
-uint32_t video_flags() { return kAvFlags60Hz | (setting("widescreen") != 0 ? kAvFlagsWidescreen : 0); }
+uint32_t video_flags() { return kAvFlags60Hz | (setting_at_start("widescreen") != 0 ? kAvFlagsWidescreen : 0); }
 
 uint32_t __stdcall AvGetSavedDataAddress() { return 0; }
 void __stdcall AvSetSavedDataAddress(uint32_t) {}
@@ -173,7 +175,7 @@ uint32_t configured_language() {
     // game_language setting, else Windows' language when the disc has it (English otherwise).
     char value[8] = {};
     int language = GetEnvironmentVariableA("MC3_LANGUAGE", value, sizeof(value)) ? std::atoi(value)
-                                                                                   : static_cast<int>(setting("game_language"));
+                                                                                   : static_cast<int>(setting_at_start("game_language"));
     if (language == 1 || (language >= 3 && language <= 6)) return static_cast<uint32_t>(language);
     switch (PRIMARYLANGID(GetUserDefaultUILanguage())) {
         case LANG_GERMAN: return 3;
