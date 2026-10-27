@@ -18,7 +18,7 @@ jobs:
   windows:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Inno Setup (for the installer)
         run: choco install innosetup --no-progress -y
@@ -46,7 +46,7 @@ jobs:
 
       - name: Keep the package
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mc3port-windows
           path: dist/*.zip

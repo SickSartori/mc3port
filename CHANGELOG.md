@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 (2026-10-27)
+
+### Improved
+
+- `mc3.exe` and `mc3runtime.dll` now carry their version number: Windows shows it in the file's properties, which
+  helps when reporting a problem.
+- The build is checked on every change, not only at release time.
+
 ## 0.2.0 (2026-10-27)
 
 ### New

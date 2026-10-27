@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(mc3port VERSION 0.2.0 LANGUAGES C CXX)
+project(mc3port VERSION 0.2.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,6 +22,10 @@ if(WIN32)
         message(FATAL_ERROR "The PC build must be 32-bit (x86): the game's x86 code runs natively in the process. "
                             "Configure with -A Win32 or use the 'pc-x86' preset.")
     endif()
+
+    # Version numbers for the version resource (res/version.rc) of mc3.exe and mc3runtime.dll.
+    set(MC3_VERSION_DEFINES MC3_VERSION_MAJOR=${PROJECT_VERSION_MAJOR} MC3_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+                            MC3_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
     # Dear ImGui (MIT, third_party/imgui): the launcher's interface.
     add_library(imgui STATIC
@@ -75,13 +79,14 @@ if(WIN32)
     )
     target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp urlmon imgui mfplat mfreadwrite mfuuid shlwapi)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
-                               MC3PORT_VERSION="${PROJECT_VERSION}")
+                               MC3PORT_VERSION="${PROJECT_VERSION}" ${MC3_VERSION_DEFINES})
     target_compile_options(mc3runtime PRIVATE /utf-8)
 
     # Launcher: linked at the XBE base (0x10000) so Windows reserves the game's address range for us.
     # It has no CRT; runtime checks and security cookies would pull one in.
     string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
     add_executable(mc3 src/pc/launcher.c res/mc3.rc)
+    target_compile_definitions(mc3 PRIVATE ${MC3_VERSION_DEFINES} MC3_RC_APP=1)
     target_compile_options(mc3 PRIVATE /GS-)
     target_link_libraries(mc3 PRIVATE kernel32 user32)
     target_link_options(mc3 PRIVATE
