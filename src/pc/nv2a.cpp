@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "pc/game_pause.h"
+#include "pc/hle_patches.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
 #include "pc/mmio.h"
@@ -362,7 +363,13 @@ void service_present() {
     if (!front || !display.pitch) return;
     {  // DEBUG: game frames (changes of the shown buffer) per 10 s
         static uint32_t last_front = 0, flips = 0, presents = 0;
-        if (front != last_front) ++flips, ++g_frames_shown, last_front = front;
+        if (front != last_front) {
+            ++flips, ++g_frames_shown, last_front = front;
+            static uint64_t last_flip_vblank = 0;  // blanks between shown frames set the game's time step
+            const uint64_t vblank = g_frames;
+            if (last_flip_vblank) time_frame_shown(static_cast<uint32_t>(vblank - last_flip_vblank));
+            last_flip_vblank = vblank;
+        }
         if (++presents == 600) {
             log_line("DEBUG display: %u flips in %u presents", flips, presents);
             flips = presents = 0;
@@ -815,8 +822,7 @@ void interrupt_thread() {
     using Clock = std::chrono::steady_clock;
     // The game shows a frame every second vertical blank: 30 fps at the Xbox's 60 Hz. Its logic runs on real time
     // (the same acceleration at 60 and 120 Hz), so 120 Hz blanks give 60 game frames per second (setting frame_rate).
-    static const int vblank_hz = setting_at_start("frame_rate") >= 60 ? 120 : 60;
-    const auto period = std::chrono::nanoseconds(1000000000 / vblank_hz);
+    const auto period = std::chrono::nanoseconds(1000000000 / nv2a_vblank_hz());
     auto next = Clock::now() + period;
     for (;;) {
         const auto now = Clock::now();
@@ -919,6 +925,8 @@ HWND nv2a_open_window() {
 void nv2a_set_window_hook(WindowHook hook) { g_window_hook = hook; }
 
 uint32_t nv2a_frames_shown() { return g_frames_shown; }
+
+int nv2a_vblank_hz() { return setting_at_start("frame_rate") >= 60 ? 120 : 60; }
 
 void nv2a_set_full_screen(bool full_screen) {
     if (g_window && full_screen != g_full_screen) toggle_full_screen(g_window);

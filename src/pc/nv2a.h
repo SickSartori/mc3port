@@ -29,6 +29,8 @@ using WindowHook = bool (*)(HWND window, UINT message, WPARAM wparam, LPARAM lpa
 void nv2a_set_window_hook(WindowHook hook);
 // Game frames shown so far (changes of the displayed buffer): the frame rate the player sees.
 uint32_t nv2a_frames_shown();
+// The emulated vertical blank: 60 Hz like the Xbox, 120 Hz for 60 game frames per second (setting frame_rate).
+int nv2a_vblank_hz();
 // Borderless full screen on the window's monitor, or back to the window.
 void nv2a_set_full_screen(bool full_screen);
 
