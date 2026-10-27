@@ -5,6 +5,8 @@
 ### New
 
 - A new program icon and logo, in the spirit of the game's: chrome "MC" and a big red "3".
+- Controller buttons as icons (A, B, X, Y in their colours, bumpers, triggers, sticks, d-pad, Start and Back) in the
+  Controls page, in the bottom bar when a controller is connected, and in the hint at the start of the game.
 
 ### Improved
 

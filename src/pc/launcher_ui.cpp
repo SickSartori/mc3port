@@ -487,6 +487,7 @@ private:
     void stop_rumble();
     void poll_gamepads(float now);  // every XInput port into ImGui's keys, the left stick as a d-pad
     void focus_ring();              // the launcher's focus look on a standard ImGui widget
+    float pad_icon(ImDrawList* list, const char* name, ImVec2 at, float h, bool draw = true);
     void resize_if_needed();
     void upload_art();
     void start_art_loader(const std::filesystem::path& disc_path);
@@ -1301,9 +1302,8 @@ void Launcher::page_controls() {
         const KeyBinding& binding = key_binding(static_cast<PadInput>(i));
         const float x = origin_.x + (i % 2 ? column : 0.0f), y = origin_.y + cursor_ + row_height * static_cast<float>(i / 2);
         const float cell = panel_width_ / 2 - px(10);
-        list_->AddRect(ImVec2(x, y + px(4)), ImVec2(x + px(70), y + row_height - px(4)), fade(kRed), 0, 0, px(1.5f));
-        const ImVec2 pad_size = measure(body_bold_, px(15), binding.button);
-        text(body_bold_, px(15), ImVec2(x + (px(70) - pad_size.x) / 2, y + (row_height - pad_size.y) / 2), IM_COL32(255, 110, 116, 255), binding.button);
+        const float icon_h = px(22), icon_w = pad_icon(list_, binding.button, ImVec2(0, 0), icon_h, false);
+        pad_icon(list_, binding.button, ImVec2(x + (px(70) - icon_w) / 2, y + (row_height - icon_h) / 2), icon_h);
         text(body_, px(17), ImVec2(x + px(80), y + px(7)), kInk, italian() ? binding.italian : binding.english);
         const bool waiting = rebinding_ == i;
         const std::string key = waiting ? t.press_key : key_name(bound_key(static_cast<PadInput>(i)));
@@ -1748,20 +1748,26 @@ void Launcher::bottom_bar(float since) {
     field(t.bar_pad, pad_connected_ ? t.bar_pad_on : t.bar_pad_off);
     field(t.bar_version, MC3PORT_VERSION);
     float right = screen.x - px(86);
+    const bool pad = pad_connected_;
     const auto hint = [&](const char* key, ImU32 colour, const char* label) {
         const float label_width = measure(body_, px(18), label).x;
         right -= label_width;
         text(body_, px(18), ImVec2(right, text_y), kDim, label);
-        const float key_width = std::max(px(24), measure(body_bold_, px(15), key).x + px(12));
-        right -= key_width + px(8);
-        list_->AddRectFilled(ImVec2(right, text_y), ImVec2(right + key_width, text_y + px(22)), fade(colour), px(11));
-        const ImVec2 key_size = measure(body_bold_, px(15), key);
-        text(body_bold_, px(15), ImVec2(right + (key_width - key_size.x) / 2, text_y + (px(22) - key_size.y) / 2), IM_COL32(6, 6, 7, 255), key);
+        if (pad) {  // the button's glyph
+            const float key_width = pad_icon(list_, key, ImVec2(0, 0), px(22), false);
+            right -= key_width + px(8);
+            pad_icon(list_, key, ImVec2(right, text_y), px(22));
+        } else {  // the key's name in a pill
+            const float key_width = std::max(px(24), measure(body_bold_, px(15), key).x + px(12));
+            right -= key_width + px(8);
+            list_->AddRectFilled(ImVec2(right, text_y), ImVec2(right + key_width, text_y + px(22)), fade(colour), px(11));
+            const ImVec2 key_size = measure(body_bold_, px(15), key);
+            text(body_bold_, px(15), ImVec2(right + (key_width - key_size.x) / 2, text_y + (px(22) - key_size.y) / 2), IM_COL32(6, 6, 7, 255), key);
+        }
         right -= px(24);
     };
     // Every key of this screen, read left to right: move, select, back, tabs or pages, play or resume (drawn from the
     // right). The controller's buttons when one is connected, else the keyboard's.
-    const bool pad = pad_connected_;
     if (in_game_) {
         hint(pad ? "Start" : "F1", kChrome, t.resume_hint);
     } else if (!wizard_ && disc_) {
@@ -1873,6 +1879,113 @@ void Launcher::focus_ring() {
     list_->AddRect(ImVec2(a.x - px(2), a.y - px(2)), ImVec2(b.x + px(2), b.y + px(2)), fade(kRed, hot), 0, 0, px(1.5f));
 }
 
+// Xbox-style glyphs for the controller's buttons, drawn with circles and rounded boxes (no textures): the face
+// buttons in their colours, bumpers and triggers, the sticks with their direction, the d-pad, Start and Back. The
+// names are the bindings' and the hints' ("A", "LB", "RT", "L ←", "D-pad ↑", "Start", "Back", "Black",
+// "White", "LB RB"). Returns the width used; with `draw` false it only measures.
+float Launcher::pad_icon(ImDrawList* list, const char* name, ImVec2 at, float h, bool draw) {
+    const std::string n = name;
+    const float cy = at.y + h / 2;
+    const ImU32 ink = fade(IM_COL32(6, 6, 7, 255)), chrome = fade(kChrome);
+    const auto label = [&](const char* str, float cx, float size, ImU32 colour) {
+        if (!draw) return;
+        const ImVec2 s = measure(body_bold_, size, str);
+        list->AddText(body_bold_, size, ImVec2(cx - s.x / 2, cy - s.y / 2), colour, str);
+    };
+    const auto circle = [&](const char* letter, ImU32 colour) {
+        if (draw) list->AddCircleFilled(ImVec2(at.x + h / 2, cy), h / 2, fade(colour));
+        label(letter, at.x + h / 2, h * 0.62f, ink);
+        return h;
+    };
+    const auto bumper = [&](const char* str, float x) {  // wide and low, rounder on top
+        const float w = h * 1.7f, top = cy - h * 0.34f, bottom = cy + h * 0.34f;
+        if (draw) {
+            list->AddRectFilled(ImVec2(x, top), ImVec2(x + w, cy + h * 0.1f), chrome, h * 0.32f, ImDrawFlags_RoundCornersTop);
+            list->AddRectFilled(ImVec2(x, cy - h * 0.05f), ImVec2(x + w, bottom), chrome, h * 0.1f, ImDrawFlags_RoundCornersBottom);
+        }
+        label(str, x + w / 2, h * 0.5f, ink);
+        return w;
+    };
+    const auto trigger = [&](const char* str) {  // tall, rounder on top
+        const float w = h * 1.05f;
+        if (draw) {
+            list->AddRectFilled(ImVec2(at.x, at.y), ImVec2(at.x + w, cy + h * 0.1f), chrome, h * 0.42f, ImDrawFlags_RoundCornersTop);
+            list->AddRectFilled(ImVec2(at.x, cy - h * 0.1f), ImVec2(at.x + w, at.y + h), chrome, h * 0.14f, ImDrawFlags_RoundCornersBottom);
+        }
+        label(str, at.x + w / 2, h * 0.5f, ink);
+        return w;
+    };
+    // The direction at the end of the name: an arrow in UTF-8.
+    ImVec2 direction(0, 0);
+    if (n.size() >= 3) {
+        const std::string arrow = n.substr(n.size() - 3);
+        if (arrow == "\xE2\x86\x91") direction = ImVec2(0, -1);
+        else if (arrow == "\xE2\x86\x93") direction = ImVec2(0, 1);
+        else if (arrow == "\xE2\x86\x90") direction = ImVec2(-1, 0);
+        else if (arrow == "\xE2\x86\x92") direction = ImVec2(1, 0);
+    }
+    if (n == "A") return circle("A", kGreen);
+    if (n == "B") return circle("B", IM_COL32(255, 90, 90, 255));
+    if (n == "X") return circle("X", IM_COL32(90, 150, 255, 255));
+    if (n == "Y") return circle("Y", IM_COL32(255, 210, 60, 255));
+    if (n == "LB" || n == "White") return bumper("LB", at.x);
+    if (n == "RB" || n == "Black") return bumper("RB", at.x);
+    if (n == "LB RB") {
+        const float w = bumper("LB", at.x);
+        return w + h * 0.25f + bumper("RB", at.x + w + h * 0.25f);
+    }
+    if (n == "LT" || n == "RT") return trigger(name);
+    if (n == "Start" || n == "Back") {
+        if (draw) {
+            const ImVec2 c(at.x + h / 2, cy);
+            list->AddCircleFilled(c, h / 2, chrome);
+            if (n == "Start") {  // three lines
+                for (int i = -1; i <= 1; ++i) {
+                    list->AddLine(ImVec2(c.x - h * 0.24f, c.y + h * 0.19f * static_cast<float>(i)),
+                                  ImVec2(c.x + h * 0.24f, c.y + h * 0.19f * static_cast<float>(i)), ink, h * 0.09f);
+                }
+            } else {  // two overlapping squares
+                list->AddRect(ImVec2(c.x - h * 0.26f, c.y - h * 0.08f), ImVec2(c.x + h * 0.06f, c.y + h * 0.26f), ink, 0, 0, h * 0.08f);
+                list->AddRect(ImVec2(c.x - h * 0.06f, c.y - h * 0.26f), ImVec2(c.x + h * 0.26f, c.y + h * 0.08f), ink, 0, 0, h * 0.08f);
+            }
+        }
+        return h;
+    }
+    if (n.rfind("D-pad", 0) == 0 || n.rfind("Croce", 0) == 0) {  // a cross, the pressed arm in red
+        if (draw) {
+            const ImVec2 c(at.x + h / 2, cy);
+            const float arm = h * 0.17f, reach = h * 0.5f;
+            list->AddRectFilled(ImVec2(c.x - arm, c.y - reach), ImVec2(c.x + arm, c.y + reach), chrome, arm * 0.6f);
+            list->AddRectFilled(ImVec2(c.x - reach, c.y - arm), ImVec2(c.x + reach, c.y + arm), chrome, arm * 0.6f);
+            if (direction.x != 0 || direction.y != 0) {
+                const ImVec2 tip(c.x + direction.x * reach, c.y + direction.y * reach);
+                const ImVec2 lo(std::min(c.x, tip.x) - (direction.y != 0 ? arm : 0), std::min(c.y, tip.y) - (direction.x != 0 ? arm : 0));
+                const ImVec2 hi(std::max(c.x, tip.x) + (direction.y != 0 ? arm : 0), std::max(c.y, tip.y) + (direction.x != 0 ? arm : 0));
+                list->AddRectFilled(lo, hi, fade(kRed), arm * 0.6f);
+            }
+        }
+        return h;
+    }
+    if (n.rfind("L ", 0) == 0 || n.rfind("R ", 0) == 0) {  // a stick tilted in its direction, with its letter
+        const char letter[2] = {n[0], 0};
+        const float letter_size = h * 0.55f;
+        const ImVec2 s = measure(body_bold_, letter_size, letter);
+        if (draw) {
+            const ImVec2 c(at.x + h / 2, cy);
+            list->AddCircle(c, h * 0.46f, chrome, 0, h * 0.09f);
+            list->AddCircleFilled(ImVec2(c.x + direction.x * h * 0.17f, c.y + direction.y * h * 0.17f), h * 0.22f, chrome);
+            list->AddText(body_bold_, letter_size, ImVec2(at.x + h + h * 0.12f, cy - s.y / 2), fade(kInk), letter);
+        }
+        return h + h * 0.12f + s.x;
+    }
+    // Anything else: the name in a chrome pill.
+    const ImVec2 s = measure(body_bold_, h * 0.62f, name);
+    const float w = std::max(h * 1.1f, s.x + h * 0.5f);
+    if (draw) list->AddRectFilled(at, ImVec2(at.x + w, at.y + h), chrome, h / 2);
+    label(name, at.x + w / 2, h * 0.62f, ink);
+    return w;
+}
+
 void Launcher::resume() {
     if (resuming_) return;
     resuming_ = true;
@@ -1966,19 +2079,31 @@ constexpr float kMenuHintEnd = 10;  // seconds after the game's first frame
 void Launcher::draw_menu_hint(float now) {
     g_alpha = std::clamp(std::min(now - 1.0f, kMenuHintEnd - now) / 0.6f, 0.0f, 1.0f);
     const float size = std::max(15.0f, px(20)), pad = size * 0.45f;
-    const char* keys = "F1 \xC2\xB7 Back+Start";
     const char* label = T().menu_key;
-    const ImVec2 key_size = body_bold_->CalcTextSizeA(size, FLT_MAX, 0, keys);
-    const ImVec2 label_size = body_->CalcTextSizeA(size, FLT_MAX, 0, label);
-    const ImVec2 a(px(32), px(28));
-    const ImVec2 b(a.x + key_size.x + label_size.x + pad * 5, a.y + key_size.y + pad * 2);
     ImDrawList* list = ImGui::GetForegroundDrawList();
+    const ImVec2 f1_size = body_bold_->CalcTextSizeA(size, FLT_MAX, 0, "F1");
+    const ImVec2 or_size = body_->CalcTextSizeA(size, FLT_MAX, 0, "\xC2\xB7");
+    const ImVec2 plus_size = body_->CalcTextSizeA(size, FLT_MAX, 0, "+");
+    const ImVec2 label_size = body_->CalcTextSizeA(size, FLT_MAX, 0, label);
+    const float icon_h = size * 1.15f;
+    const float back_w = pad_icon(list, "Back", ImVec2(0, 0), icon_h, false), start_w = pad_icon(list, "Start", ImVec2(0, 0), icon_h, false);
+    const float keys_w = f1_size.x + pad * 1.2f + pad * 0.8f + or_size.x + pad * 0.8f + back_w + pad * 0.4f + plus_size.x + pad * 0.4f + start_w;
+    const ImVec2 a(px(32), px(28));
+    const ImVec2 b(a.x + keys_w + label_size.x + pad * 5, a.y + f1_size.y + pad * 2);
     list->AddRectFilled(a, b, fade(IM_COL32(8, 8, 10, 190)), size * 0.25f);
     list->AddRectFilled(a, ImVec2(a.x + size * 0.18f, b.y), fade(kRed));
-    const ImVec2 key_a(a.x + pad * 1.5f, a.y + pad * 0.6f);
-    list->AddRectFilled(key_a, ImVec2(key_a.x + key_size.x + pad * 1.2f, b.y - pad * 0.6f), fade(kChrome), size * 0.2f);
-    list->AddText(body_bold_, size, ImVec2(key_a.x + pad * 0.6f, a.y + pad), fade(IM_COL32(6, 6, 7, 255)), keys);
-    list->AddText(body_, size, ImVec2(key_a.x + key_size.x + pad * 2.2f, a.y + pad), fade(kInk), label);
+    float x = a.x + pad * 1.5f;
+    const float text_y = a.y + pad, icon_y = a.y + pad + f1_size.y / 2 - icon_h / 2;
+    list->AddRectFilled(ImVec2(x, a.y + pad * 0.6f), ImVec2(x + f1_size.x + pad * 1.2f, b.y - pad * 0.6f), fade(kChrome), size * 0.2f);
+    list->AddText(body_bold_, size, ImVec2(x + pad * 0.6f, text_y), fade(IM_COL32(6, 6, 7, 255)), "F1");
+    x += f1_size.x + pad * 1.2f + pad * 0.8f;
+    list->AddText(body_, size, ImVec2(x, text_y), fade(kDim), "\xC2\xB7");
+    x += or_size.x + pad * 0.8f;
+    x += pad_icon(list, "Back", ImVec2(x, icon_y), icon_h) + pad * 0.4f;
+    list->AddText(body_, size, ImVec2(x, text_y), fade(kInk), "+");
+    x += plus_size.x + pad * 0.4f;
+    x += pad_icon(list, "Start", ImVec2(x, icon_y), icon_h);
+    list->AddText(body_, size, ImVec2(x + pad * 1.4f, text_y), fade(kInk), label);
     g_alpha = 1;
 }
 
