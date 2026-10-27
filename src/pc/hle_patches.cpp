@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "pc/exec_memory.h"
+#include "pc/game_pause.h"
 #include "pc/log.h"
 
 namespace mc3::pc {
@@ -17,7 +18,8 @@ namespace {
 // The game turns the CPU time stamp counter into time assuming the Xbox's 733 MHz: its millisecond clock (0x1A1C00)
 // divides rdtsc by 733333 and XAPI's QueryPerformanceFrequency returns 733333333. The PC's counter runs at several
 // GHz, so everything timed that way went 5-6 times too fast (menu key repeat made the controller "too sensitive").
-// These rdtsc sites read a 733 MHz counter made from the host's performance counter instead.
+// These rdtsc sites read a 733 MHz counter made from the host's performance counter instead, without the time the
+// game spent paused (the in-game menu).
 
 constexpr uint64_t kXboxCpuHz = 733333333;
 
@@ -29,7 +31,7 @@ uint64_t xbox_time_stamp() {
     }();
     LARGE_INTEGER value;
     QueryPerformanceCounter(&value);
-    const auto counter = static_cast<uint64_t>(value.QuadPart);
+    const auto counter = static_cast<uint64_t>(value.QuadPart - game_paused_ticks());
     return counter / frequency * kXboxCpuHz + counter % frequency * kXboxCpuHz / frequency;
 }
 

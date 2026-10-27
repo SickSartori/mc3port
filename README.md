@@ -102,6 +102,15 @@ Without a controller, the keyboard is controller 1. Every key can be changed in 
 | F11 or Alt+Enter | full screen on and off |
 | F10 | modern effects on and off |
 
+In the launcher and the in-game menu:
+
+| Controller | Keyboard | Action |
+|---|---|---|
+| D-pad or left stick | arrow keys | up and down through the menu; right into the page, left back out |
+| A / B | Enter / Esc | select / back |
+| LB / RB | Q / E | previous and next tab (Settings) or page |
+| Start | | launcher: play; in-game menu: resume |
+
 ## Settings
 
 Everything is in the launcher's **Settings** page, in the game's in-game menu (F1), and in `mc3port.ini` (each key

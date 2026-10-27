@@ -72,7 +72,8 @@ struct Texts {
     const char *welcome, *welcome_lead, *next, *quality_title, *quality_lead, *all_set, *all_set_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
-    const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint;
+    const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint, *tabs_hint, *play_hint;
+    const char *pad_keys, *pad_menu_keys;
 };
 
 const Texts kEnglish = {
@@ -108,7 +109,8 @@ const Texts kEnglish = {
     "RESUME", "BACK TO GAME", "PAUSED", "The game is paused. F1 or Esc takes you back.", "EXIT GAME",
     "Progress since the last save will be lost.", "EXIT", "Applies the next time the game starts", "In-game menu",
     "Frame counter", "In a corner while playing", "Pause in the background",
-    "Opens the menu when you switch windows", "Resume",
+    "Opens the menu when you switch windows", "Resume", "Tabs", "Play",
+    "D-pad \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: move, select, back, tabs, play",
 };
 
 const Texts kItalian = {
@@ -149,7 +151,8 @@ const Texts kItalian = {
     "RIPRENDI", "TORNA AL GIOCO", "IN PAUSA", "Il gioco \xC3\xA8 in pausa. F1 o Esc per tornare.", "ESCI DAL GIOCO",
     "I progressi dall'ultimo salvataggio andranno persi.", "ESCI", "Vale dal prossimo avvio del gioco", "Menu in gioco",
     "Contatore FPS", "In un angolo durante il gioco", "Pausa in secondo piano",
-    "Apre il menu se cambi finestra", "Riprendi",
+    "Apre il menu se cambi finestra", "Riprendi", "Schede", "Gioca",
+    "Croce \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: muoversi, scegliere, tornare, schede, gioca",
 };
 
 const Texts& T() {
@@ -181,6 +184,14 @@ ImU32 mix(ImU32 a, ImU32 b, float t) {
 float ease_out(float t) {
     t = std::clamp(t, 0.0f, 1.0f);
     return 1 - (1 - t) * (1 - t) * (1 - t);
+}
+
+// Any of keys pressed this frame (with key repeat).
+bool key_pressed(std::initializer_list<ImGuiKey> keys) {
+    for (const ImGuiKey key : keys) {
+        if (ImGui::IsKeyPressed(key)) return true;
+    }
+    return false;
 }
 
 // --- shared state with the window thread ---
@@ -449,6 +460,24 @@ private:
     void header(float since);
     void panel(float now, float since);
     void after_frame(float now, float since);
+    void back_to_menu();
+    void leave_page_on_left();
+    // The page's first widget takes the keyboard and controller focus after Right or Enter in the menu.
+    void claim_focus() {
+        if (!focus_panel_) return;
+        ImGui::SetKeyboardFocusHere();
+        focus_panel_ = false;
+    }
+    // Keyboard and controller: the menu on the left (handled by side_menu) or the page (ImGui's navigation).
+    void configure_navigation() {
+        constexpr ImGuiConfigFlags kNavigation = ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+        ImGuiIO& io = ImGui::GetIO();
+        if (menu_has_focus_ && !wizard_) {
+            io.ConfigFlags &= ~kNavigation;
+        } else {
+            io.ConfigFlags |= kNavigation;
+        }
+    }
     void draw_frame_counter(float now);
     void side_menu(float now, float since, const char* const* labels, const Page* targets, int count);
     void bottom_bar(float since);
@@ -502,6 +531,9 @@ private:
     std::filesystem::path disc_path_;  // in game: for the logo
     std::atomic<bool> open_requested_{false}, toggle_requested_{false}, visible_{false};
     bool resuming_ = false;
+    bool menu_has_focus_ = true, focus_panel_ = false, left_pending_ = false;
+    int menu_cursor_ = 0;
+    ImGuiID left_from_ = 0;
     float resume_since_ = 0, now_ = 0;
     LARGE_INTEGER clock_start_{};
     uint32_t counted_frames_ = 0;
@@ -882,6 +914,7 @@ bool Launcher::small_button(const char* label, ImVec2 at, const char* id, ImVec2
     const ImVec2 size = measure(body_bold_, px(18), label);
     const ImVec2 box(size.x + px(28), size.y + px(12));
     ImGui::SetCursorScreenPos(at);
+    claim_focus();
     const bool pressed = ImGui::InvisibleButton(id, box, kNavigable);
     const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
     list_->AddRectFilled(at, ImVec2(at.x + box.x, at.y + box.y), fade(kRed, hot * 0.25f));
@@ -914,6 +947,7 @@ bool Launcher::big_button(const char* label, const char* id, bool pulse) {
     const ImVec2 size = measure(black_, px(40), label);
     const ImVec2 a(origin_.x, origin_.y + cursor_ + px(10)), b(a.x + size.x + px(110), a.y + px(64));
     ImGui::SetCursorScreenPos(a);
+    claim_focus();
     const bool pressed = ImGui::InvisibleButton(id, ImVec2(b.x - a.x + px(14), b.y - a.y), kNavigable);
     const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
     if (pulse) {
@@ -937,6 +971,7 @@ bool Launcher::tabs(const char* const* labels, int count, int* current) {
         const ImVec2 size = measure(heading_, px(22), labels[i]);
         ImGui::SetCursorScreenPos(ImVec2(x, origin_.y + cursor_));
         ImGui::PushID(i);
+        if (i == 0) claim_focus();
         if (ImGui::InvisibleButton("##tab", ImVec2(size.x, size.y + px(10)), kNavigable)) {
             *current = i;
             changed = true;
@@ -974,6 +1009,7 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
         const ImVec2 c(a.x + cell * static_cast<float>(i), a.y);
         ImGui::SetCursorScreenPos(c);
         ImGui::PushID(i);
+        if (i == *current) claim_focus();
         if (ImGui::InvisibleButton("##segment", ImVec2(cell, height), kNavigable) && *current != i) {
             *current = i;
             changed = true;
@@ -1001,6 +1037,7 @@ bool Launcher::slider(const char* id, float* value, float minimum, float maximum
     ImGui::PushItemWidth(width);
     ImGui::PushFont(body_bold_, px(18));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
+    claim_focus();
     const bool changed = ImGui::SliderFloat(id, value, minimum, maximum, format);
     ImGui::PopStyleVar();
     ImGui::PopFont();
@@ -1106,6 +1143,16 @@ void Launcher::page_settings() {
     const Texts& t = T();
     title(t.settings);
     const char* tab_labels[] = {t.tab_game, t.tab_display, t.tab_graphics, t.tab_effects};
+    // LB and RB (L1 and R1), Q and E: the previous and next tab.
+    if (rebinding_ < 0 && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+        const int step = key_pressed({ImGuiKey_GamepadL1, ImGuiKey_Q, ImGuiKey_PageUp})     ? 3
+                         : key_pressed({ImGuiKey_GamepadR1, ImGuiKey_E, ImGuiKey_PageDown}) ? 1
+                                                                                            : 0;
+        if (step) {
+            settings_tab_ = (settings_tab_ + step) % 4;
+            if (!menu_has_focus_) focus_panel_ = true;
+        }
+    }
     tabs(tab_labels, 4, &settings_tab_);
     if (settings_tab_ == 0) {
         row(t.game_language, t.game_language_sub, true);
@@ -1119,6 +1166,7 @@ void Launcher::page_settings() {
         ImGui::PushItemWidth(px(270));
         ImGui::PushFont(body_bold_, px(18));
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
+        claim_focus();
         if (ImGui::Combo("##language", &index, names, 6)) set_setting("game_language", static_cast<float>(kLanguages[index]));
         ImGui::PopStyleVar();
         ImGui::PopFont();
@@ -1246,6 +1294,7 @@ void Launcher::page_controls() {
         const ImVec2 box_a(x + cell - std::max(px(84), key_size.x + px(18)), y + px(3)), box_b(x + cell, y + row_height - px(3));
         ImGui::SetCursorScreenPos(box_a);
         ImGui::PushID(i);
+        claim_focus();
         if (ImGui::InvisibleButton("##key", ImVec2(box_b.x - box_a.x, box_b.y - box_a.y), kNavigable)) {
             rebinding_ = i;
             rebinding_since_ = static_cast<float>(ImGui::GetTime());
@@ -1268,9 +1317,9 @@ void Launcher::page_controls() {
     char alt_enter[32];
     std::snprintf(alt_enter, sizeof(alt_enter), "F11 \xC2\xB7 Alt+%s", enter);
     char navigation[48];
-    std::snprintf(navigation, sizeof(navigation), "%s \xC2\xB7 %s \xC2\xB7 Esc", italian() ? "Frecce" : "Arrows", enter);
+    std::snprintf(navigation, sizeof(navigation), "%s \xC2\xB7 %s \xC2\xB7 Esc \xC2\xB7 Q E", italian() ? "Frecce" : "Arrows", enter);
     const char* system[][2] = {{"F1 \xC2\xB7 Back+Start", t.menu_key}, {alt_enter, t.full_screen_key}, {"F10", t.effects_key},
-                               {navigation, t.launcher_keys}};
+                               {navigation, t.launcher_keys}, {t.pad_keys, t.pad_menu_keys}};
     for (const auto& [keys, action] : system) {
         const ImVec2 size = measure(body_bold_, px(16), keys);
         const ImVec2 a(origin_.x, origin_.y + cursor_ + px(3));
@@ -1513,64 +1562,137 @@ void Launcher::panel(float now, float since) {
 
 // Keys acting on the whole launcher, after the frame's widgets.
 void Launcher::after_frame(float now, float since) {
-    // Enter or A with nothing focused (the mouse was used last): play from the first page.
-    if (!wizard_ && page_ == Page::kPlay && disc_ && !ImGui::IsAnyItemFocused() &&
-        (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown))) {
-        play_ = done_ = true;
-    }
     // MC3_LAUNCHER_AUTOPLAY=<seconds>: test scripts press Play.
     static const float autoplay = [] {
         char value[16] = {};
         return GetEnvironmentVariableA("MC3_LAUNCHER_AUTOPLAY", value, sizeof(value)) ? static_cast<float>(std::atof(value)) : -1.0f;
     }();
     if (autoplay >= 0 && since >= autoplay && disc_) play_ = done_ = true;
+    // Start on a controller plays from any page.
+    if (!wizard_ && disc_ && rebinding_ < 0 && ImGui::IsKeyPressed(ImGuiKey_GamepadStart)) play_ = done_ = true;
 
-    // Back: to the first page, or a step back in the guide.
+    // Back: from the page to the menu, then to the first page; a step back in the guide.
     if (rebinding_ < 0 && (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight))) {
-        if (wizard_ && wizard_step_ > 0) {
-            --wizard_step_;
-            page_since_ = now;
-        } else if (!wizard_ && page_ != Page::kPlay) {
+        if (wizard_) {
+            if (wizard_step_ > 0) {
+                --wizard_step_;
+                page_since_ = now;
+            }
+        } else if (!menu_has_focus_) {
+            back_to_menu();
+        } else if (page_ != Page::kPlay) {
             page_ = Page::kPlay;
+            menu_cursor_ = 0;
             page_since_ = now;
         }
     }
+    leave_page_on_left();
 }
 
-// The menu on the left: one item per page, the current one on a leaning red bar. Moving the mouse over an item or
-// the keyboard focus onto it opens its page; Quit (launcher) and Resume (game) act when pressed.
+// The page's widgets go back to ImGui's own navigation off, the menu on the left takes the keys again.
+void Launcher::back_to_menu() {
+    menu_has_focus_ = true;
+    focus_panel_ = false;
+    ImGui::SetNavID(0, ImGuiNavLayer_Main, 0, ImRect());
+}
+
+// Left on the page's leftmost widget (ImGui found nothing further left): back to the menu.
+void Launcher::leave_page_on_left() {
+    const ImGuiID nav_id = ImGui::GetCurrentContext()->NavId;
+    if (left_pending_ && nav_id == left_from_) back_to_menu();
+    left_pending_ = false;
+    if (!menu_has_focus_ && !wizard_ && rebinding_ < 0 && !ImGui::IsAnyItemActive() &&
+        !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+        key_pressed({ImGuiKey_LeftArrow, ImGuiKey_GamepadDpadLeft, ImGuiKey_GamepadLStickLeft})) {
+        left_pending_ = true;
+        left_from_ = nav_id;
+    }
+}
+
+// The menu on the left: one item per page, the current one on a leaning red bar. Moving the mouse over an item opens
+// its page; Quit (launcher) and Resume (game) act when pressed. Keyboard and controller: up and down move through the
+// items (and their pages), right enters the page, Enter or A acts or enters.
 void Launcher::side_menu(float now, float since, const char* const* labels, const Page* targets, int count) {
+    const auto action_only = [&](int i) { return targets[i] == Page::kQuit && !in_game_; };
+    const auto select = [&](int i) {
+        menu_cursor_ = i;
+        if (!action_only(i) && page_ != targets[i]) {
+            page_ = targets[i];
+            page_since_ = now;
+        }
+    };
+    const auto act = [&](int i) {
+        if (in_game_ && targets[i] == Page::kPlay) {
+            resume();
+        } else if (!in_game_ && targets[i] == Page::kQuit) {
+            done_ = true;
+        } else if (!in_game_ && targets[i] == Page::kPlay && disc_) {
+            play_ = done_ = true;
+        } else {
+            menu_has_focus_ = false;  // into the page
+            focus_panel_ = true;
+        }
+    };
+    if (menu_cursor_ >= count || (!action_only(menu_cursor_) && targets[menu_cursor_] != page_)) {
+        for (int i = 0; i < count; ++i) {
+            if (targets[i] == page_) menu_cursor_ = i;
+        }
+    }
+    if (menu_has_focus_ && rebinding_ < 0) {
+        if (key_pressed({ImGuiKey_UpArrow, ImGuiKey_GamepadDpadUp, ImGuiKey_GamepadLStickUp})) {
+            select((menu_cursor_ + count - 1) % count);
+        } else if (key_pressed({ImGuiKey_DownArrow, ImGuiKey_GamepadDpadDown, ImGuiKey_GamepadLStickDown})) {
+            select((menu_cursor_ + 1) % count);
+        } else if (key_pressed({ImGuiKey_Enter, ImGuiKey_KeypadEnter, ImGuiKey_GamepadFaceDown})) {
+            act(menu_cursor_);
+        } else if (key_pressed({ImGuiKey_RightArrow, ImGuiKey_GamepadDpadRight, ImGuiKey_GamepadLStickRight}) &&
+                   !action_only(menu_cursor_)) {
+            menu_has_focus_ = false;
+            focus_panel_ = true;
+        }
+    }
+    // LB and RB (L1 and R1), Q and E: the previous and next page, from anywhere; on Settings they change its tab.
+    if (rebinding_ < 0 && page_ != Page::kSettings && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+        const bool previous = key_pressed({ImGuiKey_GamepadL1, ImGuiKey_Q, ImGuiKey_PageUp});
+        const bool next = key_pressed({ImGuiKey_GamepadR1, ImGuiKey_E, ImGuiKey_PageDown});
+        if (previous || next) {
+            if (!menu_has_focus_) back_to_menu();
+            int i = menu_cursor_;
+            do {
+                i = (i + (next ? 1 : count - 1)) % count;
+            } while (action_only(i));
+            select(i);
+        }
+    }
     for (int i = 0; i < count; ++i) {
         g_alpha = ease_out((since - 0.25f - 0.07f * static_cast<float>(i)) / 0.7f);
         const float enter = (1 - g_alpha) * -px(60);
         const ImVec2 a(px(86) + enter, px(240) + px(64) * static_cast<float>(i));
-        const Page target = targets[i];
         ImGui::SetCursorScreenPos(a);
         ImGui::PushID(i);
-        const bool pressed = ImGui::InvisibleButton("##menu", ImVec2(px(360), px(54)), kNavigable);
-        const bool hovered = ImGui::IsItemHovered(), focused = ImGui::IsItemFocused();
-        if (target == page_ && since < 0.1f) ImGui::SetItemDefaultFocus();
+        const bool pressed = ImGui::InvisibleButton("##menu", ImVec2(px(360), px(54)));  // the keys are handled above
+        const bool hovered = ImGui::IsItemHovered();
         ImGui::PopID();
         const ImVec2 mouse = ImGui::GetIO().MouseDelta;
-        const bool action_only = target == Page::kQuit && !in_game_;
-        if ((pressed || (hovered && mouse.x * mouse.x + mouse.y * mouse.y > 0) || focused) && !action_only &&
-            page_ != target) {
-            page_ = target;
-            page_since_ = now;
+        if (hovered && mouse.x * mouse.x + mouse.y * mouse.y > 0) select(i);
+        if (pressed) {
+            select(i);
+            act(i);
         }
-        if (pressed && in_game_ && target == Page::kPlay) resume();
-        if (pressed && !in_game_ && target == Page::kQuit) done_ = true;
-        if (pressed && !in_game_ && target == Page::kPlay && disc_) play_ = done_ = true;
-        const float on = anim(ImGui::GetID(labels[i]), page_ == target || (action_only && (hovered || focused)));
+        // The current page's item, or Quit while the cursor is on it.
+        const bool current = action_only(menu_cursor_) ? menu_cursor_ == i : targets[i] == page_;
+        const float on = anim(ImGui::GetID(labels[i]), current);
         const float shift = px(16) * on;
         const float bar = measure(black_, px(36), labels[i]).x + px(64);  // the label plus padding
         const ImVec2 b(a.x + bar * on + shift, a.y + px(54));
         if (on > 0.01f) {
-            skewed_rect(list_, ImVec2(a.x + shift, a.y), b, kRed, kRedDark);
-            skewed_rect(list_, ImVec2(a.x - px(14) + shift, a.y), ImVec2(a.x - px(8) + shift, b.y), fade(kChrome, on),
-                        fade(kChrome, on));  // leaning like the red bar
+            // Brighter while the keys move through the menu; darker once they work on the page.
+            const float lit = anim(ImGui::GetID(labels[i]) + 1, menu_has_focus_ || wizard_);
+            skewed_rect(list_, ImVec2(a.x + shift, a.y), b, mix(kRedDark, kRed, 0.5f + 0.5f * lit), kRedDark);
+            skewed_rect(list_, ImVec2(a.x - px(14) + shift, a.y), ImVec2(a.x - px(8) + shift, b.y),
+                        fade(kChrome, on * (0.4f + 0.6f * lit)), fade(kChrome, on * (0.4f + 0.6f * lit)));
         }
-        text(black_, px(36), ImVec2(a.x + px(22) + shift, a.y + px(7)), mix(hovered || focused ? kInk : kDim, IM_COL32_WHITE, on), labels[i]);
+        text(black_, px(36), ImVec2(a.x + px(22) + shift, a.y + px(7)), mix(hovered ? kInk : kDim, IM_COL32_WHITE, on), labels[i]);
     }
 }
 
@@ -1608,6 +1730,8 @@ void Launcher::bottom_bar(float since) {
     hint(pad_connected_ ? "B" : "Esc", IM_COL32(255, 90, 90, 255), t.back);
     hint(pad_connected_ ? "A" : (italian() ? "Invio" : "Enter"), kGreen, t.select);
     if (in_game_) hint(pad_connected_ ? "Start" : "F1", kChrome, t.resume_hint);
+    if (page_ == Page::kSettings && !wizard_) hint(pad_connected_ ? "LB RB" : "Q E", kChrome, t.tabs_hint);
+    if (!in_game_ && !wizard_ && disc_ && pad_connected_) hint("Start", kChrome, t.play_hint);
 }
 
 // --- in game ---
@@ -1697,11 +1821,14 @@ void Launcher::frame_in_game(float now) {
     g_alpha = 1;
     ImGui::End();
 
-    // Back: to the pause page, then to the game. Start resumes from anywhere.
+    // Back: from the page to the menu, then to the pause page, then to the game. Start resumes from anywhere.
     if (rebinding_ < 0 && !resuming_) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight)) {
-            if (page_ != Page::kPlay) {
+            if (!menu_has_focus_) {
+                back_to_menu();
+            } else if (page_ != Page::kPlay) {
                 page_ = Page::kPlay;
+                menu_cursor_ = 0;
                 page_since_ = now;
             } else {
                 resume();
@@ -1709,6 +1836,7 @@ void Launcher::frame_in_game(float now) {
         }
         if (ImGui::IsKeyPressed(ImGuiKey_GamepadStart)) resume();
     }
+    leave_page_on_left();
 }
 
 // Frames per second in the top right corner (setting fps_counter): the game's frames, not the presents.
@@ -1763,6 +1891,8 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
         page_ = Page::kPlay;
         page_since_ = start_time_ = now;
         rebinding_ = -1;
+        menu_has_focus_ = true;
+        menu_cursor_ = 0;
         game_pause(true);
         stop_rumble();
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
@@ -1792,6 +1922,7 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
     upload_art();
     {
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
+        configure_navigation();
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
@@ -1862,6 +1993,7 @@ std::optional<GameDisc> Launcher::run() {
         }
         {
             std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
+            configure_navigation();
             ImGui_ImplDX11_NewFrame();
             ImGui_ImplWin32_NewFrame();
             ImGui::NewFrame();
