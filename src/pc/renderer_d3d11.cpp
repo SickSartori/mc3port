@@ -1612,6 +1612,26 @@ bool prepare_draw(const SurfaceState& surface, const DrawState& state, PreparedD
     return true;
 }
 
+// A copy of a render target's colour, for a draw that samples the target it draws into.
+ID3D11ShaderResourceView* target_copy(const Target& target) {
+    static ComPtr<ID3D11Texture2D> copy;
+    static ComPtr<ID3D11ShaderResourceView> copy_view;
+    D3D11_TEXTURE2D_DESC desc{}, existing{};
+    target.texture->GetDesc(&desc);
+    if (copy) copy->GetDesc(&existing);
+    if (!copy || existing.Width != desc.Width || existing.Height != desc.Height || existing.Format != desc.Format ||
+        existing.MipLevels != desc.MipLevels) {
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        desc.MiscFlags = 0;
+        copy.Reset();
+        copy_view.Reset();
+        if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &copy))) return nullptr;
+        g_device->CreateShaderResourceView(copy.Get(), nullptr, &copy_view);
+    }
+    g_context->CopyResource(copy.Get(), target.texture.Get());
+    return copy_view.Get();
+}
+
 // Render target, viewport, scissor, raster, blend, depth state, combiner constants, textures and samplers.
 void bind_draw_state(const SurfaceState& surface, const DrawState& state, const PreparedDraw& draw) {
     Target* target = draw.target;
@@ -1659,7 +1679,9 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
         if (!state.textures[i].enabled) continue;
         views[i] = texture_view(state.textures[i]);
         samplers[i] = sampler(state.textures[i]);
-        if (views[i] == target->srv.Get()) views[i] = nullptr;  // feedback loop
+        // The draw reads its own target: the NV2A then sees what is there now (MC3's motion blur writes its mask
+        // into the frame's alpha this way). Direct3D cannot read and write one texture, so it reads a copy.
+        if (views[i] == target->srv.Get()) views[i] = target_copy(*target);
     }
     g_context->PSSetShaderResources(0, 4, views);
     g_context->PSSetSamplers(0, 4, samplers);
