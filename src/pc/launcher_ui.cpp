@@ -196,6 +196,14 @@ bool key_pressed(std::initializer_list<ImGuiKey> keys) {
     return false;
 }
 
+// Held keys repeat at a menu's pace (0.4 s, then every 0.15 s), not ImGui's 20 a second.
+bool menu_key_pressed(std::initializer_list<ImGuiKey> keys) {
+    for (const ImGuiKey key : keys) {
+        if (ImGui::GetKeyPressedAmount(key, 0.4f, 0.15f) > 0) return true;
+    }
+    return false;
+}
+
 // --- shared state with the window thread ---
 
 // ImGui's input queue is filled by the window thread. Recursive: ImGui's own calls (SetCapture on a click) send
@@ -593,6 +601,7 @@ private:
     bool pad_present_[4] = {};
     float pad_rescan_ = -10;
     int stick_x_ = 0, stick_y_ = 0;  // the left stick as a d-pad direction, with hysteresis
+    float stick_repeat_at_ = 0;      // when the held stick next counts as a press (kStickDelay, then kStickRate)
 
     Page page_ = Page::kPlay;
     float page_since_ = 0;
@@ -1673,7 +1682,7 @@ void Launcher::leave_page_on_left() {
     left_pending_ = false;
     if (!menu_has_focus_ && !wizard_ && rebinding_ < 0 && !ImGui::IsAnyItemActive() &&
         !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
-        key_pressed({ImGuiKey_LeftArrow, ImGuiKey_GamepadDpadLeft, ImGuiKey_GamepadLStickLeft})) {
+        key_pressed({ImGuiKey_LeftArrow, ImGuiKey_GamepadDpadLeft})) {
         left_pending_ = true;
         left_from_ = nav_id;
     }
@@ -1709,14 +1718,13 @@ void Launcher::side_menu(float now, float since, const char* const* labels, cons
         }
     }
     if (menu_has_focus_ && rebinding_ < 0) {
-        if (key_pressed({ImGuiKey_UpArrow, ImGuiKey_GamepadDpadUp, ImGuiKey_GamepadLStickUp})) {
+        if (menu_key_pressed({ImGuiKey_UpArrow, ImGuiKey_GamepadDpadUp})) {
             select((menu_cursor_ + count - 1) % count);
-        } else if (key_pressed({ImGuiKey_DownArrow, ImGuiKey_GamepadDpadDown, ImGuiKey_GamepadLStickDown})) {
+        } else if (menu_key_pressed({ImGuiKey_DownArrow, ImGuiKey_GamepadDpadDown})) {
             select((menu_cursor_ + 1) % count);
         } else if (key_pressed({ImGuiKey_Enter, ImGuiKey_KeypadEnter, ImGuiKey_GamepadFaceDown})) {
             act(menu_cursor_);
-        } else if (key_pressed({ImGuiKey_RightArrow, ImGuiKey_GamepadDpadRight, ImGuiKey_GamepadLStickRight}) &&
-                   !action_only(menu_cursor_)) {
+        } else if (key_pressed({ImGuiKey_RightArrow, ImGuiKey_GamepadDpadRight}) && !action_only(menu_cursor_)) {
             menu_has_focus_ = false;
             focus_panel_ = true;
         }
@@ -1891,8 +1899,20 @@ void Launcher::poll_gamepads(float now) {
         else if (direction == 0 && v < -0.55f) direction = -1;
         else if (direction != 0 && std::fabs(v) < 0.35f) direction = 0;
     };
+    const int was_x = stick_x_, was_y = stick_y_;
     axis(pad.sThumbLX, stick_x_);
     axis(pad.sThumbLY, stick_y_);
+    // The stick presses the d-pad in pulses at a menu's pace: once when it tilts, then after kStickDelay every
+    // kStickRate while it stays tilted. Held down for real, ImGui would repeat 20 times a second.
+    constexpr float kStickDelay = 0.4f, kStickRate = 0.15f;
+    bool pulse = false;
+    if (stick_x_ != was_x || stick_y_ != was_y) {
+        pulse = stick_x_ != 0 || stick_y_ != 0;
+        stick_repeat_at_ = now + kStickDelay;
+    } else if ((stick_x_ != 0 || stick_y_ != 0) && now >= stick_repeat_at_) {
+        pulse = true;
+        stick_repeat_at_ = now + kStickRate;
+    }
     const auto button = [&](ImGuiKey key, WORD mask, bool also = false) { io.AddKeyEvent(key, (pad.wButtons & mask) != 0 || also); };
     const auto analog = [&](ImGuiKey key, int value, int v0, int v1) {
         const float v = std::clamp(static_cast<float>(value - v0) / static_cast<float>(v1 - v0), 0.0f, 1.0f);
@@ -1904,10 +1924,10 @@ void Launcher::poll_gamepads(float now) {
     button(ImGuiKey_GamepadFaceRight, XINPUT_GAMEPAD_B);
     button(ImGuiKey_GamepadFaceUp, XINPUT_GAMEPAD_Y);
     button(ImGuiKey_GamepadFaceDown, XINPUT_GAMEPAD_A);
-    button(ImGuiKey_GamepadDpadLeft, XINPUT_GAMEPAD_DPAD_LEFT, stick_x_ < 0);
-    button(ImGuiKey_GamepadDpadRight, XINPUT_GAMEPAD_DPAD_RIGHT, stick_x_ > 0);
-    button(ImGuiKey_GamepadDpadUp, XINPUT_GAMEPAD_DPAD_UP, stick_y_ > 0);
-    button(ImGuiKey_GamepadDpadDown, XINPUT_GAMEPAD_DPAD_DOWN, stick_y_ < 0);
+    button(ImGuiKey_GamepadDpadLeft, XINPUT_GAMEPAD_DPAD_LEFT, pulse && stick_x_ < 0);
+    button(ImGuiKey_GamepadDpadRight, XINPUT_GAMEPAD_DPAD_RIGHT, pulse && stick_x_ > 0);
+    button(ImGuiKey_GamepadDpadUp, XINPUT_GAMEPAD_DPAD_UP, pulse && stick_y_ > 0);
+    button(ImGuiKey_GamepadDpadDown, XINPUT_GAMEPAD_DPAD_DOWN, pulse && stick_y_ < 0);
     button(ImGuiKey_GamepadL1, XINPUT_GAMEPAD_LEFT_SHOULDER);
     button(ImGuiKey_GamepadR1, XINPUT_GAMEPAD_RIGHT_SHOULDER);
     button(ImGuiKey_GamepadL3, XINPUT_GAMEPAD_LEFT_THUMB);

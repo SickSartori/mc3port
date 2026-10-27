@@ -27,7 +27,9 @@
 ### Fixed
 
 - Controllers in the launcher and the in-game menu: a controller on any port works (before, only the first), and
-  one plugged in while playing is picked up. The left stick moves through menus and pages like the d-pad.
+  one plugged in while playing is picked up. The left stick moves through menus and pages like the d-pad, one
+  step at a time (held, it steps again after 0.4 s and then every 0.15 s); up and down in the menu repeat at the
+  same pace from the keyboard and the d-pad.
 - Back+Start opens the in-game menu when tapped; before, the two had to be held together.
 - The launcher's pages no longer draw a white rectangle around the selected control: every control shows its own
   highlight, as the buttons already did.
