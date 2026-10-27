@@ -37,7 +37,8 @@ if(WIN32)
         third_party/imgui/backends/imgui_impl_win32.cpp
     )
     target_include_directories(imgui PUBLIC third_party/imgui)
-    target_compile_definitions(imgui PRIVATE NOMINMAX)
+    # The launcher polls the controllers itself (every port, not only the first): see Launcher::poll_gamepads.
+    target_compile_definitions(imgui PRIVATE NOMINMAX IMGUI_IMPL_WIN32_DISABLE_GAMEPAD)
 
     # Runtime: maps the XBE, emulates the Xbox kernel and hosts the game's threads.
     add_library(mc3runtime SHARED

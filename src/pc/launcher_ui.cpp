@@ -485,6 +485,8 @@ private:
     void bottom_bar(float since);
     void resume();
     void stop_rumble();
+    void poll_gamepads(float now);  // every XInput port into ImGui's keys, the left stick as a d-pad
+    void focus_ring();              // the launcher's focus look on a standard ImGui widget
     void resize_if_needed();
     void upload_art();
     void start_art_loader(const std::filesystem::path& disc_path);
@@ -573,7 +575,9 @@ private:
     HMODULE xinput_ = nullptr;
     decltype(&XInputGetState) xinput_get_state_ = nullptr;
     bool pad_connected_ = false;
-    float pad_checked_ = -10;
+    bool pad_present_[4] = {};
+    float pad_rescan_ = -10;
+    int stick_x_ = 0, stick_y_ = 0;  // the left stick as a d-pad direction, with hysteresis
 
     Page page_ = Page::kPlay;
     float page_since_ = 0;
@@ -680,7 +684,7 @@ void Launcher::start_imgui() {
     colours[ImGuiCol_HeaderActive] = ImGui::ColorConvertU32ToFloat4(kRedDark);
     colours[ImGuiCol_Button] = ImVec4(1, 1, 1, 0.07f);
     colours[ImGuiCol_ButtonHovered] = ImVec4(0.89f, 0.15f, 0.18f, 0.6f);
-    colours[ImGuiCol_NavCursor] = ImVec4(1, 1, 1, 0.9f);
+    colours[ImGuiCol_NavCursor] = ImVec4(0, 0, 0, 0);  // the widgets draw their own focus (anim, focus_ring)
     colours[ImGuiCol_Border] = ImVec4(1, 1, 1, 0.1f);
 
     xinput_ = LoadLibraryW(L"xinput1_4.dll");
@@ -1049,6 +1053,7 @@ bool Launcher::slider(const char* id, float* value, float minimum, float maximum
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
     claim_focus();
     const bool changed = ImGui::SliderFloat(id, value, minimum, maximum, format);
+    focus_ring();
     ImGui::PopStyleVar();
     ImGui::PopFont();
     ImGui::PopItemWidth();
@@ -1178,6 +1183,7 @@ void Launcher::page_settings() {
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
         claim_focus();
         if (ImGui::Combo("##language", &index, names, 6)) set_setting("game_language", static_cast<float>(kLanguages[index]));
+        focus_ring();
         ImGui::PopStyleVar();
         ImGui::PopFont();
         ImGui::PopItemWidth();
@@ -1785,6 +1791,88 @@ bool closing_inputs_released(decltype(&XInputGetState) get_state) {
     return true;
 }
 
+// The controllers into ImGui, like its Win32 backend but for every port (the backend reads only the first, and only
+// learns of a controller plugged in later from a window message the game window does not pass on): their buttons
+// together. The left stick also works as a d-pad, so it moves through menus and pages, with hysteresis so a
+// direction holds until the stick comes well back.
+void Launcher::poll_gamepads(float now) {
+    ImGuiIO& io = ImGui::GetIO();
+    const bool rescan = now - pad_rescan_ > 0.5f;  // XInputGetState on an empty port is slow
+    if (rescan) pad_rescan_ = now;
+    XINPUT_GAMEPAD pad{};
+    bool any = false;
+    for (DWORD i = 0; xinput_get_state_ && i < 4; ++i) {
+        if (!pad_present_[i] && !rescan) continue;
+        XINPUT_STATE state{};
+        pad_present_[i] = xinput_get_state_(i, &state) == ERROR_SUCCESS;
+        if (!pad_present_[i]) continue;
+        any = true;
+        const XINPUT_GAMEPAD& g = state.Gamepad;
+        pad.wButtons |= g.wButtons;
+        pad.bLeftTrigger = std::max(pad.bLeftTrigger, g.bLeftTrigger);
+        pad.bRightTrigger = std::max(pad.bRightTrigger, g.bRightTrigger);
+        const auto larger = [](SHORT a, SHORT b) { return std::abs(static_cast<int>(a)) >= std::abs(static_cast<int>(b)) ? a : b; };
+        pad.sThumbLX = larger(pad.sThumbLX, g.sThumbLX);
+        pad.sThumbLY = larger(pad.sThumbLY, g.sThumbLY);
+        pad.sThumbRX = larger(pad.sThumbRX, g.sThumbRX);
+        pad.sThumbRY = larger(pad.sThumbRY, g.sThumbRY);
+    }
+    pad_connected_ = any;
+    if (!any) {
+        io.BackendFlags &= ~ImGuiBackendFlags_HasGamepad;  // ImGui then clears the gamepad keys
+        stick_x_ = stick_y_ = 0;
+        return;
+    }
+    io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+    const auto axis = [](SHORT value, int& direction) {
+        const float v = static_cast<float>(value) / 32767.0f;
+        if (direction == 0 && v > 0.55f) direction = 1;
+        else if (direction == 0 && v < -0.55f) direction = -1;
+        else if (direction != 0 && std::fabs(v) < 0.35f) direction = 0;
+    };
+    axis(pad.sThumbLX, stick_x_);
+    axis(pad.sThumbLY, stick_y_);
+    const auto button = [&](ImGuiKey key, WORD mask, bool also = false) { io.AddKeyEvent(key, (pad.wButtons & mask) != 0 || also); };
+    const auto analog = [&](ImGuiKey key, int value, int v0, int v1) {
+        const float v = std::clamp(static_cast<float>(value - v0) / static_cast<float>(v1 - v0), 0.0f, 1.0f);
+        io.AddKeyAnalogEvent(key, v > 0.10f, v);
+    };
+    button(ImGuiKey_GamepadStart, XINPUT_GAMEPAD_START);
+    button(ImGuiKey_GamepadBack, XINPUT_GAMEPAD_BACK);
+    button(ImGuiKey_GamepadFaceLeft, XINPUT_GAMEPAD_X);
+    button(ImGuiKey_GamepadFaceRight, XINPUT_GAMEPAD_B);
+    button(ImGuiKey_GamepadFaceUp, XINPUT_GAMEPAD_Y);
+    button(ImGuiKey_GamepadFaceDown, XINPUT_GAMEPAD_A);
+    button(ImGuiKey_GamepadDpadLeft, XINPUT_GAMEPAD_DPAD_LEFT, stick_x_ < 0);
+    button(ImGuiKey_GamepadDpadRight, XINPUT_GAMEPAD_DPAD_RIGHT, stick_x_ > 0);
+    button(ImGuiKey_GamepadDpadUp, XINPUT_GAMEPAD_DPAD_UP, stick_y_ > 0);
+    button(ImGuiKey_GamepadDpadDown, XINPUT_GAMEPAD_DPAD_DOWN, stick_y_ < 0);
+    button(ImGuiKey_GamepadL1, XINPUT_GAMEPAD_LEFT_SHOULDER);
+    button(ImGuiKey_GamepadR1, XINPUT_GAMEPAD_RIGHT_SHOULDER);
+    button(ImGuiKey_GamepadL3, XINPUT_GAMEPAD_LEFT_THUMB);
+    button(ImGuiKey_GamepadR3, XINPUT_GAMEPAD_RIGHT_THUMB);
+    analog(ImGuiKey_GamepadL2, pad.bLeftTrigger, XINPUT_GAMEPAD_TRIGGER_THRESHOLD, 255);
+    analog(ImGuiKey_GamepadR2, pad.bRightTrigger, XINPUT_GAMEPAD_TRIGGER_THRESHOLD, 255);
+    constexpr int kDead = XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
+    analog(ImGuiKey_GamepadLStickLeft, pad.sThumbLX, -kDead, -32768);
+    analog(ImGuiKey_GamepadLStickRight, pad.sThumbLX, kDead, 32767);
+    analog(ImGuiKey_GamepadLStickUp, pad.sThumbLY, kDead, 32767);
+    analog(ImGuiKey_GamepadLStickDown, pad.sThumbLY, -kDead, -32768);
+    analog(ImGuiKey_GamepadRStickLeft, pad.sThumbRX, -kDead, -32768);
+    analog(ImGuiKey_GamepadRStickRight, pad.sThumbRX, kDead, 32767);
+    analog(ImGuiKey_GamepadRStickUp, pad.sThumbRY, kDead, 32767);
+    analog(ImGuiKey_GamepadRStickDown, pad.sThumbRY, -kDead, -32768);
+}
+
+// A thin red frame around the last ImGui widget while it is hovered or focused, like the launcher's own buttons;
+// ImGui's own navigation rectangle is off.
+void Launcher::focus_ring() {
+    const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
+    if (hot < 0.01f) return;
+    const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+    list_->AddRect(ImVec2(a.x - px(2), a.y - px(2)), ImVec2(b.x + px(2), b.y + px(2)), fade(kRed, hot), 0, 0, px(1.5f));
+}
+
 void Launcher::resume() {
     if (resuming_) return;
     resuming_ = true;
@@ -1969,18 +2057,13 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
     width_ = width;
     height_ = height;
     scale_ = std::max(0.65f, std::min(width / 1600.0f, height / 900.0f));
-    if (visible_ && now - pad_checked_ > 0.5f) {
-        pad_checked_ = now;
-        pad_connected_ = false;
-        XINPUT_STATE state;
-        for (DWORD i = 0; xinput_get_state_ && i < 4 && !pad_connected_; ++i) pad_connected_ = xinput_get_state_(i, &state) == ERROR_SUCCESS;
-    }
     upload_art();
     {
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
         configure_navigation();
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
+        poll_gamepads(now);
         ImGui::NewFrame();
         if (visible_) {
             frame_in_game(now);
@@ -2030,12 +2113,6 @@ std::optional<GameDisc> Launcher::run() {
             continue;
         }
         music_->update(dt, 1);
-        if (time - pad_checked_ > 0.5f) {
-            pad_checked_ = time;
-            pad_connected_ = false;
-            XINPUT_STATE state;
-            for (DWORD i = 0; xinput_get_state_ && i < 4 && !pad_connected_; ++i) pad_connected_ = xinput_get_state_(i, &state) == ERROR_SUCCESS;
-        }
         resize_if_needed();
         upload_art();
         {
@@ -2053,6 +2130,7 @@ std::optional<GameDisc> Launcher::run() {
             configure_navigation();
             ImGui_ImplDX11_NewFrame();
             ImGui_ImplWin32_NewFrame();
+            poll_gamepads(time);
             ImGui::NewFrame();
             if (start_time_ == 0) start_time_ = page_since_ = time;
             frame(time, dt);

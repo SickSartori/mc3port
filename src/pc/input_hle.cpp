@@ -279,6 +279,34 @@ XboxGamepad from_xinput(const XINPUT_GAMEPAD& in) {
     return pad;
 }
 
+// Back+Start opens the in-game menu; the game sees neither. Tapped, the two are rarely down at the same poll, so
+// Back is held back from the game for a moment while Start may follow. If it does not, the game gets the Back press
+// afterwards (one poll long, enough for its edge detection); held longer than that, Back reaches the game as usual.
+constexpr ULONGLONG kComboMs = 250;
+ULONGLONG g_back_down_ms[kPorts] = {};  // when Back went down; 0 = not waiting for Start
+bool g_back_was_down[kPorts] = {};
+bool g_back_replay[kPorts] = {};
+
+void menu_combo(uint32_t index, WORD& buttons, ULONGLONG now) {
+    const bool back = (buttons & XINPUT_GAMEPAD_BACK) != 0, start = (buttons & XINPUT_GAMEPAD_START) != 0;
+    if (back && !g_back_was_down[index]) g_back_down_ms[index] = now;
+    g_back_was_down[index] = back;
+    const bool waiting = g_back_down_ms[index] != 0 && now - g_back_down_ms[index] < kComboMs;
+    if (start && (back || waiting)) {
+        buttons &= ~(XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START);
+        g_back_down_ms[index] = 0;
+        g_back_replay[index] = false;
+        game_menu_open();
+    } else if (waiting) {
+        buttons &= ~XINPUT_GAMEPAD_BACK;
+        if (!back) g_back_replay[index] = true;  // a tap: replayed once the wait is over
+    } else if (g_back_down_ms[index] != 0) {  // the wait is over without Start
+        g_back_down_ms[index] = 0;
+        if (g_back_replay[index] && !back) buttons |= XINPUT_GAMEPAD_BACK;
+        g_back_replay[index] = false;
+    }
+}
+
 // Reads port `index` from the host. Port 0 falls back to the virtual pad; other ports to the script's presses when
 // the script uses them (to test split screen without a second controller).
 bool read_host(uint32_t index, XboxGamepad& pad) {
@@ -288,12 +316,7 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
         g_host_connected[index] = g_xinput_get_state(index, &state) == ERROR_SUCCESS;
         if (!g_host_connected[index]) g_next_scan_ms[index] = now + 1000;
         if (g_host_connected[index]) {
-            // Back+Start opens the in-game menu; the game sees neither.
-            constexpr WORD kMenuButtons = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
-            if ((state.Gamepad.wButtons & kMenuButtons) == kMenuButtons) {
-                state.Gamepad.wButtons &= ~kMenuButtons;
-                game_menu_open();
-            }
+            menu_combo(index, state.Gamepad.wButtons, now);
             pad = from_xinput(state.Gamepad);
             apply_script(pad, index);
             return true;
