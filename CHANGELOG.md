@@ -23,6 +23,9 @@
   the side menu follows the mouse after a brief rest on an item instead of flipping pages as it passes; a hand
   cursor over everything clickable; with a controller the bottom bar says how to get into a page.
 - The build is checked on every change, not only at release time.
+- Smoother motion at 60 fps: a finished frame reaches the screen on time even while the next one is still being
+  drawn. Before, about one frame in four came a refresh late and the following one early: the same frame rate, but
+  uneven movement.
 - The log notes every 10 seconds the game's frame rate, how evenly its frames come and how busy the game and the
   emulated graphics chip are, which helps when reporting a performance problem.
 

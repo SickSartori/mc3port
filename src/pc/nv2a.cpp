@@ -613,6 +613,10 @@ void run_push_buffer(uint32_t put) {
     PushBufferState& s = g_push;
     uint32_t get = s.get;
     while (get != put) {
+        // A vertical blank during a long run is presented at once, between two words, not when the run ends: a
+        // flip shown a blank late makes the frame after it look early (uneven frames at the same frame rate).
+        // Every draw binds its whole Direct3D state, so presenting here does not disturb the next one.
+        if (g_present_requested.load(std::memory_order_relaxed)) service_present();
         const uint8_t* pointer = physical_pointer(get);
         if (!pointer) {
             log_line("nv2a: push buffer GET %08X outside RAM, skipping to PUT %08X", get, put);
