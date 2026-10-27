@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Where to get the game
+    url: https://github.com/SickSartori/mc3port#readme
+    about: mc3port needs your own disc image. Requests for game files or disc images are closed without reply.

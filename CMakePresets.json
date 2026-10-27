@@ -3,8 +3,7 @@
   "configurePresets": [
     {
       "name": "pc-x86",
-      "displayName": "PC - Windows x86 (Visual Studio 2026)",
-      "generator": "Visual Studio 18 2026",
+      "displayName": "PC - Windows x86 (Visual Studio)",
       "architecture": "Win32",
       "binaryDir": "${sourceDir}/build/pc-x86"
     }
