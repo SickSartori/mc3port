@@ -7,6 +7,10 @@
 - A new program icon and logo, in the spirit of the game's: chrome "MC" and a big red "3".
 - Controller buttons as icons (A, B, X, Y in their colours, bumpers, triggers, sticks, d-pad, Start and Back) in the
   Controls page, in the bottom bar when a controller is connected, and in the hint at the start of the game.
+- The Controls page names what each button does in the game (handbrake, weight transfer, nitrous, look back,
+  camera, headlights, navigation system, map, hydraulics, music) instead of "A button", "B button".
+- A key for the left stick click, the special ability (Zone, Agro or Roar): F by default. Before, the keyboard
+  had no way to use it.
 
 ### Improved
 

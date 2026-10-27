@@ -230,6 +230,19 @@ bool window_hook(HWND window, UINT message, WPARAM wparam, LPARAM lparam, LRESUL
 }
 
 std::string key_name(int virtual_key) {
+    // Short names for the keys Windows spells out at length ("BARRA SPAZIATRICE", "Freccia SINISTRA").
+    switch (virtual_key) {
+        case VK_UP: return "\xE2\x86\x91";
+        case VK_DOWN: return "\xE2\x86\x93";
+        case VK_LEFT: return "\xE2\x86\x90";
+        case VK_RIGHT: return "\xE2\x86\x92";
+        case VK_SPACE: return italian() ? "Spazio" : "Space";
+        case VK_RETURN: return italian() ? "Invio" : "Enter";
+        case VK_BACK: return "Backspace";
+        case VK_LSHIFT: case VK_RSHIFT: return "Shift";
+        case VK_LCONTROL: case VK_RCONTROL: return "Ctrl";
+        default: break;
+    }
     UINT scan = MapVirtualKeyW(static_cast<UINT>(virtual_key), MAPVK_VK_TO_VSC_EX);
     switch (virtual_key) {
         case VK_UP: case VK_DOWN: case VK_LEFT: case VK_RIGHT: case VK_INSERT: case VK_DELETE: case VK_HOME:
@@ -1304,11 +1317,13 @@ void Launcher::page_controls() {
         const float cell = panel_width_ / 2 - px(10);
         const float icon_h = px(22), icon_w = pad_icon(list_, binding.button, ImVec2(0, 0), icon_h, false);
         pad_icon(list_, binding.button, ImVec2(x + (px(70) - icon_w) / 2, y + (row_height - icon_h) / 2), icon_h);
-        text(body_, px(17), ImVec2(x + px(80), y + px(7)), kInk, italian() ? binding.italian : binding.english);
         const bool waiting = rebinding_ == i;
         const std::string key = waiting ? t.press_key : key_name(bound_key(static_cast<PadInput>(i)));
         const ImVec2 key_size = measure(body_bold_, px(16), key.c_str());
-        const ImVec2 box_a(x + cell - std::max(px(84), key_size.x + px(18)), y + px(3)), box_b(x + cell, y + row_height - px(3));
+        const ImVec2 box_a(x + cell - std::max(px(60), key_size.x + px(18)), y + px(3)), box_b(x + cell, y + row_height - px(3));
+        list_->PushClipRect(ImVec2(x + px(80), y), ImVec2(box_a.x - px(6), y + row_height), true);  // never under the key box
+        text(body_, px(15), ImVec2(x + px(80), y + px(8)), kInk, italian() ? binding.italian : binding.english);
+        list_->PopClipRect();
         ImGui::SetCursorScreenPos(box_a);
         ImGui::PushID(i);
         claim_focus();
@@ -1965,6 +1980,19 @@ float Launcher::pad_icon(ImDrawList* list, const char* name, ImVec2 at, float h,
             }
         }
         return h;
+    }
+    if (n == "LS" || n == "RS") {  // a stick pressed: ring, centre and letter
+        const char letter[2] = {n[0], 0};
+        const float letter_size = h * 0.55f;
+        const ImVec2 s = measure(body_bold_, letter_size, letter);
+        if (draw) {
+            const ImVec2 c(at.x + h / 2, cy);
+            list->AddCircle(c, h * 0.46f, chrome, 0, h * 0.09f);
+            list->AddCircleFilled(c, h * 0.22f, chrome);
+            list->AddCircle(c, h * 0.3f, chrome, 0, h * 0.05f);
+            list->AddText(body_bold_, letter_size, ImVec2(at.x + h + h * 0.12f, cy - s.y / 2), fade(kInk), letter);
+        }
+        return h + h * 0.12f + s.x;
     }
     if (n.rfind("L ", 0) == 0 || n.rfind("R ", 0) == 0) {  // a stick tilted in its direction, with its letter
         const char letter[2] = {n[0], 0};

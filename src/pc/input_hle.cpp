@@ -36,7 +36,7 @@ constexpr uint32_t kErrorDeviceNotConnected = 1167;
 enum : uint32_t { kAnalogA, kAnalogB, kAnalogX, kAnalogY, kAnalogBlack, kAnalogWhite, kAnalogLeftTrigger,
                   kAnalogRightTrigger };
 constexpr uint16_t kDpadUp = 0x01, kDpadDown = 0x02, kDpadLeft = 0x04, kDpadRight = 0x08, kStart = 0x10,
-                   kBack = 0x20;
+                   kBack = 0x20, kLeftThumb = 0x40;
 
 #pragma pack(push, 1)
 struct XboxGamepad {
@@ -243,6 +243,7 @@ bool virtual_pad(XboxGamepad& pad) {
             pad.buttons |= kStart;  // Alt+Enter is full screen
         }
         if (down(PadInput::kBack)) pad.buttons |= kBack;
+        if (down(PadInput::kLeftThumb)) pad.buttons |= kLeftThumb;  // the special ability
         if (down(PadInput::kA)) pad.analog[kAnalogA] = 255;
         if (down(PadInput::kB)) pad.analog[kAnalogB] = 255;
         if (down(PadInput::kX)) pad.analog[kAnalogX] = 255;

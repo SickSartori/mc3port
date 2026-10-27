@@ -78,13 +78,14 @@ controller, la porta 1 è la tastiera (solo quando la finestra del gioco è in p
 
 | Tasto | Pulsante Xbox |
 |---|---|
-| Frecce | croce direzionale |
-| Invio / Backspace | START / BACK |
-| Spazio / Esc / Z / C | A / B / X / Y |
+| Frecce | croce direzionale (mappa, idrauliche, musica) |
+| Invio / Backspace | START (pausa) / BACK (navigatore) |
+| Spazio / Esc / Z / C | A (freno a mano) / B (trasferimento di peso) / X (nitro) / Y (guarda indietro) |
+| F | clic della levetta sinistra (abilità speciale: Zone, Agro, Roar) |
 | W / S | grilletto destro (gas) / sinistro (freno) |
 | A / D | levetta sinistra (sterzo) |
-| I / J / K / L | levetta destra |
-| Shift sinistro / Ctrl sinistro | Nero / Bianco |
+| I / J / K / L | levetta destra (telecamera) |
+| Shift sinistro / Ctrl sinistro | Nero (telecamera) / Bianco (fari) |
 
 I tasti della tastiera si cambiano nella pagina Controlli del launcher (voce `keyboard` di `mc3port.ini`).
 
