@@ -1,0 +1,48 @@
+name: Bug report
+description: Something does not work in mc3port
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not attach or link disc images, game files or saves: mc3port never
+        distributes game data. The log and your system details are enough.
+  - type: input
+    id: version
+    attributes:
+      label: mc3port version
+      description: Shown on the launcher's About page.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it is installed
+      options:
+        - Installer
+        - Portable zip
+        - Quiver Launcher
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Windows version and graphics card
+      placeholder: "Windows 11 24H2, NVIDIA GeForce RTX 3060"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you were doing (which menu, which mode, which city) and what went wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: mc3port.log
+      description: Open the launcher's About page and press "Log folder"; attach mc3port.log here (drag it in).
+    validations:
+      required: true

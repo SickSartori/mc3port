@@ -90,11 +90,12 @@ Without a controller, the keyboard is controller 1. Every key can be changed in 
 |---|---|
 | W / S | right trigger (accelerate) / left trigger (brake, reverse) |
 | A / D | left stick (steer) |
-| Space / Esc / Z / C | A / B / X / Y |
-| Left Shift / Left Ctrl | Black / White |
-| Enter / Backspace | Start / Back |
-| Arrow keys | D-pad |
-| I / J / K / L | right stick |
+| Space / Esc / Z / C | A (handbrake) / B (weight transfer) / X (nitrous) / Y (look back) |
+| F | left stick click (special ability: Zone, Agro or Roar) |
+| Left Shift / Left Ctrl | Black (change camera) / White (flash headlights) |
+| Enter / Backspace | Start (pause) / Back (navigation system) |
+| Arrow keys | D-pad (map, hydraulics, music) |
+| I / J / K / L | right stick (camera) |
 
 | PC key | Action |
 |---|---|
@@ -177,7 +178,7 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 - [Dear ImGui](https://github.com/ocornut/imgui) by Omar Cornut, MIT licence: the launcher's interface.
 - [Barlow](https://github.com/jpt/barlow) by Jeremy Tribby, SIL Open Font License: the launcher's font.
 - The launcher's background music was generated for mc3port with ElevenLabs Music (through Magnific).
-- The program icon and logo are mc3port's own, drawn with Barlow Semi Condensed (`tools/make_icon.py`).
+- The program icon and logo are mc3port's own (`tools/make_icon.py`), in the spirit of the game's logo.
 - The launcher's logo and pictures are the game's own, read from your disc while it runs; they are not part of
   mc3port.
 

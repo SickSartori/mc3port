@@ -1,0 +1,46 @@
+// Version information for mc3.exe and mc3runtime.dll, shown by Windows in the file's properties. The numbers come
+// from project(... VERSION ...) in CMakeLists.txt (MC3_VERSION_MAJOR/MINOR/PATCH); MC3_RC_APP is defined for mc3.exe.
+#include <winver.h>
+
+#define MC3_STR_(x) #x
+#define MC3_STR(x) MC3_STR_(x)
+#define MC3_VERSION_STRING MC3_STR(MC3_VERSION_MAJOR.MC3_VERSION_MINOR.MC3_VERSION_PATCH)
+
+#ifdef MC3_RC_APP
+#define MC3_FILE_TYPE VFT_APP
+#define MC3_FILE_NAME "mc3.exe"
+#define MC3_FILE_DESCRIPTION "mc3port: Midnight Club 3: DUB Edition Remix on Windows"
+#else
+#define MC3_FILE_TYPE VFT_DLL
+#define MC3_FILE_NAME "mc3runtime.dll"
+#define MC3_FILE_DESCRIPTION "mc3port runtime: Xbox kernel, GPU, sound and controllers on Windows"
+#endif
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION MC3_VERSION_MAJOR, MC3_VERSION_MINOR, MC3_VERSION_PATCH, 0
+PRODUCTVERSION MC3_VERSION_MAJOR, MC3_VERSION_MINOR, MC3_VERSION_PATCH, 0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE MC3_FILE_TYPE
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "mc3port"
+            VALUE "FileDescription", MC3_FILE_DESCRIPTION
+            VALUE "FileVersion", MC3_VERSION_STRING
+            VALUE "InternalName", MC3_FILE_NAME
+            VALUE "LegalCopyright", "MIT licence. Not affiliated with Rockstar Games, Take-Two Interactive or Microsoft."
+            VALUE "OriginalFilename", MC3_FILE_NAME
+            VALUE "ProductName", "mc3port"
+            VALUE "ProductVersion", MC3_VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

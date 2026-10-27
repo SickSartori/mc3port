@@ -12,6 +12,11 @@ Vimm's Lair.txt
 # Runtime logs
 *.log
 
+# Test dumps (MC3_AUDIO_DUMP, MC3_DUMP_FRAMES, MC3_DUMP_TEXTURE, MC3_DUMP_BUFFER)
+*.wav
+*.bmp
+buffer-*.bin
+
 # Release packages (tools/package.ps1)
 /dist/
 /quiver_submission/

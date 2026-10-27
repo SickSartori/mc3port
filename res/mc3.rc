@@ -1,2 +1,4 @@
 // Resources of the launcher (mc3.exe): the program icon, also used by the game window (resource 1).
 1 ICON "mc3.ico"
+
+#include "version.rc"

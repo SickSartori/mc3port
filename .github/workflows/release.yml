@@ -1,10 +1,14 @@
-# Builds the Windows package. A tag vX.Y.Z (matching the version in CMakeLists.txt, with a section in CHANGELOG.md)
-# publishes it as a GitHub release with its SHA256SUMS and notes; any other run keeps the package as an artifact.
+# Builds the Windows package on every push to main or develop and on pull requests. A tag vX.Y.Z (matching the
+# version in CMakeLists.txt, with a section in CHANGELOG.md) publishes it as a GitHub release with its SHA256SUMS and
+# notes; any other run keeps the package as an artifact, so a broken build shows up before a release.
 name: Release
 
 on:
   push:
+    branches: [main, develop]
     tags: ["v*"]
+  pull_request:
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +18,7 @@ jobs:
   windows:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Inno Setup (for the installer)
         run: choco install innosetup --no-progress -y
@@ -42,7 +46,7 @@ jobs:
 
       - name: Keep the package
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mc3port-windows
           path: dist/*.zip

@@ -449,8 +449,10 @@ std::map<std::pair<uint32_t, uint32_t>, ComPtr<ID3D11SamplerState>> g_samplers;
 struct Statistics {
     uint64_t presents = 0, draws = 0, vertices = 0, vertex_ticks = 0;
     uint64_t hashed_bytes = 0, hash_ticks = 0, uploads = 0, upload_ticks = 0, draw_ticks = 0;
-    // Parts of draw_ticks: target/shader lookup, vertex upload, state, textures, the Draw call.
+    // Parts of draw_ticks: target/shader lookup, vertex upload, state, textures (with state when not apart), the
+    // Draw call.
     uint64_t part_ticks[5] = {};
+    uint64_t swap_ticks = 0;  // in Present: long when the graphics card is behind
 } g_stats;
 ULONGLONG g_stats_since = 0;
 
@@ -480,11 +482,11 @@ void log_statistics() {
              milliseconds(g_stats.vertex_ticks) / seconds, milliseconds(g_stats.hash_ticks) / seconds,
              g_stats.hashed_bytes / seconds / 1048576.0, g_stats.uploads / seconds,
              milliseconds(g_stats.upload_ticks) / seconds, milliseconds(g_stats.draw_ticks) / seconds);
-    log_line("renderer: D3D parts per second: setup %.0f ms, vertex upload %.0f ms, state %.0f ms, textures %.0f ms, "
-             "draw %.0f ms",
+    log_line("renderer: D3D parts per second: setup %.0f ms, vertex upload %.0f ms, state and textures %.0f ms, "
+             "draw %.0f ms; Present %.0f ms",
              milliseconds(g_stats.part_ticks[0]) / seconds, milliseconds(g_stats.part_ticks[1]) / seconds,
-             milliseconds(g_stats.part_ticks[2]) / seconds, milliseconds(g_stats.part_ticks[3]) / seconds,
-             milliseconds(g_stats.part_ticks[4]) / seconds);
+             milliseconds(g_stats.part_ticks[2] + g_stats.part_ticks[3]) / seconds,
+             milliseconds(g_stats.part_ticks[4]) / seconds, milliseconds(g_stats.swap_ticks) / seconds);
     g_stats = {};
     g_stats_since = now;
 }
@@ -1772,6 +1774,8 @@ void draw_vertex_data(const SurfaceState& surface, const DrawState& state, ID3D1
     const uint64_t draw_start = ticks();
     PreparedDraw draw;
     if (!prepare_draw(surface, state, draw)) return;
+    uint64_t mark = ticks();
+    g_stats.part_ticks[0] += mark - draw_start;
     uint32_t first = 0;
     if (vertex_bytes) {
         first = ring_append(g_attribute_ring, vertex_data, vertex_bytes, D3D11_BIND_SHADER_RESOURCE, 4);
@@ -1788,8 +1792,11 @@ void draw_vertex_data(const SurfaceState& surface, const DrawState& state, ID3D1
     }
     const uint32_t draw_constants[4] = {first, 0, 0, 0};
     g_context->UpdateSubresource(g_fixed_function_draw_constants.Get(), 0, nullptr, draw_constants, 0, 0);
-    g_stats.part_ticks[1] += ticks() - draw_start;
+    const uint64_t uploaded_at = ticks();
+    g_stats.part_ticks[1] += uploaded_at - mark;
     bind_draw_state(surface, state, draw);
+    mark = ticks();
+    g_stats.part_ticks[3] += mark - uploaded_at;
     ID3D11Buffer* buffers[2] = {buffer, g_fixed_function_draw_constants.Get()};
     g_context->VSSetConstantBuffers(1, 2, buffers);
     ID3D11ShaderResourceView* view = g_attribute_ring.view.Get();
@@ -1799,7 +1806,9 @@ void draw_vertex_data(const SurfaceState& surface, const DrawState& state, ID3D1
     g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     g_context->VSSetShader(shader, nullptr, 0);
     g_context->DrawIndexed(static_cast<UINT>(indices.size()), index_offset / 4, 0);
-    g_stats.draw_ticks += ticks() - draw_start;
+    const uint64_t end = ticks();
+    g_stats.part_ticks[4] += end - mark;
+    g_stats.draw_ticks += end - draw_start;
 }
 
 }  // namespace
@@ -2125,7 +2134,9 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     if (const RendererOverlay overlay = g_overlay.load(); overlay && g_back_buffer_rtv) {
         overlay(g_device.Get(), g_context.Get(), g_back_buffer_rtv.Get(), g_swap_width, g_swap_height);
     }
+    const uint64_t swap_start = ticks();
     g_swap_chain->Present(0, 0);
+    g_stats.swap_ticks += ticks() - swap_start;
 }
 
 }  // namespace mc3::pc
