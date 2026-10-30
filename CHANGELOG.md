@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.2.3 (unreleased)
+## 0.2.3 (2026-10-30)
+
+### Improved
+
+- The zip and the installer now contain `README.txt`, a short guide to what you need, the first start, where your
+  files are and what to do if something goes wrong, and `CHANGELOG.md`. The installer offers to open `README.txt`
+  at the end.
+- The README's requirements say what is and is not needed (nothing to install besides Windows 10 or 11; Windows N
+  editions need the Media Feature Pack; an audio device is optional) and a troubleshooting section covers the
+  common cases.
+- When `mc3runtime.dll` does not load, the message gives Windows' error and the likely causes (a missing Windows
+  component, a quarantined file) instead of only saying where the file must be.
 
 ### Fixed
 
