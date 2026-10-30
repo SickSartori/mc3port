@@ -147,6 +147,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
   round dials look slightly oval.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides (full screen on a 16:9 monitor has none).
+- Linux (Wine, Proton) is not supported. The launcher is known to start under Wine 9; the game itself has not been
+  tested there. The log notes when the program runs under Wine.
 
 ## Reporting a problem
 

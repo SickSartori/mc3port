@@ -126,6 +126,9 @@ struct Voice {
 // All voices and the device. Everything below requires audio_lock() held, except start_audio_output().
 std::mutex& audio_lock();
 bool start_audio_output();
+// True when Windows has a default audio output device. Checked before XAudio2 is created: without a device,
+// XAudio2 on Windows fails and says so, but Wine's crashes inside CreateMasteringVoice.
+bool audio_output_present();
 Voice* create_voice(bool is_stream);
 void destroy_voice(Voice* voice);
 
