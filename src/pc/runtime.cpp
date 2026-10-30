@@ -377,6 +377,14 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
         profile_privileged_instruction();
         return EXCEPTION_CONTINUE_EXECUTION;
     }
+    // Wine reports wbinvd, invd, rdmsr and wrmsr as an access violation at 0xFFFFFFFF, not as a privileged
+    // instruction; the emulator only acts on those opcodes, so anything else goes on to the checks below.
+    if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2 &&
+        info->ExceptionRecord->ExceptionInformation[1] == 0xFFFFFFFF &&
+        emulate_privileged_instruction(info->ContextRecord)) {
+        profile_privileged_instruction();
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
     if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2 &&
         nv2a_handle_access_violation(info->ContextRecord,
                                      static_cast<uint32_t>(info->ExceptionRecord->ExceptionInformation[1]))) {
@@ -399,6 +407,24 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
         on_unhandled_exception(info);
     }
     return EXCEPTION_CONTINUE_SEARCH;
+}
+
+// Under Wine (Linux, Proton) the log says so, with the Wine and host versions: a report from there is read
+// differently (TECHNICAL_NOTES.md, "Wine"). Wine's ntdll exports these two; Windows' has neither.
+void log_wine() {
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (!ntdll) return;
+    using WineVersion = const char*(__cdecl*)();
+    using WineHostVersion = void(__cdecl*)(const char** sysname, const char** release);
+    auto wine_version = reinterpret_cast<WineVersion>(GetProcAddress(ntdll, "wine_get_version"));
+    if (!wine_version) return;
+    const char* sysname = nullptr;
+    const char* release = nullptr;
+    if (auto host_version = reinterpret_cast<WineHostVersion>(GetProcAddress(ntdll, "wine_get_host_version"))) {
+        host_version(&sysname, &release);
+    }
+    log_line("host: Wine %s on %s %s (not supported: the launcher is known to start, the game is untested)",
+             wine_version(), sysname ? sysname : "?", release ? release : "?");
 }
 
 DWORD WINAPI xbox_main_thread(void* parameter) {
@@ -426,6 +452,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     settings_load(data_directory() / "mc3port.ini");
     log_line("files: program in %s, data in %s%s", reinterpret_cast<const char*>(exe_directory.u8string().c_str()),
              reinterpret_cast<const char*>(data_directory().u8string().c_str()), portable_mode() ? " (portable)" : "");
+    log_wine();
     SetUnhandledExceptionFilter(on_unhandled_exception);
     AddVectoredExceptionHandler(1, on_first_chance_exception);
 

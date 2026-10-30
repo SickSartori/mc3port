@@ -146,6 +146,17 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
 - **Rete**: la scheda di rete (`0xFEF00000`) è memoria semplice e il PHY risponde "cavo scollegato"; la cifratura
   DES del traffico è un passaggio trasparente. Xbox Live e System Link non sono supportati.
 
+### Wine (Linux)
+
+Non supportato, ma provato il 30 ottobre 2026 con Wine 9.0 (pacchetto 0.2.2, senza disco): il launcher parte e si
+disegna. Verificato con un programma di prova a 32 bit: la memoria fisica a `0x80000000` con write watch, i registri
+NV2A a `0xFD000000` intercettati come access violation e le istruzioni `in`/`out`, `cli`/`sti`, `hlt` si comportano
+come su Windows. Due differenze gestite dal port: `wbinvd`, `invd`, `rdmsr` e `wrmsr` arrivano come access violation
+all'indirizzo `0xFFFFFFFF` (il gestore delle eccezioni le passa all'emulatore delle istruzioni privilegiate); senza un
+dispositivo audio l'XAudio2 di Wine va in crash dentro `CreateMasteringVoice` invece di restituire un errore, perciò
+il port controlla prima con `IMMDeviceEnumerator` che esista un'uscita. Non provati: la partita, DXVK, i controller.
+Il log riporta la versione di Wine e del sistema ospite (`host: Wine ...`).
+
 ## Fatti già verificati sull'XBE
 
 Vedi [ANALISI_XBE.md](ANALISI_XBE.md).

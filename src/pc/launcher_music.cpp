@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "../../res/launcher_resources.h"
+#include "pc/audio_mixer.h"
 #include "pc/log.h"
 #include "pc/settings.h"
 
@@ -104,7 +105,8 @@ void LauncherMusic::update(float dt, float target) {
     State& s = *state_;
     if (!s.voice && s.ready) {
         s.decoder.join();
-        if (FAILED(XAudio2Create(&s.engine, 0, XAUDIO2_DEFAULT_PROCESSOR)) || FAILED(s.engine->CreateMasteringVoice(&s.master)) ||
+        if (!audio_output_present() || FAILED(XAudio2Create(&s.engine, 0, XAUDIO2_DEFAULT_PROCESSOR)) ||
+            FAILED(s.engine->CreateMasteringVoice(&s.master)) ||
             FAILED(s.engine->CreateSourceVoice(&s.voice, &s.format))) {
             s.ready = false;
             return;

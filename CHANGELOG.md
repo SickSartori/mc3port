@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.3 (unreleased)
+
+### Fixed
+
+- Linux with Wine or Proton is still unsupported, but two known reasons for failing there are gone. Without an
+  audio output device the launcher closed at once (Wine's XAudio2 crashes where Windows' reports an error): the
+  port now checks for an output device first and runs silent without one. Wine reports four privileged
+  instructions (wbinvd, invd, rdmsr, wrmsr) as a memory fault, which the port now recognises and emulates as on
+  Windows. The log says when the program runs under Wine, with the Wine and host versions.
+
 ## 0.2.2 (2026-10-27)
 
 ### New

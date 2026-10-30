@@ -1,6 +1,7 @@
 #include "pc/audio_mixer.h"
 
 #include <windows.h>
+#include <mmdeviceapi.h>
 #include <xaudio2.h>
 
 #include <algorithm>
@@ -502,7 +503,7 @@ void output_thread(HANDLE ready, bool* ok) {
     format.nBlockAlign = 8;
     format.nAvgBytesPerSec = kOutputRate * 8;
 
-    HRESULT hr = XAudio2Create(&engine, 0, XAUDIO2_DEFAULT_PROCESSOR);
+    HRESULT hr = audio_output_present() ? XAudio2Create(&engine, 0, XAUDIO2_DEFAULT_PROCESSOR) : E_FAIL;
     if (SUCCEEDED(hr)) hr = engine->CreateMasteringVoice(&master, 2, kOutputRate);
     if (SUCCEEDED(hr)) hr = engine->CreateSourceVoice(&source, &format, 0, XAUDIO2_DEFAULT_FREQ_RATIO, &callback);
     if (SUCCEEDED(hr)) hr = source->Start();
@@ -540,6 +541,21 @@ void output_thread(HANDLE ready, bool* ok) {
 }  // namespace
 
 std::mutex& audio_lock() { return g_mutex; }
+
+bool audio_output_present() {
+    // COM may already be up on this thread, in either model: S_FALSE and RPC_E_CHANGED_MODE both leave it usable.
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    IMMDeviceEnumerator* enumerator = nullptr;
+    IMMDevice* device = nullptr;
+    HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
+                                  reinterpret_cast<void**>(&enumerator));
+    if (SUCCEEDED(hr)) hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+    if (device) device->Release();
+    if (enumerator) enumerator->Release();
+    if (SUCCEEDED(com)) CoUninitialize();
+    if (FAILED(hr)) log_line("audio: no output device (%08lX)", hr);
+    return SUCCEEDED(hr);
+}
 
 bool start_audio_output() {
     static bool started = false;
