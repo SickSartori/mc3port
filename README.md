@@ -46,12 +46,17 @@ Compared with the console:
 
 ## Requirements
 
-- Windows 10 or 11, 64-bit.
-- A graphics card with Direct3D 11.
-- A disc image (`.iso`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
+- **Windows 10 or 11, 64-bit.** Nothing else to install: the Visual C++ runtime is built in, and Direct3D 11,
+  XAudio2 and the shader compiler are part of Windows 10 and 11. Windows **N** editions only: install the Media
+  Feature Pack (Settings, Apps, Optional features), or `mc3runtime.dll` will not load.
+- **A graphics card and driver with Direct3D 11** (feature level 11_0). Most of the work is on the graphics card:
+  see [Performance](#performance).
+- **A disc image** (`.iso`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
   XISO and full Redump dumps both work. Other releases (for example the North American one) are not supported yet:
   mc3port checks the game's executable (`default.xbe`, SHA-256 `29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09`)
   and tells you if the disc is a different version.
+- Optional: an Xbox controller (see [Controls](#controls)); an internet connection, only for the update check (it
+  can be switched off in Settings). An audio output device is not required: without one the game runs silent.
 
 ## Installing
 
@@ -66,6 +71,9 @@ it, then reopens the game.
 **Portable**: download `mc3port-<version>-windows-x86.zip`, extract it into a folder of your choice and start
 `mc3.exe`. To update, extract the new version over the old one.
 
+Both packages contain `README.txt`, a short guide to what you need, the first start and where your files are, and
+`CHANGELOG.md`, what changed in each version.
+
 To check a download, compare its SHA-256 with the `SHA256SUMS` file of the release. The files are not code signed,
 so Windows SmartScreen may ask once whether you trust them ("More info", then "Run anyway").
 
@@ -75,9 +83,10 @@ named `portable.txt` there.
 
 ## First start
 
-The launcher opens and asks for your disc image. Choose the `.iso` file: mc3port checks it and remembers where it is.
-Then pick a quality preset, the aspect ratio and the frame rate, and press **PLAY**. Next time the launcher opens on
-its main page; **PLAY** (or Enter, or A on a controller) starts the game.
+The launcher opens and asks for your disc image. Choose the `.iso` file: mc3port checks it and remembers where it is
+(if you move the file later, choose it again). Then pick a quality preset, the aspect ratio and the frame rate, and
+press **PLAY**. Next time the launcher opens on its main page; **PLAY** (or Enter, or A on a controller) starts the
+game.
 
 ## Controls
 
@@ -150,11 +159,22 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 - Linux (Wine, Proton) is not supported. The launcher is known to start under Wine 9; the game itself has not been
   tested there. The log notes when the program runs under Wine.
 
-## Reporting a problem
+## Troubleshooting
 
-Open the launcher's **About** page and press **Log folder**: attach `mc3port.log` from that folder (normally
-`%LOCALAPPDATA%\mc3port`) to an
-[issue](https://github.com/SickSartori/mc3port/issues), with your Windows version, graphics card and what you were doing.
+- **"Cannot load mc3runtime.dll"**: the file must be next to `mc3.exe`. If it is there, the message's error says what
+  is missing: on Windows N editions install the Media Feature Pack; an antivirus may also have quarantined the file
+  (the SHA-256 in `SHA256SUMS` lets you check it is the original).
+- **The program closes at once, or the game crashes**: open the launcher's **About** page and press **Log folder**;
+  `mc3port.log` says what happened last.
+- **The game is not smooth**: choose the **Balanced** or **Original** preset, or 30 fps, in Settings.
+- **No sound**: the game uses the output device that is the Windows default when it starts.
+- **The disc is refused**: only the European release is supported; the launcher's message says what it found.
+- **The update fails**: download the installer from the [releases page](https://github.com/SickSartori/mc3port/releases)
+  and run it; settings and saves are kept.
+
+To report a problem, open an [issue](https://github.com/SickSartori/mc3port/issues) with your Windows version, your
+graphics card, what you were doing and `mc3port.log` attached (normally in `%LOCALAPPDATA%\mc3port`; the launcher's
+**About** page opens the folder).
 
 ## Building from source
 

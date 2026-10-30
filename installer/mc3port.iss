@@ -67,7 +67,9 @@ Name: "desktopicon"; Description: "{cm:DesktopShortcut}"
 [Files]
 Source: "{#SourceDir}\mc3.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\mc3runtime.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
 Source: "{#SourceDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\THIRD_PARTY.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion

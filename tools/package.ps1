@@ -1,5 +1,5 @@
 # Builds the Release configuration and packages it for a GitHub release:
-#   dist/mc3port-<version>-windows-x86.zip        (portable: mc3.exe, mc3runtime.dll, readme and licences)
+#   dist/mc3port-<version>-windows-x86.zip        (portable: mc3.exe, mc3runtime.dll, readmes, changelog, licences)
 #   dist/mc3port-<version>-windows-x86-setup.exe  (installer, with Inno Setup 6.6+; skipped if it is missing)
 #   dist/SHA256SUMS
 # The version comes from project(... VERSION ...) in CMakeLists.txt. No game file can end up in the package.
@@ -25,7 +25,11 @@ $name = "mc3port-$version-windows-x86"
 $stage = Join-Path "dist" $name
 if (Test-Path dist) { Remove-Item dist -Recurse -Force }
 New-Item -ItemType Directory -Force "$stage\licenses" | Out-Null
-Copy-Item build/pc-x86/Release/mc3.exe, build/pc-x86/Release/mc3runtime.dll, README.md, LICENSE, THIRD_PARTY.md $stage
+Copy-Item build/pc-x86/Release/mc3.exe, build/pc-x86/Release/mc3runtime.dll, README.md, CHANGELOG.md, LICENSE, THIRD_PARTY.md $stage
+# README.txt: the short guide (what you need, first start, where the files are), with the version filled in and
+# Windows line endings, so that Notepad shows it properly.
+$readme = ((Get-Content tools/package_readme.txt -Raw).Replace("<version>", $version) -replace "`r?`n", "`r`n")
+[IO.File]::WriteAllText((Join-Path (Resolve-Path $stage) "README.txt"), $readme, (New-Object Text.UTF8Encoding $false))
 Copy-Item third_party/imgui/LICENSE.txt "$stage\licenses\imgui-LICENSE.txt"
 Copy-Item third_party/fonts/OFL.txt "$stage\licenses\barlow-OFL.txt"
 
