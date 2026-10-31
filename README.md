@@ -68,8 +68,9 @@ administrator rights), adds Start menu and desktop shortcuts, and can be removed
 new version comes out, the launcher offers to update: it downloads the new installer, checks its SHA-256 and installs
 it, then reopens the game.
 
-**Portable**: download `mc3port-<version>-windows-x86.zip`, extract it into a folder of your choice and start
-`mc3.exe`. To update, extract the new version over the old one.
+**Portable**: download `mc3port-<version>-windows-x86.zip` and extract it where you like: it contains a folder
+`mc3port`, and `mc3.exe` inside it starts the game. To update, extract the new version in the same place, replacing
+the files.
 
 Both packages contain `README.txt`, a short guide to what you need, the first start and where your files are, and
 `CHANGELOG.md`, what changed in each version.

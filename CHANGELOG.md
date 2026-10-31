@@ -12,6 +12,12 @@
   common cases.
 - When `mc3runtime.dll` does not load, the message gives Windows' error and the likely causes (a missing Windows
   component, a quarantined file) instead of only saying where the file must be.
+- The log starts with what a report needs: mc3port's version, Windows' version and build, processor, memory, and
+  every graphics adapter with its driver version. A crash names the module it happened in (or the game's code),
+  not only the address. A graphics resource the driver refuses to create is logged with what was asked for, where
+  before it failed silently.
+- The zip now contains a folder `mc3port` instead of loose files; the folder has the same name in every version,
+  so a new zip extracted in the same place updates the old one.
 
 ### Fixed
 
