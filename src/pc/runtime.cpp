@@ -5,13 +5,17 @@
 
 #include <windows.h>
 #include <dbghelp.h>
+#include <dxgi.h>
+#include <intrin.h>
 #include <shellapi.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <cstdarg>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 #include <cwctype>
 #include <filesystem>
 #include <memory>
@@ -229,11 +233,30 @@ void log_host_backtrace(const CONTEXT* context) {
     }
 }
 
+// "in xaudio2_9.dll+1CB2F", or "in the game's code" for the XBE range (Windows sees it as mc3.exe): which side
+// of the port a crash is on, without mapping the address by hand.
+std::string describe_code_address(uint32_t address) {
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(static_cast<uintptr_t>(address)), &module)) {
+        return "(no module)";
+    }
+    if (module == GetModuleHandleW(nullptr)) return "(in the game's code)";
+    wchar_t path[MAX_PATH] = {};
+    GetModuleFileNameW(module, path, MAX_PATH);
+    const wchar_t* name = std::wcsrchr(path, L'\\');
+    name = name ? name + 1 : path;
+    char text[MAX_PATH + 32];
+    std::snprintf(text, sizeof(text), "(in %ls+%X)", name, address - address_of(module));
+    return text;
+}
+
 LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
     const CONTEXT* context = info->ContextRecord;
     log_line("");
-    log_line("unhandled exception %08lX at %08X", record->ExceptionCode, address_of(record->ExceptionAddress));
+    log_line("unhandled exception %08lX at %08X %s", record->ExceptionCode, address_of(record->ExceptionAddress),
+             describe_code_address(address_of(record->ExceptionAddress)).c_str());
     constexpr DWORD kMsvcCppException = 0xE06D7363;
     if (record->ExceptionCode == kMsvcCppException && record->NumberParameters >= 3) {
         log_cpp_exception(record);
@@ -409,6 +432,53 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
+// What a report needs about the machine, so that nobody has to be asked: mc3port's version, Windows' real
+// version (RtlGetVersion is not subject to the manifest), processor, memory and every graphics adapter with its
+// driver version.
+void log_host() {
+    log_line("mc3port %s", MC3PORT_VERSION);
+    using RtlGetVersionFunction = LONG(__stdcall*)(RTL_OSVERSIONINFOW*);
+    RTL_OSVERSIONINFOW os{sizeof(os)};
+    if (HMODULE ntdll = GetModuleHandleW(L"ntdll.dll")) {
+        if (auto rtl_get_version = reinterpret_cast<RtlGetVersionFunction>(GetProcAddress(ntdll, "RtlGetVersion"))) {
+            rtl_get_version(&os);
+        }
+    }
+    int cpu_info[4] = {};
+    char brand[49] = {};
+    __cpuid(cpu_info, 0x80000000);
+    if (static_cast<unsigned>(cpu_info[0]) >= 0x80000004) {
+        for (int i = 0; i < 3; ++i) {
+            __cpuid(cpu_info, 0x80000002 + i);
+            std::memcpy(brand + 16 * i, cpu_info, 16);
+        }
+    }
+    SYSTEM_INFO system{};
+    GetNativeSystemInfo(&system);
+    MEMORYSTATUSEX memory{sizeof(memory)};
+    GlobalMemoryStatusEx(&memory);
+    log_line("host: Windows %lu.%lu build %lu, %s, %lu logical processors, %llu MB RAM", os.dwMajorVersion,
+             os.dwMinorVersion, os.dwBuildNumber, brand[0] ? brand : "unknown processor", system.dwNumberOfProcessors,
+             static_cast<unsigned long long>(memory.ullTotalPhys >> 20));
+
+    Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+    if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) {
+        log_line("host: no DXGI factory");
+        return;
+    }
+    Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+    for (UINT i = 0; factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
+        DXGI_ADAPTER_DESC1 desc{};
+        adapter->GetDesc1(&desc);
+        LARGE_INTEGER driver{};
+        adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driver);  // the user-mode driver's version
+        log_line("host: adapter %u: %ls, %llu MB dedicated, driver %u.%u.%u.%u%s", i, desc.Description,
+                 static_cast<unsigned long long>(desc.DedicatedVideoMemory >> 20), HIWORD(driver.HighPart),
+                 LOWORD(driver.HighPart), HIWORD(driver.LowPart), LOWORD(driver.LowPart),
+                 (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) ? " (software)" : "");
+    }
+}
+
 // Under Wine (Linux, Proton) the log says so, with the Wine and host versions: a report from there is read
 // differently (TECHNICAL_NOTES.md, "Wine"). Wine's ntdll exports these two; Windows' has neither.
 void log_wine() {
@@ -452,6 +522,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     settings_load(data_directory() / "mc3port.ini");
     log_line("files: program in %s, data in %s%s", reinterpret_cast<const char*>(exe_directory.u8string().c_str()),
              reinterpret_cast<const char*>(data_directory().u8string().c_str()), portable_mode() ? " (portable)" : "");
+    log_host();
     log_wine();
     SetUnhandledExceptionFilter(on_unhandled_exception);
     AddVectoredExceptionHandler(1, on_first_chance_exception);

@@ -524,6 +524,27 @@ uint32_t g_scale = 1;
 LONG scaled(uint32_t pixels) { return static_cast<LONG>(pixels * g_scale); }
 float scaled_float(uint32_t pixels) { return static_cast<float>(pixels * g_scale); }
 
+// A failed creation used to pass silently and leave a hole in the picture; the log now says what was asked for,
+// since a driver may refuse a format or a size that others accept. A few lines are enough: the first ones tell.
+void log_resource_failure(const char* what, HRESULT hr, const D3D11_TEXTURE2D_DESC& desc) {
+    static std::atomic<int> reported{0};
+    if (reported++ >= 20) return;
+    log_line("renderer: cannot create %s: error %08lX (%ux%u, %u levels, %u slices, format %u, usage %u, bind %X, "
+             "cpu %X, misc %X)",
+             what, hr, desc.Width, desc.Height, desc.MipLevels, desc.ArraySize, static_cast<unsigned>(desc.Format),
+             static_cast<unsigned>(desc.Usage), desc.BindFlags, desc.CPUAccessFlags, desc.MiscFlags);
+    if (hr == DXGI_ERROR_DEVICE_REMOVED && g_device) {
+        log_line("renderer: the Direct3D device was removed: %08lX", g_device->GetDeviceRemovedReason());
+    }
+}
+
+void log_resource_failure(const char* what, HRESULT hr, const D3D11_BUFFER_DESC& desc) {
+    static std::atomic<int> reported{0};
+    if (reported++ >= 20) return;
+    log_line("renderer: cannot create %s: error %08lX (%u bytes, usage %u, bind %X, cpu %X, misc %X)", what, hr,
+             desc.ByteWidth, static_cast<unsigned>(desc.Usage), desc.BindFlags, desc.CPUAccessFlags, desc.MiscFlags);
+}
+
 // The surface at `address`, at least width x height. A smaller request reuses the existing target (the draw's
 // viewport covers only its part); a larger one grows it and keeps what was drawn so far. Sizes are the game's;
 // the texture is g_scale times larger.
@@ -542,7 +563,10 @@ Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
     Target grown{};
     grown.format = target.format;
-    if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &grown.texture))) return nullptr;
+    if (const HRESULT hr = g_device->CreateTexture2D(&desc, nullptr, &grown.texture); FAILED(hr)) {
+        log_resource_failure("a larger render target", hr, desc);
+        return nullptr;
+    }
     g_device->CreateRenderTargetView(grown.texture.Get(), nullptr, &grown.rtv);
     g_device->CreateShaderResourceView(grown.texture.Get(), nullptr, &grown.srv);
     grown.width = width;
@@ -575,7 +599,10 @@ void make_float_target(Target& target, uint32_t address) {
     converted.format = desc.Format;
     converted.width = target.width;
     converted.height = target.height;
-    if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &converted.texture))) return;
+    if (const HRESULT hr = g_device->CreateTexture2D(&desc, nullptr, &converted.texture); FAILED(hr)) {
+        log_resource_failure("a converted render target", hr, desc);
+        return;
+    }
     g_device->CreateRenderTargetView(converted.texture.Get(), nullptr, &converted.rtv);
     g_device->CreateShaderResourceView(converted.texture.Get(), nullptr, &converted.srv);
     // Copy the contents with a full-surface triangle (CopyResource needs the same format).
@@ -615,7 +642,10 @@ DepthTarget* get_depth_target(uint32_t address, uint32_t width, uint32_t height)
     desc.SampleDesc.Count = 1;
     desc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
     target = DepthTarget{};
-    if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &target.texture))) return nullptr;
+    if (const HRESULT hr = g_device->CreateTexture2D(&desc, nullptr, &target.texture); FAILED(hr)) {
+        log_resource_failure("a depth target", hr, desc);
+        return nullptr;
+    }
     D3D11_DEPTH_STENCIL_VIEW_DESC dsv{};
     dsv.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
     dsv.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
@@ -962,7 +992,10 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
     std::vector<D3D11_SUBRESOURCE_DATA> data{{image.data.data(), image.row_pitch, 0}};
     for (const TextureImage& level : lower_levels) data.push_back({level.data.data(), level.row_pitch, 0});
     cached = CachedTexture{};
-    if (FAILED(g_device->CreateTexture2D(&desc, data.data(), &cached.texture))) return nullptr;
+    if (const HRESULT hr = g_device->CreateTexture2D(&desc, data.data(), &cached.texture); FAILED(hr)) {
+        log_resource_failure("a texture", hr, desc);
+        return nullptr;
+    }
     g_device->CreateShaderResourceView(cached.texture.Get(), nullptr, &cached.srv);
     cached.content_hash = hash;
     return cached.srv.Get();
@@ -998,7 +1031,10 @@ void dump_frame(ID3D11Texture2D* texture, const char* prefix = "frame") {
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
     desc.MiscFlags = 0;
     ComPtr<ID3D11Texture2D> staging;
-    if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &staging))) return;
+    if (const HRESULT hr = g_device->CreateTexture2D(&desc, nullptr, &staging); FAILED(hr)) {
+        log_resource_failure("a staging copy", hr, desc);
+        return;
+    }
     g_context->CopyResource(staging.Get(), texture);
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (FAILED(g_context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return;
@@ -1279,7 +1315,10 @@ void upload_scaled(Target& to, uint32_t x, uint32_t y, uint32_t width, uint32_t 
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         g_stretch_source.Reset();
         g_stretch_source_srv.Reset();
-        if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &g_stretch_source))) return;
+        if (const HRESULT hr = g_device->CreateTexture2D(&desc, nullptr, &g_stretch_source); FAILED(hr)) {
+            log_resource_failure("the stretch source", hr, desc);
+            return;
+        }
         g_device->CreateShaderResourceView(g_stretch_source.Get(), nullptr, &g_stretch_source_srv);
         g_stretch_width = width;
         g_stretch_height = height;
@@ -1628,7 +1667,10 @@ ID3D11ShaderResourceView* target_copy(const Target& target) {
         desc.MiscFlags = 0;
         copy.Reset();
         copy_view.Reset();
-        if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &copy))) return nullptr;
+        if (const HRESULT hr = g_device->CreateTexture2D(&desc, nullptr, &copy); FAILED(hr)) {
+            log_resource_failure("a copy of the render target", hr, desc);
+            return nullptr;
+        }
         g_device->CreateShaderResourceView(copy.Get(), nullptr, &copy_view);
     }
     g_context->CopyResource(copy.Get(), target.texture.Get());
@@ -1721,7 +1763,10 @@ uint32_t ring_append(RingBuffer& ring, const void* data, uint32_t bytes, UINT bi
         if (bind & D3D11_BIND_SHADER_RESOURCE) desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
         ring.buffer.Reset();
         ring.view.Reset();
-        if (FAILED(g_device->CreateBuffer(&desc, nullptr, &ring.buffer))) return ~0u;
+        if (const HRESULT hr = g_device->CreateBuffer(&desc, nullptr, &ring.buffer); FAILED(hr)) {
+            log_resource_failure("a vertex ring buffer", hr, desc);
+            return ~0u;
+        }
         if (bind & D3D11_BIND_SHADER_RESOURCE) {
             D3D11_SHADER_RESOURCE_VIEW_DESC view{};
             view.Format = DXGI_FORMAT_R32_TYPELESS;
@@ -1963,7 +2008,10 @@ bool renderer_probe(uint32_t address, uint32_t x, uint32_t y, uint8_t bgra[4]) {
         desc.SampleDesc.Count = 1;
         desc.Usage = D3D11_USAGE_STAGING;
         desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-        if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &staging))) return false;
+        if (const HRESULT hr = g_device->CreateTexture2D(&desc, nullptr, &staging); FAILED(hr)) {
+            log_resource_failure("a staging copy", hr, desc);
+            return false;
+        }
     }
     const D3D11_BOX box{x * g_scale, y * g_scale, 0, x * g_scale + 1, y * g_scale + 1, 1};
     g_context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, found->second.texture.Get(), 0, &box);

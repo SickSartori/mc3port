@@ -39,8 +39,9 @@ WHAT YOU NEED
 FIRST START
 -----------
 
-1. Portable zip: extract it into a folder of your choice. Installer: run
-   it; it installs for your user only, without administrator rights.
+1. Portable zip: extract it where you like; it contains this "mc3port"
+   folder. Installer: run it; it installs for your user only, without
+   administrator rights.
 2. Start mc3.exe. The files are not code signed, so Windows SmartScreen
    may ask once: "More info", then "Run anyway". To check a download,
    compare its SHA-256 with the SHA256SUMS file of the release.
@@ -78,8 +79,8 @@ Installer: when a new version is out, the launcher says so on its first
 page and offers to update. It downloads the new installer, checks its
 SHA-256, installs it and reopens the game.
 
-Portable zip: extract the new version over the old one. Settings and saves
-are kept.
+Portable zip: extract the new version in the same place, replacing the
+files of this folder. Settings and saves are kept.
 
 What changed in each version: CHANGELOG.md in this folder.
 
