@@ -56,6 +56,14 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
   altri core, come un processore a parte. Per questo vanno emulati i punti in cui il driver ferma la GPU:
   `PGRAPH_FIFO` (`0x400720`) a 0 mentre il gestore d'interrupt legge `TRAPPED_DATA`, e i DPC eseguiti subito dopo
   l'ISR. Senza, la GPU sovrascriveva il metodo software `NOP(5)` e il gioco aspettava per sempre.
+- **DISPATCH_LEVEL**: sull'Xbox nessun altro thread gira mentre uno è a DISPATCH_LEVEL o sopra (ISR, DPC, codice
+  che alza l'IRQL); il port lo emula con un lock, ma un thread del gioco a PASSIVE_LEVEL poteva girare lo stesso
+  quando il proprietario del lock si fermava su un lock dell'host (l'ISR in `KeInsertQueueDpc` dietro un thread
+  normale interrotto con il lock del dispatcher in mano). Ora un thread del gioco a DISPATCH_LEVEL, o con in mano il
+  lock del dispatcher o delle voci audio (`GameLock`), gira alla priorità del thread degli interrupt, e i thread
+  dell'host (timer, orologio, mixer) stanno fuori dal core del gioco. Il profilo conta i casi rimasti ("runs during
+  another thread's DISPATCH_LEVEL"): da 8-18 ogni 10 s a 0-1 nella carriera; uno di quelli in XACT (`0x40F013`) è la
+  causa probabile del crash casuale in `0x0040652C` (lista dei suoni con un elemento vuoto).
 - **Velocità**: con la build Release i menu 3D vanno a 28-50 fps (in Debug 2 fps). Le texture si rileggono solo se
   la loro memoria è stata scritta (write watch di Windows sulla RAM emulata); le render target non si ricreano più
   quando cambia il clip (le superfici swizzled hanno la dimensione del formato). Il log riporta ogni 10 s fps, draw

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <mutex>
 
 namespace mc3::pc {
 
@@ -33,6 +34,8 @@ struct XboxThreadContext {
     void* windows_thread;
     uint32_t thread_id;
     int32_t base_priority_increment;
+    int dispatch_restore_priority = 0x7FFFFFFF;  // Windows priority to go back to below DISPATCH_LEVEL, or none
+                                                  // (THREAD_PRIORITY_ERROR_RETURN)
 };
 
 // Builds the emulated KPCR, KTHREAD and TLS area for the calling thread and binds them to it.
@@ -54,6 +57,27 @@ void start_game_code_thread(std::function<void()> body);
 uint8_t raise_irql(uint8_t new_irql);
 void lower_irql(uint8_t new_irql);
 uint8_t current_irql();
+// On the Xbox no thread runs while another is at DISPATCH_LEVEL. Here one at PASSIVE_LEVEL still can (when the
+// owner blocks on a host lock, or Windows switches threads): the owner's thread id when that is the case, else 0.
+uint32_t another_thread_at_dispatch();
+
+// A host lock that game code takes (the kernel's dispatcher state, DirectSound's voices). On the Xbox such regions
+// run at DISPATCH_LEVEL and nothing preempts them; here the interrupt or DPC thread can, and when it then needs the
+// same lock it waits, and Windows runs other game threads on the game's core in the meantime. So a game thread
+// holds the lock at the interrupt thread's priority: an interrupt that comes meanwhile waits until it lets go.
+// Host threads (mixer, GPU) take it as a plain lock.
+class GameLock {
+public:
+    explicit GameLock(std::mutex& mutex);
+    ~GameLock();
+    GameLock(const GameLock&) = delete;
+    GameLock& operator=(const GameLock&) = delete;
+    std::unique_lock<std::mutex>& get() { return lock_; }  // for condition variables
+
+private:
+    int restore_;  // the thread's priority before, or kNoRestore
+    std::unique_lock<std::mutex> lock_;
+};
 
 // With MC3_WATCHDOG=<seconds>, periodically logs where every game thread is (EIP and return addresses into
 // the game's code): the quickest way to see what a hung game is waiting for.

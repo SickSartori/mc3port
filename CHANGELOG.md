@@ -21,6 +21,10 @@
 
 ### Fixed
 
+- The likely cause of a crash at random moments in the city during the career, inside the game's sound engine. On
+  the Xbox's single processor no other part of the game runs while the system is in the middle of certain work
+  (interrupts, sound updates); the port now keeps that rule even when Windows would switch to another part of the
+  game meanwhile.
 - Linux with Wine or Proton is still unsupported, but two known reasons for failing there are gone. Without an
   audio output device the launcher closed at once (Wine's XAudio2 crashes where Windows' reports an error): the
   port now checks for an output device first and runs silent without one. Wine reports four privileged
