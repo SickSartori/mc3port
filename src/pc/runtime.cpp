@@ -5,7 +5,7 @@
 
 #include <windows.h>
 #include <dbghelp.h>
-#include <dxgi.h>
+#include <dxgi1_4.h>
 #include <intrin.h>
 #include <shellapi.h>
 #include <wrl/client.h>
@@ -434,7 +434,7 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
 
 // What a report needs about the machine, so that nobody has to be asked: mc3port's version, Windows' real
 // version (RtlGetVersion is not subject to the manifest), processor, memory and every graphics adapter with its
-// driver version.
+// video memory and driver version.
 void log_host() {
     log_line("mc3port %s", MC3PORT_VERSION);
     using RtlGetVersionFunction = LONG(__stdcall*)(RTL_OSVERSIONINFOW*);
@@ -453,13 +453,17 @@ void log_host() {
             std::memcpy(brand + 16 * i, cpu_info, 16);
         }
     }
+    // The name is padded with spaces: at the end on AMD processors, at the start on some Intel ones.
+    for (size_t end = std::strlen(brand); end > 0 && brand[end - 1] == ' '; --end) brand[end - 1] = 0;
+    const char* processor = brand;
+    while (*processor == ' ') ++processor;
     SYSTEM_INFO system{};
     GetNativeSystemInfo(&system);
     MEMORYSTATUSEX memory{sizeof(memory)};
     GlobalMemoryStatusEx(&memory);
     log_line("host: Windows %lu.%lu build %lu, %s, %lu logical processors, %llu MB RAM", os.dwMajorVersion,
-             os.dwMinorVersion, os.dwBuildNumber, brand[0] ? brand : "unknown processor", system.dwNumberOfProcessors,
-             static_cast<unsigned long long>(memory.ullTotalPhys >> 20));
+             os.dwMinorVersion, os.dwBuildNumber, *processor ? processor : "unknown processor",
+             system.dwNumberOfProcessors, static_cast<unsigned long long>(memory.ullTotalPhys >> 20));
 
     Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
     if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) {
@@ -472,9 +476,21 @@ void log_host() {
         adapter->GetDesc1(&desc);
         LARGE_INTEGER driver{};
         adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &driver);  // the user-mode driver's version
-        log_line("host: adapter %u: %ls, %llu MB dedicated, driver %u.%u.%u.%u%s", i, desc.Description,
-                 static_cast<unsigned long long>(desc.DedicatedVideoMemory >> 20), HIWORD(driver.HighPart),
-                 LOWORD(driver.HighPart), HIWORD(driver.LowPart), LOWORD(driver.LowPart),
+        // The description's memory sizes are SIZE_T, so a 32-bit process sees large ones cut short (an 8 GB card
+        // showed 3072 MB). Such a card gets the budget of its own memory instead, which is 64-bit: what Windows lets
+        // a program use of it. Integrated graphics keep their dedicated size, since for them "their own memory" is
+        // the system memory they share.
+        uint64_t video_memory = desc.DedicatedVideoMemory;
+        Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter3;
+        DXGI_QUERY_VIDEO_MEMORY_INFO budget{};
+        if (video_memory >= (2ull << 30) && SUCCEEDED(adapter.As(&adapter3)) &&
+            SUCCEEDED(adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &budget)) &&
+            budget.Budget > video_memory) {
+            video_memory = budget.Budget;
+        }
+        log_line("host: adapter %u: %ls, %llu MB video memory, driver %u.%u.%u.%u%s", i, desc.Description,
+                 static_cast<unsigned long long>(video_memory >> 20), HIWORD(driver.HighPart), LOWORD(driver.HighPart),
+                 HIWORD(driver.LowPart), LOWORD(driver.LowPart),
                  (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) ? " (software)" : "");
     }
 }
