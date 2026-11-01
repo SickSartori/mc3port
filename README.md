@@ -21,7 +21,7 @@ optional modern effects.
 | | |
 |---|---|
 | ![A race in Tokyo, 16:9](docs/screenshots/race-16x9.jpg) | ![The launcher](docs/screenshots/launcher.jpg) |
-| ![Launcher settings](docs/screenshots/launcher-settings.jpg) | ![Launcher controls, with rebindable keys](docs/screenshots/launcher-controls.jpg) |
+| ![Launcher settings, Effects tab](docs/screenshots/launcher-settings.jpg) | ![Launcher controls: what each button does, rebindable keys](docs/screenshots/launcher-controls.jpg) |
 
 The launcher speaks English or Italian, following Windows; these captures come from an Italian Windows. Its logo and
 pictures are read from the player's disc. The game content in the screenshots belongs to its owners.
