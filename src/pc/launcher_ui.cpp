@@ -759,9 +759,11 @@ void Launcher::stop_graphics() {
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
         nv2a_set_window_hook(nullptr);
     }
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    ImGui::DestroyContext();
+    if (ImGui::GetCurrentContext()) {  // none when Direct3D 11 failed before start_imgui
+        ImGui_ImplDX11_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+    }
     logo_.Reset();
     artwork_.clear();
     target_.Reset();
@@ -2120,7 +2122,7 @@ void Launcher::page_exit() {
     lead(t.exit_lead);
     if (big_button(t.exit_now, "##exit", false)) {
         log_line("game menu: exit");
-        ExitProcess(0);
+        end_process(0);
     }
 }
 

@@ -156,14 +156,28 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
 
 ### Wine (Linux)
 
-Non supportato, ma provato il 30 ottobre 2026 con Wine 9.0 (pacchetto 0.2.2, senza disco): il launcher parte e si
+Sperimentale. Provato con Wine 11.0 (WineHQ) in WSL2 su Ubuntu 24.04, dove Mesa a 32 bit non ha il driver `d3d12` e
+wined3d disegna con `llvmpipe` sul processore: funzionano il launcher, il controllo del disco, il kernel, i thread, il
+push buffer, l'audio XAudio2, i video iniziali e i menu fino alla carriera. Non provati: le prestazioni con un driver
+grafico vero, Proton e DXVK, i controller (WSL non vede i pad), lo Steam Deck, l'installer e l'aggiornamento.
+
+Differenze da Wine trovate e gestite:
+- Senza le librerie Linux a 32 bit di OpenGL ed EGL (`libgl1:i386`, `libegl1:i386`) Wine non ha Direct3D 11:
+  `host: no DXGI factory` nel log, il launcher passa alle finestre di dialogo e la finestra del gioco resta nera.
+- Il compilatore HLSL di Wine (vkd3d-shader) non conosce `isnan`: gli shader dei vertici usano `is_nan`, `is_inf` e
+  `is_finite`, che leggono i bit del numero (`kVertexDataShader`).
+- `ExitProcess` a gioco avviato lasciava il processo appeso: Wine ferma gli altri thread in modo asincrono mentre
+  esegue il distacco delle DLL, e un thread del gioco restava a girare sulle eccezioni. Tutte le uscite passano da
+  `end_process` (`TerminateProcess`).
+
+Provato prima, il 30 ottobre 2026, con Wine 9.0 (pacchetto 0.2.2, senza disco): il launcher parte e si
 disegna. Verificato con un programma di prova a 32 bit: la memoria fisica a `0x80000000` con write watch, i registri
 NV2A a `0xFD000000` intercettati come access violation e le istruzioni `in`/`out`, `cli`/`sti`, `hlt` si comportano
 come su Windows. Due differenze gestite dal port: `wbinvd`, `invd`, `rdmsr` e `wrmsr` arrivano come access violation
 all'indirizzo `0xFFFFFFFF` (il gestore delle eccezioni le passa all'emulatore delle istruzioni privilegiate); senza un
 dispositivo audio l'XAudio2 di Wine va in crash dentro `CreateMasteringVoice` invece di restituire un errore, perciò
-il port controlla prima con `IMMDeviceEnumerator` che esista un'uscita. Non provati: la partita, DXVK, i controller.
-Il log riporta la versione di Wine e del sistema ospite (`host: Wine ...`).
+il port controlla prima con `IMMDeviceEnumerator` che esista un'uscita. Il log riporta la versione di Wine e del
+sistema ospite (`host: Wine ...`).
 
 ## Fatti già verificati sull'XBE
 

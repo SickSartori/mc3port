@@ -99,7 +99,7 @@ namespace {
         const auto* data = guest<const uint32_t>(page + 0x400);
         log_line("  launch data: %08X %08X %08X %08X", data[0], data[1], data[2], data[3]);
     }
-    ExitProcess(0);
+    end_process(0);
 }
 
 void __stdcall HalReturnToFirmware(uint32_t routine) { quit("HalReturnToFirmware", routine, _ReturnAddress()); }

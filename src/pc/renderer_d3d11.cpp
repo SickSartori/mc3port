@@ -89,6 +89,11 @@ cbuffer Surface : register(b0) { float4 scale; };
 cbuffer Draw : register(b2) { uint first; };  // byte offset of this draw's vertex data (changes every draw)
 ByteAddressBuffer vertex_data : register(t0);
 
+// From the bits rather than isnan, isinf and isfinite, which Wine's HLSL compiler lacks.
+bool is_nan(float x) { return (asuint(x) & 0x7FFFFFFF) > 0x7F800000; }
+bool is_inf(float x) { return (asuint(x) & 0x7FFFFFFF) == 0x7F800000; }
+bool is_finite(float x) { return (asuint(x) & 0x7F800000) != 0x7F800000; }
+
 uint load32(uint address) {  // attributes are not always 4-byte aligned (3 shorts)
     const uint aligned = address & ~3u, shift = (address & 3u) * 8;
     const uint low = vertex_data.Load(aligned);
@@ -127,19 +132,19 @@ float4 decode_attribute(uint vertex, int4 l, float4 fallback) {
 
 float fog_factor(float distance, bool enabled, uint mode, float4 params) {
     if (!enabled) return 1;
-    if (isinf(distance)) return mode == 0x801 || mode == 0x803 ? 0 : 1;
+    if (is_inf(distance)) return mode == 0x801 || mode == 0x803 ? 0 : 1;
     float factor = 1;
     if (mode == 0x2601 || mode == 0x804) factor = params.x + distance * params.y - 1;
     else if (mode == 0x800 || mode == 0x802) factor = params.x + exp2(distance * params.y * 16) - 1.5;
     else if (mode == 0x801 || mode == 0x803) factor = params.x + exp2(-distance * distance * params.y * params.y * 32) - 1.5;
     if (mode == 0x802 || mode == 0x803 || mode == 0x804) factor = abs(factor);
-    return isnan(factor) ? 1 : factor;
+    return is_nan(factor) ? 1 : factor;
 }
 
 // A screen-space position (pixels; w apart) to clip space, as to_render_vertex and then the main vertex shader do.
 float4 clip_position(float4 screen, float clip_max) {
     float w = screen.w;
-    if (!isfinite(w) || abs(w) < 5.42101e-20) w = w < 0 ? -5.42101e-20 : 5.42101e-20;
+    if (!is_finite(w) || abs(w) < 5.42101e-20) w = w < 0 ? -5.42101e-20 : 5.42101e-20;
     const float z = clip_max != 0 ? screen.z / clip_max : screen.z;
     return float4(screen.x * w * scale.x - w, w - screen.y * w * scale.y, z * w, w);
 }
@@ -191,7 +196,7 @@ PSInput main(uint vertex : SV_VertexID) {
     const float4 eye = rows4(model_view[0], model_view[1], model_view[2], model_view[3], position);
     const float4 p = rows4(composite[0], composite[1], composite[2], composite[3], position);
     float w = p.w;
-    if (!isfinite(w) || abs(w) < 5.42101e-20) w = w < 0 ? -5.42101e-20 : 5.42101e-20;
+    if (!is_finite(w) || abs(w) < 5.42101e-20) w = w < 0 ? -5.42101e-20 : 5.42101e-20;
     const float3 screen = float3(p.x / w + viewport_offset.x, p.y / w + viewport_offset.y, p.z / w);
 
     float4 out_diffuse, out_specular;
@@ -336,11 +341,11 @@ float4 attribute(uint vertex, uint a) { return decode_attribute(vertex, attribut
 float4 mul0(float4 a, float4 b) { return (a == 0 || b == 0) ? 0 : a * b; }
 float4 rcc(float s) {
     const float r = 1 / s;
-    if (isnan(r)) return 5.42101e-20;
+    if (is_nan(r)) return 5.42101e-20;
     const float magnitude = clamp(abs(r), 5.42101e-20, 1.884467e+19);
     return (asuint(r) >> 31) ? -magnitude : magnitude;
 }
-float4 rsq(float s) { return s == 0 ? kInfinity : isinf(s) ? 0 : 1 / sqrt(abs(s)); }
+float4 rsq(float s) { return s == 0 ? kInfinity : is_inf(s) ? 0 : 1 / sqrt(abs(s)); }
 float4 exp_ilu(float s) { const float f = floor(s); return float4(exp2(f), s - f, exp2(s), 1); }
 float4 log_ilu(float s) {
     const float t = abs(s);
