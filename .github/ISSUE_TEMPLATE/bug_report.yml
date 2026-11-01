@@ -12,7 +12,7 @@ body:
     attributes:
       label: mc3port version
       description: Shown on the launcher's About page.
-      placeholder: "0.2.0"
+      placeholder: "0.2.4"
     validations:
       required: true
   - type: dropdown
@@ -23,13 +23,15 @@ body:
         - Installer
         - Portable zip
         - Quiver Launcher
+        - Linux, Wine or Proton (portable zip)
     validations:
       required: true
   - type: input
     id: system
     attributes:
-      label: Windows version and graphics card
-      placeholder: "Windows 11 24H2, NVIDIA GeForce RTX 3060"
+      label: System and graphics card
+      description: Windows version; on Linux the distribution, Wine or Proton version and graphics driver.
+      placeholder: "Windows 11 24H2, NVIDIA GeForce RTX 3060 / Ubuntu 24.04, Wine 11.0, Mesa 25.2, Radeon 680M"
     validations:
       required: true
   - type: textarea
@@ -43,6 +45,6 @@ body:
     id: log
     attributes:
       label: mc3port.log
-      description: Open the launcher's About page and press "Log folder"; attach mc3port.log here (drag it in).
+      description: Open the launcher's About page and press "Log folder"; attach mc3port.log here (drag it in). Under Wine it is in the prefix, drive_c/users/<you>/AppData/Local/mc3port.
     validations:
       required: true

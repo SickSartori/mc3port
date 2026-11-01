@@ -127,7 +127,27 @@ IF SOMETHING GOES WRONG
 
 To report a problem, open an issue at
 https://github.com/SickSartori/mc3port/issues with your Windows version,
-your graphics card, what you were doing and mc3port.log attached.
+your graphics card, what you were doing and mc3port.log attached. On
+Linux, also give the distribution, the Wine or Proton version, the
+graphics driver and how you started the game.
+
+
+LINUX (EXPERIMENTAL)
+--------------------
+
+mc3port also runs on Linux through a recent Wine (tested: 11.0) with
+32-bit support
+(on Debian and Ubuntu: the i386 architecture and the 32-bit OpenGL and
+Vulkan libraries libgl1:i386, libegl1:i386, libvulkan1:i386). Use this
+zip: put your .iso in this folder, then run "wine mc3.exe" here. Your
+files are in the Wine prefix, under
+drive_c/users/<you>/AppData/Local/mc3port.
+
+It has been tested on one machine only, with Wine 11 under WSL2: the
+launcher, the opening films and the career's menus work, sound included.
+Not tested yet: the speed with a real Linux graphics driver, Proton and
+DXVK, controllers, the Steam Deck. Expect problems, and please report
+them as above.
 
 
 KNOWN ISSUES
@@ -139,7 +159,7 @@ KNOWN ISSUES
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides.
 - The Xbox sound chip's own effects, such as reverb, are not reproduced.
-- Linux (Wine, Proton) is not supported.
+- Linux (Wine, Proton) is experimental and only partly tested.
 
 
 LICENCE

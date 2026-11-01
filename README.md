@@ -82,6 +82,27 @@ Your settings (`mc3port.ini`), saves (`xbox_hdd`), log and shader cache live in 
 and uninstalling never touch them. To keep them next to `mc3.exe` instead (a USB stick, say), create an empty file
 named `portable.txt` there.
 
+## Linux (experimental)
+
+mc3port is a Windows program, but it also runs on Linux through **Wine**. This is experimental: it has been tested
+on one machine only, with Wine 11 under WSL2 (Windows' Linux subsystem), where the picture is drawn by the processor.
+There the whole program works, from the launcher through the opening films to the career's menus, sound included.
+**Not tested yet**: the speed with a real Linux graphics driver, Proton and DXVK, controllers, the Steam Deck, the
+installer and the update check. Expect problems; if you meet one, please
+[open an issue](https://github.com/SickSartori/mc3port/issues) (see [Troubleshooting](#troubleshooting)).
+
+What it takes:
+
+- **A recent Wine with 32-bit support** (tested: Wine 11.0; mc3port is a 32-bit program). On Debian and Ubuntu this means the
+  `i386` architecture and the 32-bit OpenGL and Vulkan libraries (`libgl1:i386`, `libegl1:i386`,
+  `libvulkan1:i386`); without them Wine has no Direct3D 11 and the game window stays black. The packages from
+  [WineHQ](https://gitlab.winehq.org/wine/wine/-/wikis/Download) bring the rest.
+- The **portable zip**. Extract it, put your `.iso` in the `mc3port` folder (it is found there without asking) or
+  choose it in the launcher, then start it with `wine mc3.exe` from that folder. With Steam, "Add a non-Steam game"
+  pointing at `mc3.exe` starts it through Proton (not tested yet).
+- Your files are in the Wine prefix: `~/.wine/drive_c/users/<you>/AppData/Local/mc3port` (or next to `mc3.exe` with
+  `portable.txt`). The log there starts with the Wine and Linux versions.
+
 ## First start
 
 The launcher opens and asks for your disc image. Choose the `.iso` file: mc3port checks it and remembers where it is
@@ -161,8 +182,7 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 - On monitors wider than 16:9 there are thin black bars at the sides (full screen on a 16:9 monitor has none).
 - The Xbox sound chip's own effects, such as reverb, are not reproduced (the game loads them, mc3port leaves them
   out): the sound can be drier than on the console.
-- Linux (Wine, Proton) is not supported. The launcher is known to start under Wine 9; the game itself has not been
-  tested there. The log notes when the program runs under Wine.
+- Linux (Wine, Proton) is experimental and only partly tested: see [Linux](#linux-experimental).
 
 ## Troubleshooting
 
@@ -181,7 +201,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 
 To report a problem, open an [issue](https://github.com/SickSartori/mc3port/issues) with your Windows version, your
 graphics card, what you were doing and `mc3port.log` attached (normally in `%LOCALAPPDATA%\mc3port`; the launcher's
-**About** page opens the folder).
+**About** page opens the folder). On Linux, also give the distribution, the Wine or Proton version, the graphics
+driver (for example Mesa 25.2 or NVIDIA 580) and how you started the game.
 
 ## Building from source
 

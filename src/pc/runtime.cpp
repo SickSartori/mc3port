@@ -496,7 +496,7 @@ void log_host() {
 }
 
 // Under Wine (Linux, Proton) the log says so, with the Wine and host versions: a report from there is read
-// differently (TECHNICAL_NOTES.md, "Wine"). Wine's ntdll exports these two; Windows' has neither.
+// differently (TECHNICAL_NOTES.md, "Wine"; README, "Linux"). Wine's ntdll exports these two; Windows' has neither.
 void log_wine() {
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
     if (!ntdll) return;
@@ -509,8 +509,8 @@ void log_wine() {
     if (auto host_version = reinterpret_cast<WineHostVersion>(GetProcAddress(ntdll, "wine_get_host_version"))) {
         host_version(&sysname, &release);
     }
-    log_line("host: Wine %s on %s %s (not supported: the launcher is known to start, the game is untested)",
-             wine_version(), sysname ? sysname : "?", release ? release : "?");
+    log_line("host: Wine %s on %s %s (experimental, partly tested)", wine_version(), sysname ? sysname : "?",
+             release ? release : "?");
 }
 
 DWORD WINAPI xbox_main_thread(void* parameter) {
