@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.4 (2026-11-01)
+
+### New
+
+- **Linux, through Wine (experimental)**: the README has a Linux section with what it takes (a recent Wine with
+  32-bit support, the portable zip) and where the files are. Tested on one machine only, with Wine 11 under WSL2:
+  the launcher, the opening films and the career's menus work, sound included. Not tested yet: the speed with a
+  real Linux graphics driver, Proton and DXVK, controllers and the Steam Deck. Problems are expected; the issue
+  form asks for the distribution, the Wine or Proton version and the graphics driver.
+
+### Fixed
+
+- Under Wine the vertex shaders did not compile (they used `isnan`, which Wine's shader compiler does not know), so
+  every vertex was transformed on the processor; they go to the graphics card again.
+- Closing the window, or Exit in the in-game menu, now ends the program at once, every part of it. Under Wine the
+  process stayed in memory after the window had closed, with one of the game's threads busy at full speed.
+- When Direct3D 11 cannot start, the launcher crashed while falling back to asking for the disc with a dialog.
+
 ## 0.2.3 (2026-11-01)
 
 ### Improved
