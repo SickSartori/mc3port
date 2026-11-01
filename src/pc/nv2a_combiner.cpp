@@ -262,6 +262,7 @@ std::string generate_pixel_shader(const CombinerProgram& p) {
         }
     }
     code += "    result.rgb *= 1 - alpha_reference.y;\n";  // fades one draw: the renderer's motion blur strength
+    code += "    result.a *= 1 - alpha_reference.z;\n";    // the same for a draw blended by its own alpha
     code += "    return result;\n}\n";
     return code;
 }

@@ -6,6 +6,7 @@
 #include <malloc.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstring>
 #include <cstdio>
@@ -13,6 +14,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "core/byteorder.h"
@@ -127,11 +129,35 @@ uint32_t kthread_address(const XboxThreadContext* context) { return context ? ad
 
 uint8_t current_irql() { return t_context ? t_context->kpcr[kKpcrIrql] : kPassiveLevel; }
 
+std::atomic<DWORD> g_dispatch_owner{0};  // the Windows thread at DISPATCH_LEVEL or above, 0 if none
+constexpr int kNoRestore = THREAD_PRIORITY_ERROR_RETURN;
+
+// A game thread below the interrupt thread's priority is raised to it, and gets back the returned value later; the
+// interrupt and DPC threads are there already (kNoRestore).
+int raise_to_interrupt_priority() {
+    if (!t_context) return kNoRestore;
+    const int priority = GetThreadPriority(GetCurrentThread());
+    if (priority == THREAD_PRIORITY_ERROR_RETURN || priority >= THREAD_PRIORITY_TIME_CRITICAL) return kNoRestore;
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+    return priority;
+}
+
+void restore_priority(int priority) {
+    if (priority != kNoRestore) SetThreadPriority(GetCurrentThread(), priority);
+}
+
 uint8_t raise_irql(uint8_t new_irql) {
     const uint8_t old_irql = current_irql();
-    if (old_irql < kDispatchLevel && new_irql >= kDispatchLevel && !g_dispatch_level_lock.try_lock()) {
-        ProfileScope scope(ProfileTime::dispatch_lock);
-        g_dispatch_level_lock.lock();
+    if (old_irql < kDispatchLevel && new_irql >= kDispatchLevel) {
+        // Like the Xbox's processor at DISPATCH_LEVEL: no other game thread may run until the level comes down, so
+        // the thread runs at the interrupt thread's priority meanwhile (see GameLock).
+        const int restore = raise_to_interrupt_priority();
+        if (!g_dispatch_level_lock.try_lock()) {
+            ProfileScope scope(ProfileTime::dispatch_lock);
+            g_dispatch_level_lock.lock();
+        }
+        g_dispatch_owner = GetCurrentThreadId();
+        if (t_context) t_context->dispatch_restore_priority = restore;
     }
     if (t_context) t_context->kpcr[kKpcrIrql] = new_irql;
     return old_irql;
@@ -140,7 +166,24 @@ uint8_t raise_irql(uint8_t new_irql) {
 void lower_irql(uint8_t new_irql) {
     const uint8_t old_irql = current_irql();
     if (t_context) t_context->kpcr[kKpcrIrql] = new_irql;
-    if (old_irql >= kDispatchLevel && new_irql < kDispatchLevel) g_dispatch_level_lock.unlock();
+    if (old_irql >= kDispatchLevel && new_irql < kDispatchLevel) {
+        g_dispatch_owner = 0;
+        g_dispatch_level_lock.unlock();
+        if (t_context) restore_priority(std::exchange(t_context->dispatch_restore_priority, kNoRestore));
+    }
+}
+
+GameLock::GameLock(std::mutex& mutex) : restore_(raise_to_interrupt_priority()), lock_(mutex) {}
+
+GameLock::~GameLock() {
+    if (lock_.owns_lock()) lock_.unlock();
+    restore_priority(restore_);
+}
+
+uint32_t another_thread_at_dispatch() {
+    if (!t_context) return 0;  // host threads (mixer, GPU) are not the Xbox's processor
+    const DWORD owner = g_dispatch_owner;
+    return owner && owner != GetCurrentThreadId() && current_irql() < kDispatchLevel ? owner : 0;
 }
 
 uint8_t* xbox_process() { return g_process; }

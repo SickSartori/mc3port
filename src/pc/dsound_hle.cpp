@@ -9,6 +9,7 @@
 #include "pc/dsound_hle.h"
 
 #include <windows.h>
+#include <intrin.h>
 
 #include <algorithm>
 #include <cmath>
@@ -20,6 +21,8 @@
 #include "pc/audio_mixer.h"
 #include "pc/exec_memory.h"
 #include "pc/log.h"
+#include "pc/profile.h"
+#include "pc/xbox_thread.h"
 #include "pc/xbox_types.h"
 
 namespace mc3::pc {
@@ -89,7 +92,12 @@ void log_unidentified(const char* name, uint32_t a = 0, uint32_t b = 0) {
     if (unidentified_calls++ < 40) log_line("dsound: unidentified %s(%08X, %08X) accepted", name, a, b);
 }
 
-Voice* voice_of(uint32_t object) { return object ? guest<DsObject>(object)->voice : nullptr; }
+Voice* voice_of(uint32_t object) {
+    if (const uint32_t owner = another_thread_at_dispatch()) {
+        profile_exclusion_break("DirectSound", address_of(_ReturnAddress()), owner);
+    }
+    return object ? guest<DsObject>(object)->voice : nullptr;
+}
 
 void apply_format(Voice& voice, uint32_t format_address) {
     voice.format = format_address ? *guest<XWaveFormat>(format_address) : kDefaultFormat;
@@ -156,7 +164,7 @@ uint32_t __stdcall DirectSoundRelease(uint32_t self) {
 
 uint32_t __stdcall BufferAddRef(uint32_t self) { return ++guest<DsObject>(self)->references; }
 uint32_t __stdcall BufferRelease(uint32_t self) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     DsObject* object = guest<DsObject>(self);
     if (--object->references) return object->references;
     destroy_voice(object->voice);
@@ -185,7 +193,7 @@ void flush_stream(Voice& voice) {
 
 uint32_t __stdcall StreamAddRef(uint32_t self) { return ++guest<DsObject>(self)->references; }
 uint32_t __stdcall StreamRelease(uint32_t self) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     DsObject* object = guest<DsObject>(self);
     if (--object->references) return object->references;
     flush_stream(*object->voice);
@@ -196,7 +204,7 @@ uint32_t __stdcall StreamRelease(uint32_t self) {
 
 HRESULT32 __stdcall StreamGetInfo(uint32_t self, uint32_t* info) {
     constexpr uint32_t kFixedPacketAlignment = 0x2;
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     const Voice* voice = voice_of(self);
     info[0] = kFixedPacketAlignment;
     info[1] = std::max<uint32_t>(1, voice->format.block_align);
@@ -206,7 +214,7 @@ HRESULT32 __stdcall StreamGetInfo(uint32_t self, uint32_t* info) {
 }
 
 HRESULT32 __stdcall StreamGetStatus(uint32_t self, uint32_t* status) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     const Voice* voice = voice_of(self);
     *status = voice->packets.size() < std::max<uint32_t>(1, voice->max_attached_packets) ? kXmoAcceptInputData : 0;
     // XACT and the game's music player both take a stream without PLAYING as finished: XACT restarted its music
@@ -220,7 +228,7 @@ HRESULT32 __stdcall StreamGetStatus(uint32_t self, uint32_t* status) {
 
 HRESULT32 __stdcall StreamProcess(uint32_t self, const XMediaPacket* input, const XMediaPacket* /*output*/) {
     if (!input) return kInvalidCall;
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     if (input->completed_size) *guest<uint32_t>(input->completed_size) = 0;
     if (input->status) *guest<uint32_t>(input->status) = kPacketPending;
@@ -240,7 +248,7 @@ void restart_stream(Voice& voice) { voice.stopped_by_flush = false; }
 
 // No more data: the stream stops once its packets have played instead of starving.
 HRESULT32 __stdcall StreamDiscontinuity(uint32_t self) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     if (voice->packets.empty()) {
         voice->playing = false;
@@ -251,7 +259,7 @@ HRESULT32 __stdcall StreamDiscontinuity(uint32_t self) {
 }
 
 HRESULT32 __stdcall StreamFlush(uint32_t self) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     flush_stream(*voice_of(self));
     return kOk;
 }
@@ -276,7 +284,7 @@ HRESULT32 __stdcall DirectSoundCreate(uint32_t /*guid*/, uint32_t* direct_sound,
 }
 
 HRESULT32 create_stream(const XDsStreamDesc* desc, uint32_t* stream) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     auto* object = new DsObject{kStreamVtable, 1, create_voice(true)};
     object->voice->create_flags = desc->flags;
     apply_format(*object->voice, desc->format);
@@ -298,7 +306,7 @@ HRESULT32 __stdcall DirectSoundCreateStream(const XDsStreamDesc* desc, uint32_t*
 void __stdcall DirectSoundDoWork() {
     std::vector<CompletedPacket> completed;
     {
-        std::lock_guard<std::mutex> lock(audio_lock());
+        GameLock lock(audio_lock());
         completed = take_completed_packets();
     }
     using Callback = void(__stdcall*)(uint32_t stream_context, uint32_t packet_context, uint32_t status);
@@ -354,7 +362,7 @@ HRESULT32 __stdcall DsGetOutputLevels(uint32_t, uint32_t* levels, uint32_t) {
 }
 
 HRESULT32 __stdcall DsCreateSoundBuffer(uint32_t, const XDsBufferDesc* desc, uint32_t* buffer, uint32_t) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     auto* object = new DsObject{kBufferVtable, 1, create_voice(false)};
     Voice& voice = *object->voice;
     voice.create_flags = desc->flags;
@@ -382,19 +390,19 @@ HRESULT32 __stdcall DsCreateSoundStream(uint32_t, const XDsStreamDesc* desc, uin
 // --- voice parameters, shared by buffers and streams ---
 
 HRESULT32 __stdcall VoiceSetVolume(uint32_t self, int32_t volume) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     voice_of(self)->volume = volume;
     return kOk;
 }
 
 HRESULT32 __stdcall VoiceSetPitch(uint32_t self, int32_t pitch) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     voice_of(self)->pitch = pitch;
     return kOk;
 }
 
 HRESULT32 __stdcall VoiceSetFrequency(uint32_t self, uint32_t frequency) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     voice->pitch = pitch_for_rate(frequency ? frequency : voice->format.samples_per_second);
     return kOk;
@@ -413,7 +421,7 @@ struct XDsVoiceProps {
 };
 
 HRESULT32 __stdcall VoiceGetVoiceProperties(uint32_t self, XDsVoiceProps* props) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     const Voice* voice = voice_of(self);
     std::memset(props, 0, sizeof(*props));
     props->mix_bin_count = static_cast<uint32_t>(std::clamp(voice->mix_bin_count, 0, 8));
@@ -428,20 +436,20 @@ HRESULT32 __stdcall VoiceGetVoiceProperties(uint32_t self, XDsVoiceProps* props)
 }
 
 HRESULT32 __stdcall VoiceSetMixBins(uint32_t self, uint32_t mix_bins) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     apply_mix_bins(*voice_of(self), mix_bins, true);
     restart_stream(*voice_of(self));
     return kOk;
 }
 
 HRESULT32 __stdcall VoiceSetMixBinVolumes(uint32_t self, uint32_t mix_bins) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     apply_mix_bins(*voice_of(self), mix_bins, false);
     return kOk;
 }
 
 HRESULT32 __stdcall VoiceSetFormat(uint32_t self, uint32_t format) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     apply_format(*voice_of(self), format);
     restart_stream(*voice_of(self));
     return kOk;
@@ -460,7 +468,7 @@ struct XDsEnvelopeDesc {
 HRESULT32 __stdcall VoiceSetEnvelope(uint32_t self, const XDsEnvelopeDesc* desc) {
     constexpr uint32_t kUnit = 512;
     if (!desc || desc->generator != 0) return kOk;
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     Envelope& envelope = voice->envelope;
     envelope.enabled = desc->mode != 0;
@@ -502,7 +510,7 @@ struct XDsFilterDesc {
 HRESULT32 __stdcall VoiceSetFilter(uint32_t self, const XDsFilterDesc* desc) {
     constexpr uint32_t kModeDls2 = 1;
     if (!desc) return kOk;
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     VoiceFilter& filter = voice->filter;
     const bool was_enabled = filter.enabled;
@@ -547,7 +555,7 @@ HRESULT32 __stdcall Voice3dParameters2(uint32_t self, uint32_t a) { log_unidenti
 // --- buffers ---
 
 HRESULT32 __stdcall BufferPlay(uint32_t self, uint32_t, uint32_t, uint32_t flags) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     if (flags & kPlayFromStart) voice->position = 0;
     if (!voice->playing) voice->active_chunks = 0;
@@ -559,7 +567,7 @@ HRESULT32 __stdcall BufferPlay(uint32_t self, uint32_t, uint32_t, uint32_t flags
 }
 
 HRESULT32 __stdcall BufferStop(uint32_t self) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     voice->playing = false;
     voice->envelope_stage = EnvelopeStage::kOff;
@@ -569,7 +577,7 @@ HRESULT32 __stdcall BufferStop(uint32_t self) {
 // DSBSTOPEX_ENVELOPE fades out with the envelope's release, DSBSTOPEX_RELEASEWAVEFORM leaves the loop and plays on
 // to the end; with both (what XACT uses) the voice ends with whichever comes first.
 HRESULT32 __stdcall BufferStopEx(uint32_t self, uint32_t, uint32_t, uint32_t flags) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     if (flags & kStopExReleaseWaveform) voice->looping = false;
     if (flags & kStopExEnvelope) {
@@ -582,7 +590,7 @@ HRESULT32 __stdcall BufferStopEx(uint32_t self, uint32_t, uint32_t, uint32_t fla
 }
 
 HRESULT32 __stdcall BufferSetPlayRegion(uint32_t self, uint32_t start, uint32_t length) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     voice->play_start = start;
     voice->play_length = length;
@@ -592,7 +600,7 @@ HRESULT32 __stdcall BufferSetPlayRegion(uint32_t self, uint32_t start, uint32_t 
 }
 
 HRESULT32 __stdcall BufferSetLoopRegion(uint32_t self, uint32_t start, uint32_t length) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     voice->loop_start = start;
     voice->loop_length = length;
@@ -600,7 +608,7 @@ HRESULT32 __stdcall BufferSetLoopRegion(uint32_t self, uint32_t start, uint32_t 
 }
 
 HRESULT32 __stdcall BufferGetStatus(uint32_t self, uint32_t* status) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     const Voice* voice = voice_of(self);
     *status = (voice->playing ? kStatusPlaying : 0) | (voice->playing && voice->looping ? kStatusLooping : 0) |
               (voice->paused ? kStatusPaused : 0);
@@ -616,7 +624,7 @@ uint32_t write_cursor_of(const Voice& voice, uint32_t play) {
 }
 
 HRESULT32 __stdcall BufferGetCurrentPosition(uint32_t self, uint32_t* play_cursor, uint32_t* write_cursor) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     const Voice* voice = voice_of(self);
     const uint32_t play = buffer_play_cursor(*voice);
     if (play_cursor) *play_cursor = play;
@@ -625,7 +633,7 @@ HRESULT32 __stdcall BufferGetCurrentPosition(uint32_t self, uint32_t* play_curso
 }
 
 HRESULT32 __stdcall BufferSetCurrentPosition(uint32_t self, uint32_t offset) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     voice->position = offset > voice->play_start ? bytes_to_frames(*voice, offset - voice->play_start) : 0;
     return kOk;
@@ -633,7 +641,7 @@ HRESULT32 __stdcall BufferSetCurrentPosition(uint32_t self, uint32_t offset) {
 
 HRESULT32 __stdcall BufferLock(uint32_t self, uint32_t offset, uint32_t bytes, uint32_t* pointer1, uint32_t* bytes1,
                                uint32_t* pointer2, uint32_t* bytes2, uint32_t flags) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     if (!voice->data || voice->size == 0) return kInvalidCall;
     if (flags & kLockEntireBuffer) bytes = voice->size;
@@ -656,7 +664,7 @@ HRESULT32 __stdcall BufferLock(uint32_t self, uint32_t offset, uint32_t bytes, u
 HRESULT32 __stdcall BufferUnlock(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) { return kOk; }
 
 HRESULT32 __stdcall BufferSetBufferData(uint32_t self, uint32_t data, uint32_t bytes) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     static uint32_t logged = 0;
     if (logged++ < 30) {
@@ -691,7 +699,7 @@ HRESULT32 __stdcall BufferSetBufferData(uint32_t self, uint32_t data, uint32_t b
 // --- streams: exported functions ---
 
 HRESULT32 __stdcall StreamPause(uint32_t self, uint32_t pause) {
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     voice_of(self)->paused = pause != 0;
     restart_stream(*voice_of(self));
     return kOk;
@@ -701,7 +709,7 @@ HRESULT32 __stdcall StreamPause(uint32_t self, uint32_t pause) {
 // after the release; from then on the stream hands packets back unplayed (see Voice::stopped_by_flush).
 HRESULT32 __stdcall StreamFlushEx(uint32_t self, uint32_t, uint32_t, uint32_t flags) {
     if (!(flags & (kFlushExAsync | kFlushExEnvelope))) return StreamFlush(self);
-    std::lock_guard<std::mutex> lock(audio_lock());
+    GameLock lock(audio_lock());
     release_voice(*voice_of(self));
     return kOk;
 }

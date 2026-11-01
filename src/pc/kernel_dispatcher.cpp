@@ -170,6 +170,9 @@ void delay_timers_locked(Clock::duration delay) {
 }
 
 void timer_thread() {
+    // Host threads stay off the game's core: one preempted there while holding g_mutex would leave an interrupt
+    // waiting for it, and other game threads running meanwhile (see GameLock).
+    if (const unsigned long cores = emulation_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
     std::unique_lock<std::mutex> lock(g_mutex);
     for (;;) {
         if (game_paused()) {
@@ -249,6 +252,7 @@ void dpc_thread(XbeTlsTemplate tls) {
 }
 
 void clock_thread() {
+    if (const unsigned long cores = emulation_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
     timeBeginPeriod(1);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
     const ULONGLONG start = GetTickCount64();
@@ -323,7 +327,7 @@ NTSTATUS __stdcall NtCreateSemaphore(uint32_t* handle, const XObjectAttributes* 
 NTSTATUS __stdcall NtReleaseSemaphore(uint32_t handle, int32_t release_count, int32_t* previous_count) {
     const uint32_t object = object_from_handle(handle);
     if (!object) return kStatusInvalidHandle;
-    std::lock_guard<std::mutex> lock(g_mutex);
+    GameLock lock(g_mutex);
     XKSemaphore* semaphore = guest<XKSemaphore>(object);
     if (previous_count) *previous_count = semaphore->header.signal_state;
     if (release_count <= 0 || semaphore->header.signal_state + release_count > semaphore->limit) {
@@ -344,7 +348,7 @@ NTSTATUS __stdcall NtCreateMutant(uint32_t* handle, const XObjectAttributes* /*a
 NTSTATUS __stdcall NtReleaseMutant(uint32_t handle, int32_t* previous_count) {
     const uint32_t object = object_from_handle(handle);
     if (!object) return kStatusInvalidHandle;
-    std::lock_guard<std::mutex> lock(g_mutex);
+    GameLock lock(g_mutex);
     XKMutant* mutant = guest<XKMutant>(object);
     if (previous_count) *previous_count = mutant->header.signal_state;
     if (mutant->owner_thread != kthread_address(current_xbox_thread())) return kStatusMutantNotOwned;
@@ -386,7 +390,7 @@ void __stdcall KeInitializeTimerEx(XKTimer* timer, uint32_t timer_type) {
 }
 
 uint8_t __stdcall KeSetTimerEx(XKTimer* timer, int64_t due_time, int32_t period, uint32_t dpc) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    GameLock lock(g_mutex);
     const uint32_t address = address_of(timer);
     const bool was_inserted = cancel_timer_locked(address);
     timer->header.signal_state = 0;
@@ -400,7 +404,7 @@ uint8_t __stdcall KeSetTimerEx(XKTimer* timer, int64_t due_time, int32_t period,
 uint8_t __stdcall KeSetTimer(XKTimer* timer, int64_t due_time, uint32_t dpc) { return KeSetTimerEx(timer, due_time, 0, dpc); }
 
 uint8_t __stdcall KeCancelTimer(XKTimer* timer) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    GameLock lock(g_mutex);
     return cancel_timer_locked(address_of(timer)) ? 1 : 0;
 }
 
@@ -412,14 +416,14 @@ void __stdcall KeInitializeDpc(XKDpc* dpc, uint32_t routine, uint32_t context) {
 }
 
 uint8_t __stdcall KeInsertQueueDpc(XKDpc* dpc, uint32_t argument1, uint32_t argument2) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    GameLock lock(g_mutex);
     if (dpc->inserted) return 0;
     queue_dpc_locked(address_of(dpc), argument1, argument2);
     return 1;
 }
 
 uint8_t __stdcall KeRemoveQueueDpc(XKDpc* dpc) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    GameLock lock(g_mutex);
     if (!dpc->inserted) return 0;
     for (auto it = g_dpc_queue.begin(); it != g_dpc_queue.end(); ++it) {
         if (*it == address_of(dpc)) {
@@ -501,6 +505,9 @@ void __stdcall RtlInitializeCriticalSection(XCriticalSection* section) {
 }
 
 void __stdcall RtlEnterCriticalSection(XCriticalSection* section) {
+    if (const uint32_t owner = another_thread_at_dispatch()) {
+        profile_exclusion_break("RtlEnterCriticalSection", address_of(_ReturnAddress()), owner);
+    }
     const uint32_t me = kthread_address(current_xbox_thread());
     if (_InterlockedIncrement(reinterpret_cast<volatile long*>(&section->lock_count)) == 0) {
         section->owning_thread = me;
@@ -549,6 +556,9 @@ NTSTATUS wait_unpaused(uint32_t count, const uint32_t* objects, bool wait_all, c
 
 // A paused game's threads stop here, before and after waiting: no host lock is held at either point.
 NTSTATUS wait_for_objects(uint32_t count, const uint32_t* objects, bool wait_all, const int64_t* timeout) {
+    if (const uint32_t owner = another_thread_at_dispatch()) {
+        profile_exclusion_break("wait", address_of(_ReturnAddress()), owner);
+    }
     game_pause_point();
     NTSTATUS status;
     {
@@ -568,7 +578,8 @@ NTSTATUS wait_unpaused(uint32_t count, const uint32_t* objects, bool wait_all, c
     const Clock::time_point started = Clock::now();
     bool reported = false;
 
-    std::unique_lock<std::mutex> lock(g_mutex);
+    GameLock guard(g_mutex);
+    std::unique_lock<std::mutex>& lock = guard.get();
     for (;;) {
         if (wait_all) {
             bool all = true;
@@ -626,7 +637,7 @@ bool trigger_interrupt(uint32_t bus_interrupt_level) {
 }
 
 int32_t set_event(uint32_t event) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    GameLock lock(g_mutex);
     XDispatcherHeader* header = header_of(event);
     const int32_t previous = header->signal_state;
     header->signal_state = 1;
@@ -636,7 +647,7 @@ int32_t set_event(uint32_t event) {
 }
 
 void signal_thread_object(uint32_t kthread) {
-    std::lock_guard<std::mutex> lock(g_mutex);
+    GameLock lock(g_mutex);
     header_of(kthread)->signal_state = 1;
     g_object_changed.notify_all();
 }

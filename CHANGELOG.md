@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.2.3 (2026-11-01)
+
+### Improved
+
+- The zip and the installer now contain `README.txt`, a short guide to what you need, the first start, where your
+  files are and what to do if something goes wrong, and `CHANGELOG.md`. The installer offers to open `README.txt`
+  at the end.
+- The README's requirements say what is and is not needed (nothing to install besides Windows 10 or 11; Windows N
+  editions need the Media Feature Pack; an audio device is optional) and a troubleshooting section covers the
+  common cases.
+- When `mc3runtime.dll` does not load, the message gives Windows' error and the likely causes (a missing Windows
+  component, a quarantined file) instead of only saying where the file must be.
+- The log starts with what a report needs: mc3port's version, Windows' version and build, processor, memory, and
+  every graphics adapter with its video memory and driver version. A crash names the module it happened in (or the
+  game's code), not only the address. A graphics resource the driver refuses to create is logged with what was
+  asked for, where before it failed silently.
+- The zip now contains a folder `mc3port` instead of loose files; the folder has the same name in every version,
+  so a new zip extracted in the same place updates the old one.
+- Cleaner sound when many sounds play at once, as in the city: the level comes down smoothly just before a peak
+  instead of each peak being rounded off, which made the sound harsh and crackly; the overall level is a little
+  lower, so this happens less often.
+
+### Fixed
+
+- The likely cause of a crash at random moments in the city during the career, inside the game's sound engine. On
+  the Xbox's single processor no other part of the game runs while the system is in the middle of certain work
+  (interrupts, sound updates); the port now keeps that rule even when Windows would switch to another part of the
+  game meanwhile.
+- MC3 parks its notification box just off the left edge, where a television hid it: its last pixels stayed on
+  screen. Like a TV, the outermost edge of the picture (1/80 of each side) is no longer shown.
+- The Motion blur setting now also covers the blur MC3 adds at high speed, the streaks across the picture and
+  from the street lights: at 0 they are gone, where before they stayed whatever the setting.
+- Linux with Wine or Proton is still unsupported, but two known reasons for failing there are gone. Without an
+  audio output device the launcher closed at once (Wine's XAudio2 crashes where Windows' reports an error): the
+  port now checks for an output device first and runs silent without one. Wine reports four privileged
+  instructions (wbinvd, invd, rdmsr, wrmsr) as a memory fault, which the port now recognises and emulates as on
+  Windows. The log says when the program runs under Wine, with the Wine and host versions.
+
 ## 0.2.2 (2026-10-27)
 
 ### New

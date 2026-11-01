@@ -28,6 +28,7 @@ struct ThreadProfile {
     char name[32] = {};
     bool game_core = false;
     HANDLE handle = nullptr;
+    DWORD id = 0;
     std::atomic<uint64_t> ticks[kKinds] = {};
     uint64_t last_cpu = 0, last_kernel = 0;  // 100 ns units, at the last log
 };
@@ -42,7 +43,19 @@ const bool g_detailed = GetEnvironmentVariableW(L"MC3_PROFILE", nullptr, 0) != 0
 uint32_t g_frames = 0;
 uint32_t g_blanks[5] = {};  // frames that took 1, 2, 3, 4, 5 or more blanks
 
-std::atomic<uint32_t> g_register_accesses{0}, g_privileged{0};
+std::atomic<uint32_t> g_register_accesses{0}, g_privileged{0}, g_exclusion_breaks{0};
+std::mutex g_breaks_mutex;
+std::unordered_map<std::string, uint32_t> g_breaks;  // "site@caller" -> count, since the last log
+
+std::string thread_name(DWORD id) {
+    std::lock_guard<std::mutex> lock(g_threads_mutex);
+    for (const ThreadProfile* profile : g_threads) {
+        if (profile->id == id) return profile->name;
+    }
+    char text[16];
+    std::snprintf(text, sizeof(text), "%lu", id);
+    return text;
+}
 std::mutex g_registers_mutex;
 std::unordered_map<uint64_t, uint32_t> g_registers;  // offset << 32 | game code address -> accesses (MC3_PROFILE=1)
 
@@ -79,6 +92,7 @@ void profile_name_thread(bool game_core, const char* format, ...) {
         auto* profile = new ThreadProfile{};
         DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &profile->handle, 0, FALSE,
                         DUPLICATE_SAME_ACCESS);
+        profile->id = GetCurrentThreadId();
         std::tie(profile->last_cpu, profile->last_kernel) = cpu_time(profile->handle);
         g_threads.push_back(profile);
         t_profile = profile;
@@ -110,6 +124,22 @@ void profile_register_access(uint32_t offset, uint32_t eip) {
 }
 
 void profile_privileged_instruction() { g_privileged.fetch_add(1, std::memory_order_relaxed); }
+
+void profile_exclusion_break(const char* site, uint32_t caller, uint32_t owner) {
+    static std::atomic<uint32_t> total{0};
+    const uint32_t count = total.fetch_add(1, std::memory_order_relaxed);
+    g_exclusion_breaks.fetch_add(1, std::memory_order_relaxed);
+    char key[96];
+    std::snprintf(key, sizeof(key), "%s@%08X(%s)", site, caller, thread_name(owner).c_str());
+    {
+        std::lock_guard<std::mutex> lock(g_breaks_mutex);
+        ++g_breaks[key];
+    }
+    if (count < 12) {
+        log_line("profile: %s ran %s while that thread was at DISPATCH_LEVEL", thread_name(GetCurrentThreadId()).c_str(),
+                 key);
+    }
+}
 
 void profile_log_if_due() {
     static ULONGLONG since = 0;
@@ -146,11 +176,24 @@ void profile_log_if_due() {
         if (row.name == "gpu") gpu = row.cpu;
     }
     const uint32_t frames = std::max<uint32_t>(g_frames, 1);
+    const uint32_t breaks = g_exclusion_breaks.exchange(0);
     log_line("profile: %.1f game fps, blanks per frame at %d Hz: 1 %u%%, 2 %u%%, 3 %u%%, 4 %u%%, 5+ %u%%; "
-             "game core %.0f%% busy, GPU thread %.0f%% busy",
+             "game core %.0f%% busy, GPU thread %.0f%% busy; %u runs during another thread's DISPATCH_LEVEL",
              g_frames / seconds, nv2a_vblank_hz(), g_blanks[0] * 100 / frames, g_blanks[1] * 100 / frames,
              g_blanks[2] * 100 / frames, g_blanks[3] * 100 / frames, g_blanks[4] * 100 / frames, game_core / 10.0,
-             gpu / 10.0);
+             gpu / 10.0, breaks);
+    if (breaks) {
+        std::vector<std::pair<std::string, uint32_t>> sites;
+        {
+            std::lock_guard<std::mutex> lock(g_breaks_mutex);
+            sites.assign(g_breaks.begin(), g_breaks.end());
+            g_breaks.clear();
+        }
+        std::sort(sites.begin(), sites.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+        std::string text;
+        for (size_t i = 0; i < sites.size() && i < 8; ++i) text += " " + sites[i].first + " x" + std::to_string(sites[i].second);
+        log_line("profile:   where:%s", text.c_str());
+    }
     g_frames = 0;
     std::fill(std::begin(g_blanks), std::end(g_blanks), 0u);
     const uint32_t accesses = g_register_accesses.exchange(0), privileged = g_privileged.exchange(0);

@@ -46,12 +46,17 @@ Compared with the console:
 
 ## Requirements
 
-- Windows 10 or 11, 64-bit.
-- A graphics card with Direct3D 11.
-- A disc image (`.iso`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
+- **Windows 10 or 11, 64-bit.** Nothing else to install: the Visual C++ runtime is built in, and Direct3D 11,
+  XAudio2 and the shader compiler are part of Windows 10 and 11. Windows **N** editions only: install the Media
+  Feature Pack (Settings, Apps, Optional features), or `mc3runtime.dll` will not load.
+- **A graphics card and driver with Direct3D 11** (feature level 11_0). The processor counts more than the
+  graphics card: see [Performance](#performance).
+- **A disc image** (`.iso`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
   XISO and full Redump dumps both work. Other releases (for example the North American one) are not supported yet:
   mc3port checks the game's executable (`default.xbe`, SHA-256 `29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09`)
   and tells you if the disc is a different version.
+- Optional: an Xbox controller (see [Controls](#controls)); an internet connection, only for the update check (it
+  can be switched off in Settings). An audio output device is not required: without one the game runs silent.
 
 ## Installing
 
@@ -63,8 +68,12 @@ administrator rights), adds Start menu and desktop shortcuts, and can be removed
 new version comes out, the launcher offers to update: it downloads the new installer, checks its SHA-256 and installs
 it, then reopens the game.
 
-**Portable**: download `mc3port-<version>-windows-x86.zip`, extract it into a folder of your choice and start
-`mc3.exe`. To update, extract the new version over the old one.
+**Portable**: download `mc3port-<version>-windows-x86.zip` and extract it where you like: it contains a folder
+`mc3port`, and `mc3.exe` inside it starts the game. To update, extract the new version in the same place, replacing
+the files.
+
+Both packages contain `README.txt`, a short guide to what you need, the first start and where your files are, and
+`CHANGELOG.md`, what changed in each version.
 
 To check a download, compare its SHA-256 with the `SHA256SUMS` file of the release. The files are not code signed,
 so Windows SmartScreen may ask once whether you trust them ("More info", then "Run anyway").
@@ -75,9 +84,10 @@ named `portable.txt` there.
 
 ## First start
 
-The launcher opens and asks for your disc image. Choose the `.iso` file: mc3port checks it and remembers where it is.
-Then pick a quality preset, the aspect ratio and the frame rate, and press **PLAY**. Next time the launcher opens on
-its main page; **PLAY** (or Enter, or A on a controller) starts the game.
+The launcher opens and asks for your disc image. Choose the `.iso` file: mc3port checks it and remembers where it is
+(if you move the file later, choose it again). Then pick a quality preset, the aspect ratio and the frame rate, and
+press **PLAY**. Next time the launcher opens on its main page; **PLAY** (or Enter, or A on a controller) starts the
+game.
 
 ## Controls
 
@@ -127,15 +137,17 @@ the others at once. The main ones:
 | Internal resolution | 1x (640x480) to 4x |
 | Modern effects | glow, sharpening, saturation, contrast, vignette, ambient occlusion, each adjustable |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
-| Motion blur | the game's speed blur: 0 off, 1 as strong as on the Xbox; 0.5 by default |
+| Motion blur | the game's speed blur, and at high speed the streaks across the picture and from the street lights: 0 off, 1 as strong as on the Xbox; 0.5 by default |
+| Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 
 ## Performance
 
-The game itself is light; most of the work goes into turning the Xbox's graphics commands into Direct3D 11, much
-of it on the graphics card. So far mc3port has been tested on few machines: if the game is not smooth on yours,
-choose the **Balanced** or **Original** preset, or 30 fps, and please report how it runs.
+The game itself is light; most of the work goes into turning the Xbox's graphics commands into Direct3D 11. The
+processor does that, mostly on one thread, while the graphics card has little to do: one fast processor core
+matters more than a powerful graphics card. So far mc3port has been tested on few machines: if the game is not
+smooth on yours, choose 30 fps, or the **Balanced** or **Original** preset, and please report how it runs.
 
 The first time each graphics shader is needed it is compiled in the background (meanwhile the processor does that
 work); the results are kept in the `shader_cache` folder, so later runs start without hitches.
@@ -147,12 +159,29 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
   round dials look slightly oval.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides (full screen on a 16:9 monitor has none).
+- The Xbox sound chip's own effects, such as reverb, are not reproduced (the game loads them, mc3port leaves them
+  out): the sound can be drier than on the console.
+- Linux (Wine, Proton) is not supported. The launcher is known to start under Wine 9; the game itself has not been
+  tested there. The log notes when the program runs under Wine.
 
-## Reporting a problem
+## Troubleshooting
 
-Open the launcher's **About** page and press **Log folder**: attach `mc3port.log` from that folder (normally
-`%LOCALAPPDATA%\mc3port`) to an
-[issue](https://github.com/SickSartori/mc3port/issues), with your Windows version, graphics card and what you were doing.
+- **"Cannot load mc3runtime.dll"**: the file must be next to `mc3.exe`. If it is there, the message's error says what
+  is missing: on Windows N editions install the Media Feature Pack; an antivirus may also have quarantined the file
+  (the SHA-256 in `SHA256SUMS` lets you check it is the original).
+- **The program closes at once, or the game crashes**: open the launcher's **About** page and press **Log folder**;
+  `mc3port.log` says what happened last.
+- **The game is not smooth**: choose 30 fps, or the **Balanced** or **Original** preset, in Settings.
+- **No sound**: the game uses the output device that is the Windows default when it starts.
+- **The sound is quiet**: check Volume in Settings (100 is the loudest), then the Windows volume. The level leaves room
+  for the moments when many sounds play at once, in the city, so that they do not distort.
+- **The disc is refused**: only the European release is supported; the launcher's message says what it found.
+- **The update fails**: download the installer from the [releases page](https://github.com/SickSartori/mc3port/releases)
+  and run it; settings and saves are kept.
+
+To report a problem, open an [issue](https://github.com/SickSartori/mc3port/issues) with your Windows version, your
+graphics card, what you were doing and `mc3port.log` attached (normally in `%LOCALAPPDATA%\mc3port`; the launcher's
+**About** page opens the folder).
 
 ## Building from source
 
