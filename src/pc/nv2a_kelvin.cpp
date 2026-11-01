@@ -998,6 +998,13 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
             const float y = p.position[1] / p.position[3];
             x0 = std::min(x0, x), y0 = std::min(y0, y), x1 = std::max(x1, x), y1 = std::max(y1, y);
         }
+        // MC3_DEBUG_FULLSCREEN=1: only draws across (nearly) the whole surface, the post-processing passes, so that
+        // the window can last long enough to catch a moment without knowing exactly when it comes.
+        static const bool fullscreen_only = GetEnvironmentVariableA("MC3_DEBUG_FULLSCREEN", nullptr, 0) != 0;
+        if (fullscreen_only && (x1 - x0) < 0.8f * static_cast<float>(target.width)) return;
+        // MC3_DEBUG_ADDITIVE=1: only draws that add light (blended with a destination factor of ONE).
+        static const bool additive_only = GetEnvironmentVariableA("MC3_DEBUG_ADDITIVE", nullptr, 0) != 0;
+        if (additive_only && !(d.blend_enable && d.blend_destination == 1)) return;
         log_line("frame rect %llu: %.0f %.0f %.0f %.0f uv %.3f %.3f %.3f %.3f texmatrix %d texgen %X address %08X "
                  "filter %08X",
                  static_cast<unsigned long long>(g_draws), x0, y0, x1, y1, u0, v0, u1, v1,
