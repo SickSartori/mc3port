@@ -5,6 +5,9 @@
 #   dist/mc3port-<version>-windows-x86-setup.exe  (installer, with Inno Setup 6.6+; skipped if it is missing)
 #   dist/SHA256SUMS
 # The version comes from project(... VERSION ...) in CMakeLists.txt. No game file can end up in the package.
+# PowerShell 7 (pwsh), as in the workflow: Windows PowerShell 5's Compress-Archive writes backslashes in the zip's
+# paths, which Linux's unzip and other tools read wrongly.
+#Requires -Version 7
 param([switch]$SkipBuild)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
