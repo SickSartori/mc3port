@@ -2122,7 +2122,7 @@ void Launcher::page_exit() {
     lead(t.exit_lead);
     if (big_button(t.exit_now, "##exit", false)) {
         log_line("game menu: exit");
-        ExitProcess(0);
+        end_process(0);
     }
 }
 

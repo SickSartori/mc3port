@@ -76,7 +76,7 @@ MainThreadStart g_main_thread_start;
     if (!GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0)) {
         MessageBoxA(nullptr, message, "mc3port", MB_ICONERROR | MB_OK);
     }
-    ExitProcess(1);
+    end_process(1);
 }
 
 HostImage host_image() {

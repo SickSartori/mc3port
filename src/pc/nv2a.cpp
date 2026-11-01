@@ -729,7 +729,7 @@ LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam, LPAR
     }
     if (message == WM_CLOSE) {
         log_line("window closed by the user");
-        ExitProcess(0);
+        end_process(0);
     }
     const bool alt_enter = message == WM_SYSKEYDOWN && wparam == VK_RETURN && (lparam & (1 << 29));
     if (alt_enter || (message == WM_KEYDOWN && wparam == VK_F11)) {

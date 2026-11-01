@@ -1,5 +1,7 @@
 #include "pc/log.h"
 
+#include <windows.h>
+
 #include <cstdarg>
 #include <cstdio>
 #include <mutex>
@@ -30,6 +32,11 @@ void log_line(const char* format, ...) {
         std::fprintf(g_file, "%s\n", line);
         std::fflush(g_file);
     }
+}
+
+void end_process(unsigned code) {
+    TerminateProcess(GetCurrentProcess(), code);
+    for (;;) Sleep(INFINITE);  // TerminateProcess does not return for the current process
 }
 
 }  // namespace mc3::pc
