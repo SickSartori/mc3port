@@ -137,7 +137,8 @@ the others at once. The main ones:
 | Internal resolution | 1x (640x480) to 4x |
 | Modern effects | glow, sharpening, saturation, contrast, vignette, ambient occlusion, each adjustable |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
-| Motion blur | the game's speed blur: 0 off, 1 as strong as on the Xbox; 0.5 by default |
+| Motion blur | the game's speed blur, and at high speed the streaks across the picture and from the street lights: 0 off, 1 as strong as on the Xbox; 0.5 by default |
+| Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 
@@ -158,6 +159,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
   round dials look slightly oval.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides (full screen on a 16:9 monitor has none).
+- The Xbox sound chip's own effects, such as reverb, are not reproduced (the game loads them, mc3port leaves them
+  out): the sound can be drier than on the console.
 - Linux (Wine, Proton) is not supported. The launcher is known to start under Wine 9; the game itself has not been
   tested there. The log notes when the program runs under Wine.
 
@@ -170,6 +173,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
   `mc3port.log` says what happened last.
 - **The game is not smooth**: choose 30 fps, or the **Balanced** or **Original** preset, in Settings.
 - **No sound**: the game uses the output device that is the Windows default when it starts.
+- **The sound is quiet**: check Volume in Settings (100 is the loudest), then the Windows volume. The level leaves room
+  for the moments when many sounds play at once, in the city, so that they do not distort.
 - **The disc is refused**: only the European release is supported; the launcher's message says what it found.
 - **The update fails**: download the installer from the [releases page](https://github.com/SickSartori/mc3port/releases)
   and run it; settings and saves are kept.

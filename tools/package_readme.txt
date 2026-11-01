@@ -120,6 +120,8 @@ IF SOMETHING GOES WRONG
   mc3port has been tested on few machines so far.
 - No sound: the output device that is the Windows default when the game
   starts is the one used.
+- The sound is quiet: check Volume in Settings (100 is the loudest), then
+  the Windows volume. The level leaves room for many sounds at once.
 - The disc is refused: only the European release is supported; the
   launcher's message says what it found.
 
@@ -136,6 +138,7 @@ KNOWN ISSUES
   screen, as it did on a widescreen TV.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides.
+- The Xbox sound chip's own effects, such as reverb, are not reproduced.
 - Linux (Wine, Proton) is not supported.
 
 
