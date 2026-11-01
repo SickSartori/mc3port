@@ -49,8 +49,8 @@ Compared with the console:
 - **Windows 10 or 11, 64-bit.** Nothing else to install: the Visual C++ runtime is built in, and Direct3D 11,
   XAudio2 and the shader compiler are part of Windows 10 and 11. Windows **N** editions only: install the Media
   Feature Pack (Settings, Apps, Optional features), or `mc3runtime.dll` will not load.
-- **A graphics card and driver with Direct3D 11** (feature level 11_0). Most of the work is on the graphics card:
-  see [Performance](#performance).
+- **A graphics card and driver with Direct3D 11** (feature level 11_0). The processor counts more than the
+  graphics card: see [Performance](#performance).
 - **A disc image** (`.iso`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
   XISO and full Redump dumps both work. Other releases (for example the North American one) are not supported yet:
   mc3port checks the game's executable (`default.xbe`, SHA-256 `29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09`)
@@ -143,9 +143,10 @@ the others at once. The main ones:
 
 ## Performance
 
-The game itself is light; most of the work goes into turning the Xbox's graphics commands into Direct3D 11, much
-of it on the graphics card. So far mc3port has been tested on few machines: if the game is not smooth on yours,
-choose the **Balanced** or **Original** preset, or 30 fps, and please report how it runs.
+The game itself is light; most of the work goes into turning the Xbox's graphics commands into Direct3D 11. The
+processor does that, mostly on one thread, while the graphics card has little to do: one fast processor core
+matters more than a powerful graphics card. So far mc3port has been tested on few machines: if the game is not
+smooth on yours, choose 30 fps, or the **Balanced** or **Original** preset, and please report how it runs.
 
 The first time each graphics shader is needed it is compiled in the background (meanwhile the processor does that
 work); the results are kept in the `shader_cache` folder, so later runs start without hitches.
@@ -167,7 +168,7 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
   (the SHA-256 in `SHA256SUMS` lets you check it is the original).
 - **The program closes at once, or the game crashes**: open the launcher's **About** page and press **Log folder**;
   `mc3port.log` says what happened last.
-- **The game is not smooth**: choose the **Balanced** or **Original** preset, or 30 fps, in Settings.
+- **The game is not smooth**: choose 30 fps, or the **Balanced** or **Original** preset, in Settings.
 - **No sound**: the game uses the output device that is the Windows default when it starts.
 - **The disc is refused**: only the European release is supported; the launcher's message says what it found.
 - **The update fails**: download the installer from the [releases page](https://github.com/SickSartori/mc3port/releases)
