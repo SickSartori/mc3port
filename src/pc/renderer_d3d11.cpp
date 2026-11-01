@@ -20,6 +20,7 @@
 #include <thread>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "pc/log.h"
 #include "pc/paths.h"
@@ -702,6 +703,8 @@ ComPtr<ID3D11BlendState> g_multiply_blend;  // destination colour times the sour
 std::atomic<bool> g_effects_enabled{true};  // F10
 std::atomic<RendererOverlay> g_overlay{nullptr};  // renderer_set_overlay
 uint32_t g_blur_surface = 0;  // the surface a draw read while drawing into it: MC3's motion blur buffer
+std::unordered_set<uint32_t> g_shown_surfaces;  // surfaces renderer_present has shown (the frame buffers)
+std::unordered_set<uint32_t> g_frame_copies;    // surfaces drawn from a shown one: the speed blur's buffer
 
 // Per depth buffer, since its last clear (the start of a scene; presents do not line up with scenes): 3D drawn,
 // occlusion applied.
@@ -1719,6 +1722,18 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
         state.blend_destination == 1 && state.textures[0].enabled && state.textures[0].descriptor.address == g_blur_surface) {
         constants_data.alpha_reference[1] = 1 - std::clamp(setting("motion_blur"), 0.0f, 1.0f);
     }
+    // The speed blur at high speed is made another way: the shown frame is shrunk into a surface, blended there with
+    // slightly enlarged copies of itself (the streaks), and laid back over the frame by its alpha (SRC_ALPHA,
+    // INV_SRC_ALPHA). The lights' streaks go through the same surface: their halos are drawn into it, stretched the
+    // same way and added to the frame (SRC_ALPHA, ONE). The same setting scales the alpha of both.
+    const bool reads_frame = state.textures[0].enabled && g_shown_surfaces.count(state.textures[0].descriptor.address);
+    const bool draws_frame = g_shown_surfaces.count(surface.color_address) != 0;
+    if (reads_frame && !draws_frame) g_frame_copies.insert(surface.color_address);
+    if (draws_frame && state.blend_enable && state.blend_source == 0x302 &&
+        (state.blend_destination == 0x303 || state.blend_destination == 1) && state.textures[0].enabled &&
+        g_frame_copies.count(state.textures[0].descriptor.address)) {
+        constants_data.alpha_reference[2] = 1 - std::clamp(setting("motion_blur"), 0.0f, 1.0f);
+    }
     g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
     ID3D11Buffer* constants = g_constants.Get();
     g_context->PSSetConstantBuffers(0, 1, &constants);
@@ -2087,13 +2102,19 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     ID3D11ShaderResourceView* frame_view = nullptr;
     const auto target = g_targets.find(address);
     if (target != g_targets.end()) {
+        g_shown_surfaces.insert(address);
         frame = target->second.texture.Get();
         frame_view = target->second.srv.Get();
         // Only the picture's part of a wider surface (widescreen: 720 of 768 pixels), copied out once per present.
+        // Like a television, the outermost pixels are not shown either: games park things there that the TV's
+        // overscan hid (MC3 slides its notification box off to the left and leaves its last 3 pixels on screen).
+        // 1/80 of each side, the same share across and down so the picture keeps its shape.
         D3D11_TEXTURE2D_DESC desc{};
         frame->GetDesc(&desc);
-        const uint32_t visible_width = width * g_scale, visible_height = std::min(height * g_scale, desc.Height);
-        if (visible_width < desc.Width) {
+        const uint32_t full_height = std::min(height * g_scale, desc.Height);
+        const uint32_t crop_x = width * g_scale / 80, crop_y = full_height / 80;
+        const uint32_t visible_width = width * g_scale - 2 * crop_x, visible_height = full_height - 2 * crop_y;
+        {
             static ComPtr<ID3D11Texture2D> visible;
             static ComPtr<ID3D11ShaderResourceView> visible_view;
             D3D11_TEXTURE2D_DESC visible_desc{};
@@ -2113,7 +2134,7 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
                 }
             }
             if (visible_view) {
-                const D3D11_BOX box{0, 0, 0, visible_width, visible_height, 1};
+                const D3D11_BOX box{crop_x, crop_y, 0, crop_x + visible_width, crop_y + visible_height, 1};
                 g_context->CopySubresourceRegion(visible.Get(), 0, 0, 0, 0, frame, 0, &box);
                 frame = visible.Get();
                 frame_view = visible_view.Get();

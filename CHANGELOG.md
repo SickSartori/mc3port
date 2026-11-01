@@ -28,6 +28,10 @@
   the Xbox's single processor no other part of the game runs while the system is in the middle of certain work
   (interrupts, sound updates); the port now keeps that rule even when Windows would switch to another part of the
   game meanwhile.
+- MC3 parks its notification box just off the left edge, where a television hid it: its last pixels stayed on
+  screen. Like a TV, the outermost edge of the picture (1/80 of each side) is no longer shown.
+- The Motion blur setting now also covers the blur MC3 adds at high speed, the streaks across the picture and
+  from the street lights: at 0 they are gone, where before they stayed whatever the setting.
 - Linux with Wine or Proton is still unsupported, but two known reasons for failing there are gone. Without an
   audio output device the launcher closed at once (Wine's XAudio2 crashes where Windows' reports an error): the
   port now checks for an output device first and runs silent without one. Wine reports four privileged
