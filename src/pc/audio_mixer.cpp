@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <iterator>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -46,9 +47,63 @@ struct MixStatistics {
     float peak = 0;
     uint32_t most_voices = 0;
     uint32_t completed_packets = 0;
-    uint32_t limited_samples = 0;  // softened by the limiter
+    uint32_t limited_samples = 0;  // frames the limiter turned down
 };
 MixStatistics g_statistics;
+
+// Look-ahead limiter. The mix of many voices often goes past full scale while driving; clipping each sample (even
+// softly) bends the waveform and sounds harsh. Instead the output is delayed by kLookAhead frames, and the gain
+// comes down smoothly over that time to just what the coming peak needs, then recovers over kRelease: only the
+// level moves, the waveform stays intact. Output thread only.
+class Limiter {
+public:
+    Limiter() {
+        std::fill(std::begin(required_), std::end(required_), 1.0f);
+        std::fill(std::begin(window_), std::end(window_), 1.0f);
+    }
+
+    // Returns how many frames were turned down.
+    uint32_t process(float* samples, uint32_t frames) {
+        uint32_t limited = 0;
+        for (uint32_t n = 0; n < frames; ++n) {
+            float* frame = samples + n * 2;
+            // The gain this frame needs to stay under the ceiling, and the lowest one over the last kWindow frames
+            // (this one back to the one about to go out).
+            const float magnitude = std::max(std::abs(frame[0]), std::abs(frame[1]));
+            required_[cursor_] = magnitude > kCeiling ? kCeiling / magnitude : 1.0f;
+            float lowest = 1.0f;
+            for (const float gain : required_) lowest = std::min(lowest, gain);
+            // A moving average of those minimums: each of them covers the outgoing frame, so the average never asks
+            // for more than that frame allows, and it has no steps.
+            sum_ += lowest - window_[cursor_];
+            window_[cursor_] = lowest;
+            cursor_ = (cursor_ + 1) % kWindow;
+            const float attack = static_cast<float>(sum_ / kWindow);
+            gain_ = attack < gain_ ? attack : std::min(attack, gain_ + (1.0f - gain_) * kRelease);
+            // Out goes the frame from kLookAhead frames ago.
+            float* delayed = delay_[delay_cursor_];
+            const float left = delayed[0], right = delayed[1];
+            delayed[0] = frame[0];
+            delayed[1] = frame[1];
+            delay_cursor_ = (delay_cursor_ + 1) % kLookAhead;
+            frame[0] = std::clamp(left * gain_, -1.0f, 1.0f);
+            frame[1] = std::clamp(right * gain_, -1.0f, 1.0f);
+            if (gain_ < 0.99f) ++limited;
+        }
+        return limited;
+    }
+
+private:
+    static constexpr uint32_t kLookAhead = kOutputRate / 500;  // 2 ms
+    static constexpr uint32_t kWindow = kLookAhead + 1;
+    static constexpr float kCeiling = 0.9f;
+    static inline const float kRelease = 1.0f - std::exp(-1.0f / (0.15f * kOutputRate));  // 150 ms
+    float required_[kWindow], window_[kWindow], delay_[kLookAhead][2] = {};
+    double sum_ = kWindow;  // double: a running sum in float would drift over hours
+    float gain_ = 1;
+    uint32_t cursor_ = 0, delay_cursor_ = 0;
+};
+Limiter g_limiter;
 
 // --- Xbox ADPCM (IMA ADPCM, 36-byte blocks per channel, 64 samples per block) ---
 
@@ -371,31 +426,22 @@ void mix(float* out, uint32_t frames) {
         }
         if (voice->envelope_stage == EnvelopeStage::kDone) finish_release(*voice);
     }
-    // Master level (the Xbox keeps headroom too), then a soft limiter instead of hard clipping: linear up to 0.8,
-    // a smooth knee above, so many voices at once round off instead of crackling.
-    constexpr float kKnee = 0.8f;
-    // 0.4 at full volume: 0.5 still kept the limiter busy while driving. Read every chunk: the in-game menu changes it.
-    const float master_gain = 0.4f * std::clamp(setting("volume"), 0.0f, 100.0f) / 100.0f;
+    // Master level (the Xbox keeps headroom too), then the look-ahead limiter (Limiter) for the moments when many
+    // voices add up past full scale.
+    // 0.3 at full volume: at 0.4 the limiter was turning the sound down three quarters of the time while driving.
+    // Read every chunk: the in-game menu changes it.
+    const float master_gain = 0.3f * std::clamp(setting("volume"), 0.0f, 100.0f) / 100.0f;
+    for (uint32_t i = 0; i < frames * 2; ++i) out[i] *= master_gain;
+    g_statistics.limited_samples += g_limiter.process(out, frames);
     float peak = 0;
-    uint32_t limited = 0;
-    for (uint32_t i = 0; i < frames * 2; ++i) {
-        float x = out[i] * master_gain;
-        const float magnitude = std::abs(x);
-        if (magnitude > kKnee) {
-            x = std::copysign(kKnee + (1.0f - kKnee) * std::tanh((magnitude - kKnee) / (1.0f - kKnee)), x);
-            ++limited;
-        }
-        out[i] = x;
-        peak = std::max(peak, std::abs(x));
-    }
-    g_statistics.limited_samples += limited;
+    for (uint32_t i = 0; i < frames * 2; ++i) peak = std::max(peak, std::abs(out[i]));
     MixStatistics& statistics = g_statistics;
     ++statistics.chunks;
     if (peak > 0.001f) ++statistics.audible_chunks;
     statistics.peak = std::max(statistics.peak, peak);
     statistics.most_voices = std::max(statistics.most_voices, active);
     if (statistics.chunks == 1000) {  // every 10 s
-        log_line("audio: last 10 s: %u%% audible, peak %.2f, %u samples limited, up to %u voices, %u stream packets "
+        log_line("audio: last 10 s: %u%% audible, peak %.2f, %u frames turned down, up to %u voices, %u stream packets "
                  "completed, %zu voices",
                  statistics.audible_chunks / 10, statistics.peak, statistics.limited_samples, statistics.most_voices,
                  statistics.completed_packets, g_voices.size());
@@ -487,6 +533,8 @@ private:
 };
 
 void output_thread(HANDLE ready, bool* ok) {
+    // Off the game's core: it takes the voices' lock, which game code holds too (see GameLock).
+    if (const unsigned long cores = emulation_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
     profile_name_thread(false, "audio");
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     IXAudio2* engine = nullptr;

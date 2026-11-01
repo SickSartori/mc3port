@@ -18,6 +18,9 @@
   asked for, where before it failed silently.
 - The zip now contains a folder `mc3port` instead of loose files; the folder has the same name in every version,
   so a new zip extracted in the same place updates the old one.
+- Cleaner sound when many sounds play at once, as in the city: the level comes down smoothly just before a peak
+  instead of each peak being rounded off, which made the sound harsh and crackly; the overall level is a little
+  lower, so this happens less often.
 
 ### Fixed
 
