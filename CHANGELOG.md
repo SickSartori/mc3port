@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Improved
+
+- **Update** no longer installs the new version by itself: the launcher downloads the installer, checks its SHA-256
+  and shows it in Explorer, and you start it. Some antivirus programs took a program that starts a downloaded
+  installer on its own for malware. The installer is saved only once its check passes.
+
 ## 0.2.4 (2026-11-01)
 
 ### New

@@ -65,8 +65,8 @@ Compared with the console:
 **With the installer**: download `mc3port-<version>-windows-x86-setup.exe` from the
 [releases page](https://github.com/SickSartori/mc3port/releases) and run it. It installs for your user only (no
 administrator rights), adds Start menu and desktop shortcuts, and can be removed from Windows' installed apps. When a
-new version comes out, the launcher offers to update: it downloads the new installer, checks its SHA-256 and installs
-it, then reopens the game.
+new version comes out, the launcher offers to update: it downloads the new installer, checks its SHA-256 and shows it
+in Explorer, and you start it.
 
 **Portable**: download `mc3port-<version>-windows-x86.zip` and extract it where you like: it contains a folder
 `mc3port`, and `mc3.exe` inside it starts the game. To update, extract the new version in the same place, replacing
