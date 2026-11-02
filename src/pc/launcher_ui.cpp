@@ -5,7 +5,6 @@
 #include <dxgi1_2.h>
 #include <shellapi.h>
 #include <bcrypt.h>
-#include <urlmon.h>
 #include <winhttp.h>
 #include <wrl/client.h>
 #include <xinput.h>
@@ -101,7 +100,7 @@ const Texts kEnglish = {
     "Open", "Log folder", "For bug reports, attach mc3port.log",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "MIT licence \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
-    "Update", "Downloads, checks and installs it; the game reopens by itself", "Downloading the update...",
+    "Update", "Downloads and checks the installer, then shows it to you to start", "Downloading the update...",
     "The update could not be downloaded or checked",
     "WELCOME", "You need your own copy: a disc image (ISO) of the European Xbox Midnight Club 3: DUB Edition Remix.",
     "NEXT", "QUALITY", "You can change it any time in the settings.", "ALL SET",
@@ -142,7 +141,7 @@ const Texts kItalian = {
     "Per segnalare un problema allega mc3port.log",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenza MIT \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
-    "Aggiorna", "Si scarica, si verifica e si installa; il gioco si riapre da solo", "Scarico l'aggiornamento...",
+    "Aggiorna", "Scarica e verifica l'installer, poi te lo mostra da avviare", "Scarico l'aggiornamento...",
     "Non \xC3\xA8 stato possibile scaricare o verificare l'aggiornamento",
     "BENVENUTO",
     "Per giocare serve la tua copia: l'immagine ISO del disco Xbox europeo di Midnight Club 3: DUB Edition Remix.",
@@ -276,7 +275,7 @@ struct UpdateCheck {
     int state = 0;  // 0 checking, 1 up to date, 2 newer found, 3 failed (shown as nothing)
     std::string version, url;
     std::string setup_url, sums_url;  // the release's installer and SHA256SUMS, if it has them
-    int download = 0;                 // 0 none, 1 downloading, 2 verified (start it), 3 failed
+    int download = 0;                 // 0 none, 1 downloading, 2 verified (show it), 3 failed
     std::filesystem::path setup_file;
 };
 
@@ -303,31 +302,50 @@ std::string json_string(const std::string& json, const char* key) {
     return end == std::string::npos ? std::string() : json.substr(start, end - start);
 }
 
-void check_for_updates(UpdateCheck* check) {
+// A GET over HTTPS. WinHTTP follows redirects, which GitHub's release downloads need. The body only when the answer
+// is 200; *status is the answer, for the log.
+std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* status) {
     std::string body;
+    *status = 0;
+    wchar_t host[256] = {}, path[2048] = {}, query[2048] = {};
+    URL_COMPONENTS parts = {sizeof(parts)};
+    parts.lpszHostName = host;
+    parts.dwHostNameLength = 256;
+    parts.lpszUrlPath = path;
+    parts.dwUrlPathLength = 2048;
+    parts.lpszExtraInfo = query;
+    parts.dwExtraInfoLength = 2048;
+    if (!WinHttpCrackUrl(url.c_str(), 0, 0, &parts) || parts.nScheme != INTERNET_SCHEME_HTTPS) return body;
+    const std::wstring target = std::wstring(path) + query;
     const std::string version = MC3PORT_VERSION;
     const std::wstring agent = L"mc3port/" + std::wstring(version.begin(), version.end());
     HINTERNET session = WinHttpOpen(agent.c_str(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nullptr, nullptr, 0);
-    HINTERNET connection = session ? WinHttpConnect(session, L"api.github.com", INTERNET_DEFAULT_HTTPS_PORT, 0) : nullptr;
-    wchar_t path[128];
-    std::swprintf(path, 128, L"/repos/%hs/releases/latest", kRepository);
-    HINTERNET request = connection ? WinHttpOpenRequest(connection, L"GET", path, nullptr, nullptr, nullptr,
+    HINTERNET connection = session ? WinHttpConnect(session, host, parts.nPort, 0) : nullptr;
+    HINTERNET request = connection ? WinHttpOpenRequest(connection, L"GET", target.c_str(), nullptr, nullptr, nullptr,
                                                         WINHTTP_FLAG_SECURE)
                                    : nullptr;
-    DWORD status = 0, size = sizeof(status);
-    if (request && WinHttpSendRequest(request, L"Accept: application/vnd.github+json\r\n", static_cast<DWORD>(-1),
-                                      nullptr, 0, 0, 0) &&
+    DWORD size = sizeof(*status);
+    if (request && WinHttpSendRequest(request, headers ? headers : WINHTTP_NO_ADDITIONAL_HEADERS,
+                                      headers ? static_cast<DWORD>(-1) : 0, nullptr, 0, 0, 0) &&
         WinHttpReceiveResponse(request, nullptr) &&
-        WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status, &size,
+        WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, status, &size,
                             nullptr) &&
-        status == 200) {
-        char buffer[4096];
+        *status == 200) {
+        char buffer[16384];
         DWORD read = 0;
         while (WinHttpReadData(request, buffer, sizeof(buffer), &read) && read) body.append(buffer, read);
     }
     if (request) WinHttpCloseHandle(request);
     if (connection) WinHttpCloseHandle(connection);
     if (session) WinHttpCloseHandle(session);
+    return body;
+}
+
+void check_for_updates(UpdateCheck* check) {
+    wchar_t latest[160];
+    std::swprintf(latest, 160, L"https://api.github.com/repos/%hs/releases/latest", kRepository);
+    DWORD status = 0;
+    const std::string body = https_get(latest, L"Accept: application/vnd.github+json\r\n", &status);
     const std::string tag = json_string(body, "tag_name"), url = json_string(body, "html_url");
     std::lock_guard<std::mutex> lock(check->mutex);
     if (tag.empty()) {
@@ -349,9 +367,7 @@ void check_for_updates(UpdateCheck* check) {
     log_line("launcher: latest release %s (%s)", tag.c_str(), newer ? "newer" : "not newer");
 }
 
-std::string file_sha256(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    const std::vector<char> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+std::string sha256_hex(const std::string& data) {
     uint8_t digest[32] = {};
     if (data.empty() || BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, reinterpret_cast<PUCHAR>(const_cast<char*>(data.data())),
                                    static_cast<ULONG>(data.size()), digest, sizeof(digest)) != 0) {
@@ -366,7 +382,8 @@ std::string file_sha256(const std::filesystem::path& path) {
     return hex;
 }
 
-// Downloads the release's installer and SHA256SUMS to %TEMP%\mc3port-update and checks the installer's hash.
+// Downloads the release's installer and SHA256SUMS and checks the installer's hash; only a verified installer is
+// saved, to %TEMP%\mc3port-update. The player starts it (see the launcher's loop): mc3port never runs it by itself.
 void download_update(UpdateCheck* check) {
     std::string setup_url, sums_url;
     {
@@ -377,23 +394,35 @@ void download_update(UpdateCheck* check) {
     wchar_t temp[MAX_PATH] = {};
     GetTempPathW(MAX_PATH, temp);
     const std::filesystem::path folder = std::filesystem::path(temp) / "mc3port-update";
-    std::error_code ignored;
-    std::filesystem::create_directories(folder, ignored);
     const std::string name = setup_url.substr(setup_url.rfind('/') + 1);
-    const std::filesystem::path setup = folder / name, sums = folder / "SHA256SUMS";
-    const std::wstring setup_wide(setup_url.begin(), setup_url.end()), sums_wide(sums_url.begin(), sums_url.end());
-    bool good = !sums_url.empty() && SUCCEEDED(URLDownloadToFileW(nullptr, setup_wide.c_str(), setup.c_str(), 0, nullptr)) &&
-                SUCCEEDED(URLDownloadToFileW(nullptr, sums_wide.c_str(), sums.c_str(), 0, nullptr));
-    if (good) {
-        std::ifstream list(sums);
-        const std::string hash = file_sha256(setup);
-        good = false;
-        for (std::string line; std::getline(list, line);) {
-            if (!hash.empty() && line.size() > 66 && line.compare(66, std::string::npos, name) == 0 && line.compare(0, 64, hash) == 0) {
-                good = true;
-            }
+    const std::filesystem::path setup = folder / name;
+    DWORD setup_status = 0, sums_status = 0;
+    const std::string installer = sums_url.empty() ? std::string()
+                                                   : https_get(std::wstring(setup_url.begin(), setup_url.end()), nullptr,
+                                                               &setup_status);
+    const std::string list = installer.empty() ? std::string()
+                                               : https_get(std::wstring(sums_url.begin(), sums_url.end()), nullptr,
+                                                           &sums_status);
+    const std::string hash = sha256_hex(installer);
+    bool good = false;
+    for (size_t start = 0; !hash.empty() && start < list.size();) {
+        size_t end = list.find('\n', start);
+        if (end == std::string::npos) end = list.size();
+        std::string line = list.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.size() > 66 && line.compare(66, std::string::npos, name) == 0 && line.compare(0, 64, hash) == 0) {
+            good = true;
         }
+        start = end + 1;
     }
+    if (good) {
+        std::error_code ignored;
+        std::filesystem::create_directories(folder, ignored);
+        std::ofstream out(setup, std::ios::binary | std::ios::trunc);
+        out.write(installer.data(), static_cast<std::streamsize>(installer.size()));
+        good = static_cast<bool>(out.flush());
+    }
+    if (!good) log_line("launcher: update download: HTTP %lu (installer), %lu (SHA256SUMS)", setup_status, sums_status);
     log_line("launcher: update %s %s", name.c_str(), good ? "downloaded and verified" : "could not be downloaded or verified");
     std::lock_guard<std::mutex> lock(check->mutex);
     check->download = good ? 2 : 3;
@@ -1408,7 +1437,7 @@ void Launcher::page_controls() {
 }
 
 // The update notice: on the first page only when there is a newer version, on About always. An installed copy
-// (the setup's uninstaller next to mc3.exe) updates itself; a portable one opens the release page.
+// (the setup's uninstaller next to mc3.exe) downloads the installer; a portable one opens the release page.
 void Launcher::update_row(bool always) {
     const Texts& t = T();
     int state, download;
@@ -2343,11 +2372,11 @@ std::optional<GameDisc> Launcher::run() {
         upload_art();
         {
             std::lock_guard<std::mutex> lock(updates_.mutex);
-            if (updates_.download == 2) {  // verified: the installer replaces the files and reopens the game
-                updates_.download = 0;
-                ShellExecuteW(nullptr, L"open", updates_.setup_file.c_str(),
-                              L"/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /UPDATE", nullptr, SW_SHOWNORMAL);
-                log_line("launcher: installing the update, closing");
+            if (updates_.download == 2) {  // verified: Explorer shows the installer for the player to start; we close
+                updates_.download = 0;     // so that it can replace our files
+                const std::wstring argument = L"/select,\"" + updates_.setup_file.wstring() + L"\"";
+                ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
+                log_line("launcher: update downloaded, showing the installer, closing");
                 done_ = true;
             }
         }
