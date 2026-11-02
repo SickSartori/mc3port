@@ -11,6 +11,13 @@
   effects, without the blur and the streaks; the default) or Custom, which alone shows every value, in two columns
   that stay on screen. The speed blur and the streaks from street lights are now separate settings, both off by
   default; an untouched 0.5 from earlier versions becomes off.
+- **The HUD keeps its shape in 16:9**: the game drew it with 4:3 sizes stretched to the wider screen, so the radar
+  and the dials were oval. They are round again, in their corners, with the radar's map and icons; texts and the
+  rest of the picture are untouched. `hud_aspect = 0` in `mc3port.ini` brings back the stretched HUD.
+- **Skip the opening films** (Settings, Game; on by default): straight from PLAY to the title screen, without the
+  Rockstar logos and the game's intro.
+- **Restart from the in-game menu**: after changing a setting that applies the next time the game starts
+  (language, frame rate, aspect ratio, resolution, filtering), the menu offers to restart the game at once.
 
 ### Improved
 

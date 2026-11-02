@@ -21,6 +21,7 @@
 #include "pc/keyboard_bindings.h"
 #include "pc/launcher_ui.h"
 #include "pc/log.h"
+#include "pc/settings.h"
 
 namespace mc3::pc {
 namespace {
@@ -125,8 +126,13 @@ void load_xinput() {
 
 void load_script() {
     std::vector<char> value(16384);
-    if (!GetEnvironmentVariableA("MC3_INPUT_SCRIPT", value.data(), static_cast<DWORD>(value.size()))) return;
-    const std::string text = value.data();
+    std::string text;
+    if (GetEnvironmentVariableA("MC3_INPUT_SCRIPT", value.data(), static_cast<DWORD>(value.size()))) {
+        text = value.data();
+    }
+    // skip_intro: the game's intro film ends with A (the logos before it are left out in kernel_io.cpp).
+    if (setting("skip_intro") != 0) text = "@video\\mc3intro.bik+0.5:a" + (text.empty() ? "" : "," + text);
+    if (text.empty()) return;
     size_t start = 0;
     while (start < text.size()) {
         size_t end = text.find(',', start);

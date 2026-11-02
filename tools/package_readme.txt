@@ -154,8 +154,6 @@ KNOWN ISSUES
 ------------
 
 - Only the European release is supported.
-- In 16:9 the game stretches its HUD (radar, speedometer) to the wider
-  screen, as it did on a widescreen TV.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides.
 - The Xbox sound chip's own effects, such as reverb, are not reproduced.

@@ -75,6 +75,7 @@ struct Texts {
     const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint, *tabs_hint, *play_hint;
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
     const char *effects_style, *effects_style_sub, *enhanced, *original_effects, *light_streaks, *custom_effects;
+    const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
 };
 
 const Texts kEnglish = {
@@ -115,6 +116,8 @@ const Texts kEnglish = {
     "Move \xC2\xB7 right: into the page",
     "Effects style", "Original: as on the Xbox. Enhanced: modern picture, no blur or streaks", "Enhanced", "Original",
     "Light streaks", "Custom",
+    "Skip the opening films", "The Rockstar logos and the intro, straight to the title screen",
+    "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
 };
 
 const Texts kItalian = {
@@ -160,6 +163,8 @@ const Texts kItalian = {
     "Croce", "Muovi \xC2\xB7 destra: nella pagina",
     "Stile degli effetti", "Originale: come sull'Xbox. Migliorato: immagine moderna, senza sfocatura n\xC3\xA9 scie",
     "Migliorato", "Originale", "Scie delle luci", "Personalizzato",
+    "Salta i video iniziali", "I loghi Rockstar e l'introduzione, dritto alla schermata del titolo",
+    "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
 };
 
 const Texts& T() {
@@ -1222,6 +1227,34 @@ void Launcher::apply_quality(int preset) {
     set_setting("ambient_occlusion", q.ambient_occlusion);
 }
 
+// In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
+bool restart_pending() {
+    for (const char* key : {"game_language", "frame_rate", "widescreen", "render_scale", "anisotropy"}) {
+        if (setting(key) != setting_at_start(key)) return true;
+    }
+    return false;
+}
+
+// A new mc3.exe, with the same command line, straight into the game (MC3_SKIP_LAUNCHER); it waits for this one to
+// end (MC3_RESTART_FROM, runtime.cpp) before it opens the log, the settings and the saves.
+void restart_game() {
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring command = GetCommandLineW();
+    SetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", L"1");
+    SetEnvironmentVariableW(L"MC3_RESTART_FROM", std::to_wstring(GetCurrentProcessId()).c_str());
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(exe, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+        log_line("game menu: restart failed (error %lu)", GetLastError());
+        return;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    log_line("game menu: restart");
+    end_process(0);
+}
+
 void Launcher::run_disc_dialog() {
     log_line("launcher: opening the file dialog");
     std::filesystem::path chosen;
@@ -1337,6 +1370,11 @@ void Launcher::page_settings() {
         const char* toggle[] = {t.off, t.on};
         int pause = setting("pause_in_background") != 0 ? 1 : 0;
         if (segmented("##background_pause", toggle, 2, &pause)) set_setting("pause_in_background", static_cast<float>(pause));
+        if (!in_game_) {  // the films are already over
+            row(t.skip_intro, t.skip_intro_sub);
+            int skip = setting("skip_intro") != 0 ? 1 : 0;
+            if (segmented("##skip_intro", toggle, 2, &skip)) set_setting("skip_intro", static_cast<float>(skip));
+        }
     } else if (settings_tab_ == 1) {
         row(t.aspect, t.aspect_sub, true);
         const char* aspects[] = {"4:3", "16:9"};
@@ -1436,9 +1474,10 @@ void Launcher::page_settings() {
         if (shown) cursor_ += px(58);
     }
     cursor_ += px(8);
-    if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults")) {
-        for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background", "widescreen",
-                                "fullscreen", "fps_counter", "render_scale",
+    ImVec2 defaults_size;
+    if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults", &defaults_size)) {
+        for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background",
+                                "skip_intro", "widescreen", "fullscreen", "fps_counter", "render_scale",
                                 "anisotropy", "gpu_vertices", "effects", "sharpen", "bloom", "bloom_threshold",
                                 "saturation", "contrast", "vignette", "motion_blur", "light_streaks", "effects_advanced",
                                 "ambient_occlusion", "ambient_occlusion_radius"}) {
@@ -1446,6 +1485,10 @@ void Launcher::page_settings() {
         }
         nv2a_set_full_screen(setting("fullscreen") != 0);
         renderer_set_effects(setting("effects") != 0);
+    }
+    if (in_game_ && restart_pending()) {
+        const ImVec2 at(origin_.x + defaults_size.x + px(14), origin_.y + cursor_);
+        if (small_button(t.restart_now, at, "##restart")) restart_game();
     }
     cursor_ += px(48);
     ImGui::PopStyleVar();
@@ -2232,6 +2275,9 @@ void Launcher::page_paused() {
     if (status(true, summary, setting("effects") != 0 ? t.effects_sub : t.effects, t.edit, "##edit")) {
         page_ = Page::kSettings;
         page_since_ = now_;
+    }
+    if (restart_pending() && status(false, t.restart_needed, t.restart_lead, t.restart_now, "##restart", true)) {
+        restart_game();
     }
     ImGui::SetCursorScreenPos(ImVec2(origin_.x, origin_.y + cursor_));
     if (big_button(t.back_to_game, "##resume", false)) resume();

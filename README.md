@@ -34,7 +34,8 @@ The game's x86 code runs natively on your PC; mc3port replaces the Xbox around i
 
 Compared with the console:
 
-- **True 16:9**: the game's own widescreen mode, with a wider view and no stretching or black bars.
+- **True 16:9**: the game's own widescreen mode, with a wider view and no stretching or black bars, and the HUD
+  kept in shape: round radar and dials.
 - **60 fps**, or 30 like the Xbox.
 - **Higher internal resolution** (from the Xbox's 480p up to 4K, or as many lines as your screen) with anisotropic
   filtering, for smooth edges and sharp textures.
@@ -42,7 +43,7 @@ Compared with the console:
   (F10 switches them on and off to compare).
 - **A launcher** that checks your disc, sets everything up on the first start and holds all the settings.
 - **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
-- **A frame counter**, optional.
+- **A frame counter**, optional, and the opening films skipped (they can be switched back on).
 - **Keyboard support** with rebindable keys, and Xbox controllers for up to four players.
 
 ## Requirements
@@ -148,7 +149,8 @@ In the launcher and the in-game menu:
 
 Everything is in the launcher's **Settings** page, in the game's in-game menu (F1), and in `mc3port.ini` (each key
 is explained there). Language, frame rate, aspect ratio, resolution and filtering apply the next time the game starts;
-the others at once. The main ones:
+the others at once. When you change one of the first in the in-game menu, it offers to restart the game straight
+away (progress since the last save is lost). The main ones:
 
 | Setting | What it does |
 |---|---|
@@ -162,6 +164,8 @@ the others at once. The main ones:
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
+| Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
+| `hud_aspect` (ini only) | in 16:9, the HUD keeps its shape (1, the default) or is stretched as on a widescreen TV (0) |
 
 ## Performance
 
@@ -177,8 +181,6 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 ## Known issues
 
 - Only the European release is supported.
-- In 16:9 the game stretches its HUD (radar, speedometer) to the wider screen, as it did on a widescreen TV:
-  round dials look slightly oval.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides (full screen on a 16:9 monitor has none).
 - The Xbox sound chip's own effects, such as reverb, are not reproduced (the game loads them, mc3port leaves them
