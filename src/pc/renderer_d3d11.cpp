@@ -524,11 +524,14 @@ ComPtr<ID3DBlob> compile(const char* source, size_t size, const char* profile, c
 // Internal resolution: every render target is this many times the game's size in each direction, and drawn
 // scaled (positions arrive relative to the game's size, so only viewports, scissors, clears and copies change).
 // The picture is reduced to the window when presented: smoother edges and sharper detail (setting render_scale,
-// read when the renderer starts).
-uint32_t g_scale = 1;
+// read when the renderer starts). It need not be whole: 1080 lines are 2.25 times the game's 480. Texture sizes,
+// scissors and copies round with scaled(), the same everywhere, so that a colour and a depth target of the same
+// game size always match; viewports keep the exact value.
+float g_scale = 1;
 
-LONG scaled(uint32_t pixels) { return static_cast<LONG>(pixels * g_scale); }
-float scaled_float(uint32_t pixels) { return static_cast<float>(pixels * g_scale); }
+LONG scaled(uint32_t pixels) { return std::lround(static_cast<float>(pixels) * g_scale); }
+uint32_t scaled_size(uint32_t pixels) { return static_cast<uint32_t>(scaled(pixels)); }
+float scaled_float(uint32_t pixels) { return static_cast<float>(pixels) * g_scale; }
 
 // A failed creation used to pass silently and leave a hole in the picture; the log now says what was asked for,
 // since a driver may refuse a format or a size that others accept. A few lines are enough: the first ones tell.
@@ -560,8 +563,8 @@ Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     width = std::max(width, target.width);
     height = std::max(height, target.height);
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = width * g_scale;
-    desc.Height = height * g_scale;
+    desc.Width = scaled_size(width);
+    desc.Height = scaled_size(height);
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = target.format;
@@ -578,7 +581,7 @@ Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     grown.width = width;
     grown.height = height;
     if (target.texture) {
-        const D3D11_BOX box{0, 0, 0, target.width * g_scale, target.height * g_scale, 1};
+        const D3D11_BOX box{0, 0, 0, scaled_size(target.width), scaled_size(target.height), 1};
         g_context->CopySubresourceRegion(grown.texture.Get(), 0, 0, 0, 0, target.texture.Get(), 0, &box);
     }
     target = grown;
@@ -594,8 +597,8 @@ ComPtr<ID3D11PixelShader> g_copy_pixel_shader;
 void make_float_target(Target& target, uint32_t address) {
     if (target.format == DXGI_FORMAT_R16G16B16A16_FLOAT || !g_copy_pixel_shader) return;
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = target.width * g_scale;
-    desc.Height = target.height * g_scale;
+    desc.Width = scaled_size(target.width);
+    desc.Height = scaled_size(target.height);
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
@@ -640,8 +643,8 @@ DepthTarget* get_depth_target(uint32_t address, uint32_t width, uint32_t height)
                                           address];
     if (target.texture && target.width == width && target.height == height) return &target;
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = width * g_scale;
-    desc.Height = height * g_scale;
+    desc.Width = scaled_size(width);
+    desc.Height = scaled_size(height);
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_R24G8_TYPELESS;  // depth-stencil view and shader view of the same texture
@@ -1357,7 +1360,18 @@ void upload_scaled(Target& to, uint32_t x, uint32_t y, uint32_t width, uint32_t 
 }  // namespace
 
 bool renderer_start(HWND window) {
-    g_scale = std::clamp<uint32_t>(static_cast<uint32_t>(setting_at_start("render_scale")), 1, 4);
+    // render_scale 0 (Automatic): as many lines as the window's monitor has, for a picture that is not resampled
+    // up or down in height. The game draws 480; 2160 (4K) at most.
+    const float requested = setting_at_start("render_scale");
+    float scale = requested;
+    if (requested <= 0) {
+        MONITORINFO monitor{sizeof(MONITORINFO)};
+        GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor);
+        scale = static_cast<float>(monitor.rcMonitor.bottom - monitor.rcMonitor.top) / 480.0f;
+    }
+    g_scale = std::clamp(scale, 1.0f, 4.5f);
+    log_line("renderer: internal resolution %.0f lines (%.3gx)%s", 480.0f * g_scale, g_scale,
+             requested <= 0 ? ", automatic" : "");
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0};
     if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 1,
                                  D3D11_SDK_VERSION, &g_device, nullptr, &g_context))) {
@@ -1566,7 +1580,7 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
     if (channels == 0xF) {
         float rgba[4];
         unpack_color(color, rgba);
-        const D3D11_RECT rect{x0 * scaled(1), y0 * scaled(1), (x1 + 1) * scaled(1), (y1 + 1) * scaled(1)};
+        const D3D11_RECT rect{scaled(x0), scaled(y0), scaled(x1 + 1), scaled(y1 + 1)};
         g_context1->ClearView(target->rtv.Get(), rgba, &rect, 1);
     } else if (channels && g_clear_pixel_shader) {
         // Some channels only (the HUD clears alpha alone to reuse it as a mask).
@@ -1588,7 +1602,7 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
         g_context->OMSetDepthStencilState(nullptr, 0);
         const D3D11_VIEWPORT viewport{0, 0, scaled_float(target->width), scaled_float(target->height), 0, 1};
         g_context->RSSetViewports(1, &viewport);
-        const D3D11_RECT rect{x0 * scaled(1), y0 * scaled(1), (x1 + 1) * scaled(1), (y1 + 1) * scaled(1)};
+        const D3D11_RECT rect{scaled(x0), scaled(y0), scaled(x1 + 1), scaled(y1 + 1)};
         g_context->RSSetScissorRects(1, &rect);
         g_context->RSSetState(g_rasterizer.Get());
         g_context->IASetInputLayout(nullptr);
@@ -1729,15 +1743,16 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
     }
     // The speed blur at high speed is made another way: the shown frame is shrunk into a surface, blended there with
     // slightly enlarged copies of itself (the streaks), and laid back over the frame by its alpha (SRC_ALPHA,
-    // INV_SRC_ALPHA). The lights' streaks go through the same surface: their halos are drawn into it, stretched the
-    // same way and added to the frame (SRC_ALPHA, ONE). The same setting scales the alpha of both.
+    // INV_SRC_ALPHA): setting motion_blur scales it. The lights' streaks go through the same surface: their halos
+    // are drawn into it, stretched the same way and added to the frame (SRC_ALPHA, ONE): setting light_streaks.
     const bool reads_frame = state.textures[0].enabled && g_shown_surfaces.count(state.textures[0].descriptor.address);
     const bool draws_frame = g_shown_surfaces.count(surface.color_address) != 0;
     if (reads_frame && !draws_frame) g_frame_copies.insert(surface.color_address);
     if (draws_frame && state.blend_enable && state.blend_source == 0x302 &&
         (state.blend_destination == 0x303 || state.blend_destination == 1) && state.textures[0].enabled &&
         g_frame_copies.count(state.textures[0].descriptor.address)) {
-        constants_data.alpha_reference[2] = 1 - std::clamp(setting("motion_blur"), 0.0f, 1.0f);
+        const char* key = state.blend_destination == 1 ? "light_streaks" : "motion_blur";
+        constants_data.alpha_reference[2] = 1 - std::clamp(setting(key), 0.0f, 1.0f);
     }
     g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
     ID3D11Buffer* constants = g_constants.Get();
@@ -2033,7 +2048,7 @@ bool renderer_probe(uint32_t address, uint32_t x, uint32_t y, uint8_t bgra[4]) {
             return false;
         }
     }
-    const D3D11_BOX box{x * g_scale, y * g_scale, 0, x * g_scale + 1, y * g_scale + 1, 1};
+    const D3D11_BOX box{scaled_size(x), scaled_size(y), 0, scaled_size(x) + 1, scaled_size(y) + 1, 1};
     g_context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, found->second.texture.Get(), 0, &box);
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (FAILED(g_context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return false;
@@ -2058,10 +2073,15 @@ void renderer_blit(const BlitRequest& b) {
         const uint32_t height = existing != g_targets.end() ? existing->second.height : from.height;
         Target* to = get_target(b.destination, width, height);
         if (!to || b.destination_x + b.width > to->width || b.destination_y + b.height > to->height) return;
-        const D3D11_BOX box{b.source_x * g_scale, b.source_y * g_scale, 0, (b.source_x + b.width) * g_scale,
-                            (b.source_y + b.height) * g_scale, 1};
-        g_context->CopySubresourceRegion(to->texture.Get(), 0, b.destination_x * g_scale, b.destination_y * g_scale, 0,
-                                         from.texture.Get(), 0, &box);
+        // With a scale that is not whole, the rounded source and destination may differ by a pixel: the copy stays
+        // inside the destination texture.
+        const uint32_t to_x = scaled_size(b.destination_x), to_y = scaled_size(b.destination_y);
+        const uint32_t from_x = scaled_size(b.source_x), from_y = scaled_size(b.source_y);
+        const uint32_t copy_width = std::min(scaled_size(b.source_x + b.width) - from_x, scaled_size(to->width) - to_x);
+        const uint32_t copy_height =
+            std::min(scaled_size(b.source_y + b.height) - from_y, scaled_size(to->height) - to_y);
+        const D3D11_BOX box{from_x, from_y, 0, from_x + copy_width, from_y + copy_height, 1};
+        g_context->CopySubresourceRegion(to->texture.Get(), 0, to_x, to_y, 0, from.texture.Get(), 0, &box);
         return;
     }
     // Guest memory to guest memory.
@@ -2116,9 +2136,10 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
         // 1/80 of each side, the same share across and down so the picture keeps its shape.
         D3D11_TEXTURE2D_DESC desc{};
         frame->GetDesc(&desc);
-        const uint32_t full_height = std::min(height * g_scale, desc.Height);
-        const uint32_t crop_x = width * g_scale / 80, crop_y = full_height / 80;
-        const uint32_t visible_width = width * g_scale - 2 * crop_x, visible_height = full_height - 2 * crop_y;
+        const uint32_t full_width = std::min(scaled_size(width), desc.Width);
+        const uint32_t full_height = std::min(scaled_size(height), desc.Height);
+        const uint32_t crop_x = full_width / 80, crop_y = full_height / 80;
+        const uint32_t visible_width = full_width - 2 * crop_x, visible_height = full_height - 2 * crop_y;
         {
             static ComPtr<ID3D11Texture2D> visible;
             static ComPtr<ID3D11ShaderResourceView> visible_view;

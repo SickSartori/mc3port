@@ -115,8 +115,8 @@ IF SOMETHING GOES WRONG
   the file; the SHA-256 in SHA256SUMS lets you check it is the original.
 - The program closes at once, or the game crashes: open the launcher's
   About page and press "Log folder"; mc3port.log says what happened last.
-- The game is not smooth: choose 30 fps, or the Balanced or Original
-  preset, in Settings. The processor counts more than the graphics card.
+- The game is not smooth: choose 30 fps, a lower internal resolution, or
+  the Balanced or Original preset, in Settings. The processor counts more than the graphics card.
   mc3port has been tested on few machines so far.
 - No sound: the output device that is the Windows default when the game
   starts is the one used.

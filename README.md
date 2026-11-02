@@ -36,7 +36,8 @@ Compared with the console:
 
 - **True 16:9**: the game's own widescreen mode, with a wider view and no stretching or black bars.
 - **60 fps**, or 30 like the Xbox.
-- **Higher internal resolution** (up to 4x) with anisotropic filtering, for smooth edges and sharp textures.
+- **Higher internal resolution** (from the Xbox's 480p up to 4K, or as many lines as your screen) with anisotropic
+  filtering, for smooth edges and sharp textures.
 - **Modern effects**, all optional: light glow, adaptive sharpening, colour, vignette and ambient occlusion
   (F10 switches them on and off to compare).
 - **A launcher** that checks your disc, sets everything up on the first start and holds all the settings.
@@ -154,11 +155,10 @@ the others at once. The main ones:
 | Game language | English, French, German, Spanish or Italian; by default like Windows |
 | Frames per second | 60, or 30 like the Xbox |
 | Aspect ratio | 16:9 (the game's widescreen mode) or 4:3 |
-| Quality | Original (like the Xbox), Balanced or High: resolution, filtering and effects together |
-| Internal resolution | 1x (640x480) to 4x |
-| Modern effects | glow, sharpening, saturation, contrast, vignette, ambient occlusion, each adjustable |
+| Quality | Original (like the Xbox), Balanced or High: filtering and effects together; the resolution is its own setting |
+| Internal resolution | Auto (as many lines as your screen, the default), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p or 4K 2160p |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
-| Motion blur | the game's speed blur, and at high speed the streaks across the picture and from the street lights: 0 off, 1 as strong as on the Xbox; 0.5 by default |
+| Effects style | **Enhanced** (the default): modern glow, sharpening, colour, vignette and ambient occlusion, without the game's speed blur and light streaks. **Original**: the Xbox's picture, speed blur and light streaks included. **Custom**: every value by itself, speed blur and light streaks too |
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
@@ -168,7 +168,8 @@ the others at once. The main ones:
 The game itself is light; most of the work goes into turning the Xbox's graphics commands into Direct3D 11. The
 processor does that, mostly on one thread, while the graphics card has little to do: one fast processor core
 matters more than a powerful graphics card. So far mc3port has been tested on few machines: if the game is not
-smooth on yours, choose 30 fps, or the **Balanced** or **Original** preset, and please report how it runs.
+smooth on yours, choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset, and please
+report how it runs.
 
 The first time each graphics shader is needed it is compiled in the background (meanwhile the processor does that
 work); the results are kept in the `shader_cache` folder, so later runs start without hitches.
@@ -191,7 +192,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
   (the SHA-256 in `SHA256SUMS` lets you check it is the original).
 - **The program closes at once, or the game crashes**: open the launcher's **About** page and press **Log folder**;
   `mc3port.log` says what happened last.
-- **The game is not smooth**: choose 30 fps, or the **Balanced** or **Original** preset, in Settings.
+- **The game is not smooth**: choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset,
+  in Settings.
 - **No sound**: the game uses the output device that is the Windows default when it starts.
 - **The sound is quiet**: check Volume in Settings (100 is the loudest), then the Windows volume. The level leaves room
   for the moments when many sounds play at once, in the city, so that they do not distort.

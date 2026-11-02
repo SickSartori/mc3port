@@ -74,6 +74,7 @@ struct Texts {
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
     const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint, *tabs_hint, *play_hint;
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
+    const char *effects_style, *effects_style_sub, *enhanced, *original_effects, *light_streaks, *custom_effects;
 };
 
 const Texts kEnglish = {
@@ -86,7 +87,7 @@ const Texts kEnglish = {
     "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
     "Aspect ratio", "16:9 uses the game's own widescreen mode", "Window mode", "Alt+Enter or F11 while playing",
     "Window", "Full screen",
-    "Quality", "Sets resolution, filtering and effects together", "Original", "Balanced", "High", "Custom",
+    "Quality", "Sets filtering and effects together", "Original", "Balanced", "High", "Custom",
     "Internal resolution", "Smoother edges, more graphics card work",
     "Anisotropic filtering", "Vertices on the graphics card", "Faster; off only for troubleshooting",
     "Modern effects", "Bloom, sharpening, colour and shading (F10 while playing)", "On", "Off",
@@ -112,6 +113,8 @@ const Texts kEnglish = {
     "Opens the menu when you switch windows", "Resume", "Tabs", "Play",
     "D-pad \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: move, select, back, tabs, play", "Motion blur", "Pages", "Move", "D-pad",
     "Move \xC2\xB7 right: into the page",
+    "Effects style", "Original: as on the Xbox. Enhanced: modern picture, no blur or streaks", "Enhanced", "Original",
+    "Light streaks", "Custom",
 };
 
 const Texts kItalian = {
@@ -125,7 +128,7 @@ const Texts kItalian = {
     "La musica di sottofondo di questa schermata; 0 la spegne",
     "Formato", "16:9 usa la modalit\xC3\xA0 panoramica del gioco", "Modalit\xC3\xA0 finestra",
     "Alt+Invio o F11 durante il gioco", "Finestra", "Schermo intero",
-    "Qualit\xC3\xA0", "Imposta insieme risoluzione, filtri ed effetti", "Originale", "Bilanciata", "Alta",
+    "Qualit\xC3\xA0", "Imposta insieme filtri ed effetti", "Originale", "Bilanciata", "Alta",
     "Personalizzata", "Risoluzione interna", "Bordi pi\xC3\xB9 lisci, pi\xC3\xB9 lavoro per la scheda video",
     "Filtro anisotropico", "Vertici sulla scheda video", "Pi\xC3\xB9 veloce; da spegnere solo in caso di problemi",
     "Effetti moderni", "Bagliore, nitidezza, colori e ombreggiatura (F10 durante il gioco)", "S\xC3\xAC", "No",
@@ -155,6 +158,8 @@ const Texts kItalian = {
     "Apre il menu se cambi finestra", "Riprendi", "Schede", "Gioca",
     "Croce \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: muoversi, scegliere, tornare, schede, gioca", "Sfocatura in velocit\xC3\xA0", "Pagine", "Muovi",
     "Croce", "Muovi \xC2\xB7 destra: nella pagina",
+    "Stile degli effetti", "Originale: come sull'Xbox. Migliorato: immagine moderna, senza sfocatura n\xC3\xA9 scie",
+    "Migliorato", "Originale", "Scie delle luci", "Personalizzato",
 };
 
 const Texts& T() {
@@ -562,9 +567,14 @@ private:
     bool big_button(const char* label, const char* id, bool pulse);
     bool tabs(const char* const* labels, int count, int* current);
     // `restart`: a key the game reads once; in game, the detail says it applies at the next start.
-    void row(const char* heading, const char* detail, bool restart = false);
-    bool segmented(const char* id, const char* const* labels, int count, int* current);
+    // `control`: the width (unscaled px) of the control on the row's right, which the detail wraps before.
+    void row(const char* heading, const char* detail, bool restart = false, float control = 270);
+    // `details`: a second line under each label; `wide`: the control's width (unscaled px), 270 by default.
+    bool segmented(const char* id, const char* const* labels, int count, int* current, const char* const* details = nullptr,
+                   float wide = 0);
     bool slider(const char* id, float* value, float minimum, float maximum, const char* format);
+    bool compact_slider(const char* label, const char* id, float* value, float minimum, float maximum, ImVec2 at,
+                        float width);
     void steps(int current, int total);
 
     void page_play();
@@ -1066,19 +1076,20 @@ bool Launcher::tabs(const char* const* labels, int count, int* current) {
     return changed;
 }
 
-void Launcher::row(const char* heading, const char* detail, bool restart) {
+void Launcher::row(const char* heading, const char* detail, bool restart, float control) {
     text(body_bold_, px(20), ImVec2(origin_.x, origin_.y + cursor_ + px(4)), kInk, heading);
     const bool next_start = restart && in_game_;
     if (next_start) detail = T().next_start;
     if (!detail) return;
-    // Left of the control (270 wide): a longer detail wraps, and the row grows by the extra lines.
-    const float wrap = panel_width_ - px(290);
+    // Left of the control (`control` wide): a longer detail wraps, and the row grows by the extra lines.
+    const float wrap = panel_width_ - px(control + 20);
     text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_ + px(29)), next_start ? kAmber : kDim, detail, wrap);
     row_extra_ = std::max(0.0f, measure(body_, px(16), detail, wrap).y - px(20));
 }
 
-bool Launcher::segmented(const char* id, const char* const* labels, int count, int* current) {
-    const float width = px(270), height = px(36);
+bool Launcher::segmented(const char* id, const char* const* labels, int count, int* current, const char* const* details,
+                         float wide) {
+    const float width = px(wide > 0 ? wide : 270), height = px(details ? 50 : 36);
     const ImVec2 a(origin_.x + panel_width_ - width, origin_.y + cursor_ + px(6));
     skewed_rect(list_, a, ImVec2(a.x + width, a.y + height), IM_COL32(255, 255, 255, 18), IM_COL32(255, 255, 255, 18));
     const float cell = width / static_cast<float>(count);
@@ -1102,12 +1113,38 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
                         fade(mix(IM_COL32(255, 255, 255, 30), kRedDark, on), std::max(on, hot)));
         }
         const ImVec2 size = measure(body_bold_, px(18), labels[i]);
-        text(body_bold_, px(18), ImVec2(c.x + (cell - size.x) / 2 + px(3), c.y + (height - size.y) / 2), mix(kDim, IM_COL32(255, 255, 255, 255), std::max(on, hot)), labels[i]);
+        const ImU32 ink = mix(kDim, IM_COL32(255, 255, 255, 255), std::max(on, hot));
+        if (details && details[i]) {  // a second, smaller line under the label (the lines of a resolution)
+            const ImVec2 detail = measure(body_, px(14), details[i]);
+            const float top = c.y + (height - size.y - detail.y) / 2;
+            text(body_bold_, px(18), ImVec2(c.x + (cell - size.x) / 2 + px(3), top), ink, labels[i]);
+            text(body_, px(14), ImVec2(c.x + (cell - detail.x) / 2 + px(2), top + size.y), fade(ink, 0.75f), details[i]);
+        } else {
+            text(body_bold_, px(18), ImVec2(c.x + (cell - size.x) / 2 + px(3), c.y + (height - size.y) / 2), ink, labels[i]);
+        }
     }
     ImGui::PopID();
-    cursor_ += px(58) + row_extra_;
+    cursor_ += px(details ? 72 : 58) + row_extra_;
     row_extra_ = 0;
     list_->AddLine(ImVec2(origin_.x, origin_.y + cursor_ - px(6)), ImVec2(origin_.x + panel_width_, origin_.y + cursor_ - px(6)), fade(IM_COL32(255, 255, 255, 16)));
+    return changed;
+}
+
+// A slider with its label above it, at `at` and `width` wide, for two columns of values: half the rows of slider().
+// It leaves cursor_ alone; the caller lays the columns out.
+bool Launcher::compact_slider(const char* label, const char* id, float* value, float minimum, float maximum, ImVec2 at,
+                              float width) {
+    text(body_, px(15), at, fade(kDim), label);
+    ImGui::SetCursorScreenPos(ImVec2(at.x, at.y + px(20)));
+    ImGui::PushItemWidth(width);
+    ImGui::PushFont(body_bold_, px(16));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(3)));
+    claim_focus();
+    const bool changed = ImGui::SliderFloat(id, value, minimum, maximum, "%.2f");
+    focus_ring();
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
+    ImGui::PopItemWidth();
     return changed;
 }
 
@@ -1141,16 +1178,37 @@ void Launcher::steps(int current, int total) {
 
 // --- settings ---
 
-struct Quality {
-    float render_scale, anisotropy, effects, ambient_occlusion;
+// Internal resolution (render_scale): the picture's height, the game drawing 480 lines. 0, Automatic: as many lines
+// as the screen has.
+struct Resolution {
+    float scale;
+    const char *name, *lines;
 };
-constexpr Quality kQualities[3] = {{1, 1, 0, 0}, {2, 8, 1, 0}, {2, 16, 1, 0.6f}};  // High: the defaults
+constexpr Resolution kResolutions[] = {{0, "Auto", nullptr},        {1, "SD", "480p"},  {1.5f, "HD", "720p"},
+                                       {2.25f, "Full HD", "1080p"}, {3, "2K", "1440p"}, {4.5f, "4K", "2160p"}};
+constexpr int kResolutionCount = static_cast<int>(std::size(kResolutions));
+
+// The choice for a render_scale; an earlier version's 2 or 4 shows as the nearest one.
+int resolution_index(float scale) {
+    if (scale <= 0) return 0;
+    int best = 1;
+    for (int i = 1; i < kResolutionCount; ++i) {
+        if (std::fabs(kResolutions[i].scale - scale) < std::fabs(kResolutions[best].scale - scale)) best = i;
+    }
+    return best;
+}
+
+// The quality presets leave the resolution alone (its own row): choosing one never undoes the other.
+struct Quality {
+    float anisotropy, effects, ambient_occlusion;
+};
+constexpr Quality kQualities[3] = {{1, 0, 0}, {8, 1, 0}, {16, 1, 0.6f}};  // High: the defaults
 
 int Launcher::quality_preset() const {
     for (int i = 0; i < 3; ++i) {
         const Quality& q = kQualities[i];
-        if (setting("render_scale") == q.render_scale && setting("anisotropy") == q.anisotropy &&
-            (setting("effects") != 0) == (q.effects != 0) && setting("ambient_occlusion") == q.ambient_occlusion) {
+        if (setting("anisotropy") == q.anisotropy && (setting("effects") != 0) == (q.effects != 0) &&
+            setting("ambient_occlusion") == q.ambient_occlusion) {
             return i;
         }
     }
@@ -1159,7 +1217,6 @@ int Launcher::quality_preset() const {
 
 void Launcher::apply_quality(int preset) {
     const Quality& q = kQualities[preset];
-    set_setting("render_scale", q.render_scale);
     set_setting("anisotropy", q.anisotropy);
     set_setting("effects", q.effects);
     set_setting("ambient_occlusion", q.ambient_occlusion);
@@ -1296,10 +1353,22 @@ void Launcher::page_settings() {
         const char* qualities[] = {t.original, t.balanced, t.high};
         int preset = quality_preset();
         if (segmented("##quality", qualities, 3, &preset)) apply_quality(preset);
-        row(t.scale, t.scale_sub, true);
-        const char* scales[] = {"1x", "2x", "3x", "4x"};
-        int scale = std::clamp(static_cast<int>(setting("render_scale")) - 1, 0, 3);
-        if (segmented("##scale", scales, 4, &scale)) set_setting("render_scale", static_cast<float>(scale + 1));
+        row(t.scale, t.scale_sub, true, 380);
+        MONITORINFO monitor{sizeof(MONITORINFO)};
+        GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTOPRIMARY), &monitor);
+        char screen_lines[16];
+        std::snprintf(screen_lines, sizeof(screen_lines), "%ldp",
+                      std::clamp<long>(monitor.rcMonitor.bottom - monitor.rcMonitor.top, 480, 2160));
+        const char* names[kResolutionCount];
+        const char* lines[kResolutionCount];
+        for (int i = 0; i < kResolutionCount; ++i) {
+            names[i] = kResolutions[i].name;
+            lines[i] = kResolutions[i].lines ? kResolutions[i].lines : screen_lines;
+        }
+        int resolution = resolution_index(setting("render_scale"));
+        if (segmented("##scale", names, kResolutionCount, &resolution, lines, 380)) {
+            set_setting("render_scale", kResolutions[resolution].scale);
+        }
         row(t.fps_counter, t.fps_counter_sub);
         const char* toggle[] = {t.off, t.on};
         int counter = setting("fps_counter") != 0 ? 1 : 0;
@@ -1317,13 +1386,28 @@ void Launcher::page_settings() {
         const char* toggle[] = {t.off, t.on};
         int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
         if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));
-        row(t.effects, t.effects_sub);
-        int effects = setting("effects") != 0 ? 1 : 0;
-        if (segmented("##effects", toggle, 2, &effects)) {
-            set_setting("effects", static_cast<float>(effects));
-            renderer_set_effects(effects != 0);
-        }
     } else {
+        // Two ready-made looks and a custom one. Original: the Xbox's picture, speed blur and light streaks included.
+        // Enhanced: the modern effects, without the blur and the streaks. Custom (setting effects_advanced): every
+        // value by itself, in two columns so that the page stays on screen.
+        row(t.effects_style, t.effects_style_sub, false, 330);
+        const char* styles[] = {t.original_effects, t.enhanced, t.custom_effects};
+        const bool modern = setting("effects") != 0;
+        const float blur = setting("motion_blur"), streaks = setting("light_streaks");
+        int style = setting("effects_advanced") != 0             ? 2
+                    : !modern && blur == 1 && streaks == 1 ? 0
+                    : modern && blur == 0 && streaks == 0  ? 1
+                                                           : 2;
+        if (segmented("##effects_style", styles, 3, &style, nullptr, 330)) {
+            set_setting("effects_advanced", style == 2 ? 1.0f : 0.0f);
+            if (style != 2) {
+                set_setting("effects", style == 1 ? 1.0f : 0.0f);
+                set_setting("motion_blur", style == 1 ? 0.0f : 1.0f);
+                set_setting("light_streaks", style == 1 ? 0.0f : 1.0f);
+                renderer_set_effects(style == 1);
+            }
+        }
+        const bool advanced = style == 2;
         struct Slider {
             const char* label;
             const char* key;
@@ -1333,23 +1417,31 @@ void Launcher::page_settings() {
             {t.sharpen, "sharpen", 0, 1},           {t.bloom, "bloom", 0, 1},
             {t.bloom_threshold, "bloom_threshold", 0, 1}, {t.saturation, "saturation", 0.5f, 1.5f},
             {t.contrast, "contrast", 0.8f, 1.3f},   {t.vignette, "vignette", 0, 0.5f},
-            {t.motion_blur, "motion_blur", 0, 1},
+            {t.motion_blur, "motion_blur", 0, 1},   {t.light_streaks, "light_streaks", 0, 1},
             {t.occlusion, "ambient_occlusion", 0, 1}, {t.occlusion_radius, "ambient_occlusion_radius", 0.5f, 2},
         };
-        for (const Slider& s : sliders) {
-            row(s.label, nullptr);
+        const size_t shown = advanced ? std::size(sliders) : 0;
+        const float gap = px(28), column = (panel_width_ - gap) / 2;
+        for (size_t i = 0; i < shown; ++i) {
+            const Slider& s = sliders[i];
+            if (i > 0 && i % 2 == 0) cursor_ += px(54);
+            const ImVec2 at(origin_.x + static_cast<float>(i % 2) * (column + gap), origin_.y + cursor_ + px(2));
             float value = setting(s.key);
             char id[48];
             std::snprintf(id, sizeof(id), "##%s", s.key);
-            if (slider(id, &value, s.minimum, s.maximum, "%.2f")) set_setting(s.key, std::round(value * 100) / 100);
+            if (compact_slider(s.label, id, &value, s.minimum, s.maximum, at, column)) {
+                set_setting(s.key, std::round(value * 100) / 100);
+            }
         }
+        if (shown) cursor_ += px(58);
     }
     cursor_ += px(8);
     if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults")) {
         for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background", "widescreen",
                                 "fullscreen", "fps_counter", "render_scale",
                                 "anisotropy", "gpu_vertices", "effects", "sharpen", "bloom", "bloom_threshold",
-                                "saturation", "contrast", "vignette", "motion_blur", "ambient_occlusion", "ambient_occlusion_radius"}) {
+                                "saturation", "contrast", "vignette", "motion_blur", "light_streaks", "effects_advanced",
+                                "ambient_occlusion", "ambient_occlusion_radius"}) {
             set_setting(key, setting_default(key));
         }
         nv2a_set_full_screen(setting("fullscreen") != 0);

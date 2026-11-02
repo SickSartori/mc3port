@@ -33,7 +33,7 @@ const Setting kSettings[] = {
     {"pause_in_background", 1, "Pause the game (in-game menu) when its window goes to the background: 1 = yes, 0 = no."},
     {"check_updates", 1, "Look for a newer mc3port release on GitHub when the launcher opens: 1 = yes, 0 = no."},
     {"gpu_vertices", 1, "Vertex processing on the graphics card: 1 = yes (faster), 0 = on the processor."},
-    {"render_scale", 2, "Internal resolution: 1 = like the Xbox (640x480), 2 = 1280x960, 3, 4. Higher = smoother edges."},
+    {"render_scale", 0, "Internal resolution, times the game's 480 lines: 0 = like the screen, 1 = like the Xbox (480p), 1.5 = 720p, 2.25 = 1080p, 3 = 1440p, 4.5 = 2160p (4K). Higher = smoother edges."},
     {"anisotropy", 16, "Anisotropic texture filtering: 1 = off, up to 16."},
     {"effects", 1, "Modern effects: 1 = on, 0 = original picture (F10 toggles them while playing)."},
     {"sharpen", 0.5f, "Adaptive sharpening: 0 = off, 1 = strongest."},
@@ -42,7 +42,9 @@ const Setting kSettings[] = {
     {"saturation", 1.12f, "Colour saturation: 1 = original, higher = more vivid."},
     {"contrast", 1.06f, "Contrast: 1 = original."},
     {"vignette", 0.15f, "Slight darkening of the picture's edges: 0 = off."},
-    {"motion_blur", 0.5f, "The game's speed blur: 0 = off, 1 = as strong as on the Xbox."},
+    {"motion_blur", 0, "The game's speed blur: 0 = off, 1 = as strong as on the Xbox."},
+    {"light_streaks", 0, "The streaks the game draws from lights at speed and in turns: 0 = off, 1 = as on the Xbox."},
+    {"effects_advanced", 0, "Effects style Custom, with every effect's value in the settings: 1 = yes, 0 = Original or Enhanced."},
     {"ambient_occlusion", 0.6f, "Ambient occlusion (darker corners and contact areas): 0 = off, 1 = strong."},
     {"ambient_occlusion_radius", 1, "Ambient occlusion size: 0.5 = tight, 2 = wide."},
 };
@@ -116,6 +118,16 @@ void settings_load(const std::filesystem::path& file) {
                 if (key == s.key) g_texts[key] = value;  // whole line: paths may contain '#'
             }
         }
+    }
+    // Before 0.2.5 render_scale was a whole 1 to 4: 2 and 4 become the nearest named resolution (1080p, 2160p).
+    if (const float old_scale = g_values["render_scale"]; old_scale == 2 || old_scale == 4) {
+        setting_save("render_scale", old_scale == 2 ? 2.25f : 4.5f);
+        log_line("settings: render_scale %g is now %g", old_scale, g_values["render_scale"]);
+    }
+    // Before 0.2.5 the speed blur and the light streaks were on at 0.5 by default: an untouched 0.5 becomes off.
+    if (g_values["motion_blur"] == 0.5f) {
+        setting_save("motion_blur", 0);
+        log_line("settings: motion_blur 0.5 (the old default) is now 0");
     }
     for (auto& [key, value] : g_values) {
         char text[32] = {};

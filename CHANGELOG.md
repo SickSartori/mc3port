@@ -2,11 +2,30 @@
 
 ## Unreleased
 
+### New
+
+- **Internal resolution by name**: Auto (as many lines as your screen, the default), SD 480p (like the Xbox), HD 720p,
+  Full HD 1080p, 2K 1440p and 4K 2160p, instead of 1x to 4x. 1080p and 4K are not whole multiples of the game's 480
+  lines; the renderer now handles that. An earlier 2x becomes Full HD, 4x becomes 4K.
+- **Effects style**: Original (the Xbox's picture, speed blur and light streaks included), Enhanced (the modern
+  effects, without the blur and the streaks; the default) or Custom, which alone shows every value, in two columns
+  that stay on screen. The speed blur and the streaks from street lights are now separate settings, both off by
+  default; an untouched 0.5 from earlier versions becomes off.
+
 ### Improved
+
+- The Quality preset no longer sets the resolution, so choosing one never undoes the other, and the chosen preset
+  stays selected.
+- A setting's description no longer runs under a wider control next to it.
 
 - **Update** no longer installs the new version by itself: the launcher downloads the installer, checks its SHA-256
   and shows it in Explorer, and you start it. Some antivirus programs took a program that starts a downloaded
   installer on its own for malware. The installer is saved only once its check passes.
+
+### Fixed
+
+- Choosing Full screen in the in-game menu (or the launcher) made the window stop answering, and Windows then closed
+  the game. F11 and Alt+Enter were not affected.
 
 ## 0.2.4 (2026-11-01)
 
