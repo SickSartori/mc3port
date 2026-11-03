@@ -14,6 +14,9 @@
 - **The HUD keeps its shape in 16:9**: the game drew it with 4:3 sizes stretched to the wider screen, so the radar
   and the dials were oval. They are round again, in their corners, with the radar's map and icons and the special
   ability's arc; texts and the rest of the picture are untouched. `hud_aspect = 0` in `mc3port.ini` brings back the stretched HUD.
+- **mc3port's HUD** (Settings, Display; off by default): the speedometer, the rev counter, the gear and the special
+  ability's charge drawn again by mc3port, sharp at any resolution, in mph or km/h. The values come from the game's
+  own dials, which are then left out; the radar stays the game's.
 - **Skip the opening films** (Settings, Game; on by default): straight from PLAY to the title screen, without the
   Rockstar logos and the game's intro.
 - **Restart from the in-game menu**: after changing a setting that applies the next time the game starts
@@ -24,6 +27,8 @@
 - The Quality preset no longer sets the resolution, so choosing one never undoes the other, and the chosen preset
   stays selected.
 - A setting's description no longer runs under a wider control next to it.
+- A little more of the picture's edge is left out, as a television's overscan did: 1/48 of each side instead of
+  1/80. The game's notification box at the top left now meets the edge of the screen.
 
 - **Update** no longer installs the new version by itself: the launcher downloads the installer, checks its SHA-256
   and shows it in Explorer, and you start it. Some antivirus programs took a program that starts a downloaded

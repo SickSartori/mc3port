@@ -76,6 +76,7 @@ struct Texts {
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
     const char *effects_style, *effects_style_sub, *enhanced, *original_effects, *light_streaks, *custom_effects;
     const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
+    const char *hud, *hud_sub, *hud_game, *speed_unit;
 };
 
 const Texts kEnglish = {
@@ -118,6 +119,7 @@ const Texts kEnglish = {
     "Light streaks", "Custom",
     "Skip the opening films", "The Rockstar logos and the intro, straight to the title screen",
     "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
+    "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
 };
 
 const Texts kItalian = {
@@ -165,6 +167,7 @@ const Texts kItalian = {
     "Migliorato", "Originale", "Scie delle luci", "Personalizzato",
     "Salta i video iniziali", "I loghi Rockstar e l'introduzione, dritto alla schermata del titolo",
     "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
+    "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
 };
 
 const Texts& T() {
@@ -1229,7 +1232,7 @@ void Launcher::apply_quality(int preset) {
 
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
-    for (const char* key : {"game_language", "frame_rate", "widescreen", "render_scale", "anisotropy"}) {
+    for (const char* key : {"game_language", "frame_rate", "widescreen", "render_scale", "anisotropy", "hud_style"}) {
         if (setting(key) != setting_at_start(key)) return true;
     }
     return false;
@@ -1411,6 +1414,16 @@ void Launcher::page_settings() {
         const char* toggle[] = {t.off, t.on};
         int counter = setting("fps_counter") != 0 ? 1 : 0;
         if (segmented("##fps_counter", toggle, 2, &counter)) set_setting("fps_counter", static_cast<float>(counter));
+        row(t.hud, t.hud_sub, true);
+        const char* huds[] = {t.hud_game, "mc3port"};
+        int hud = setting("hud_style") != 0 ? 1 : 0;
+        if (segmented("##hud", huds, 2, &hud)) set_setting("hud_style", static_cast<float>(hud));
+        if (hud) {
+            row(t.speed_unit, nullptr);
+            const char* units[] = {"mph", "km/h"};
+            int unit = setting("hud_units") != 0 ? 1 : 0;
+            if (segmented("##hud_units", units, 2, &unit)) set_setting("hud_units", static_cast<float>(unit));
+        }
     } else if (settings_tab_ == 2) {
         row(t.anisotropy, nullptr, true);
         const char* levels[] = {"1x", "4x", "8x", "16x"};
@@ -1477,10 +1490,10 @@ void Launcher::page_settings() {
     ImVec2 defaults_size;
     if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults", &defaults_size)) {
         for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background",
-                                "skip_intro", "widescreen", "fullscreen", "fps_counter", "render_scale",
-                                "anisotropy", "gpu_vertices", "effects", "sharpen", "bloom", "bloom_threshold",
-                                "saturation", "contrast", "vignette", "motion_blur", "light_streaks", "effects_advanced",
-                                "ambient_occlusion", "ambient_occlusion_radius"}) {
+                                "skip_intro", "widescreen", "fullscreen", "fps_counter", "render_scale", "hud_style",
+                                "hud_units", "anisotropy", "gpu_vertices", "effects", "sharpen", "bloom",
+                                "bloom_threshold", "saturation", "contrast", "vignette", "motion_blur", "light_streaks",
+                                "effects_advanced", "ambient_occlusion", "ambient_occlusion_radius"}) {
             set_setting(key, setting_default(key));
         }
         nv2a_set_full_screen(setting("fullscreen") != 0);
@@ -2445,7 +2458,8 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
     }
     const bool counter_on = setting("fps_counter") != 0;
     const bool hint_on = now < kMenuHintEnd;  // how to open the menu, for the first seconds of the game
-    if (!visible_ && !counter_on && !hint_on) return;
+    const bool hud_on = hud_enabled();
+    if (!visible_ && !counter_on && !hint_on && !hud_on) return;
 
     width_ = width;
     height_ = height;
@@ -2458,6 +2472,7 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
         ImGui_ImplWin32_NewFrame();
         poll_gamepads(now);
         ImGui::NewFrame();
+        if (hud_on) hud_draw(ImGui::GetBackgroundDrawList(), HudFonts{heading_, body_bold_});  // under the menu
         if (visible_) {
             frame_in_game(now);
         } else {

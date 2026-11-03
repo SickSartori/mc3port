@@ -148,9 +148,9 @@ In the launcher and the in-game menu:
 ## Settings
 
 Everything is in the launcher's **Settings** page, in the game's in-game menu (F1), and in `mc3port.ini` (each key
-is explained there). Language, frame rate, aspect ratio, resolution and filtering apply the next time the game starts;
-the others at once. When you change one of the first in the in-game menu, it offers to restart the game straight
-away (progress since the last save is lost). The main ones:
+is explained there). Language, frame rate, aspect ratio, resolution, filtering and the HUD apply the next time the
+game starts; the others at once. When you change one of the first in the in-game menu, it offers to restart the game
+straight away (progress since the last save is lost). The main ones:
 
 | Setting | What it does |
 |---|---|
@@ -163,6 +163,7 @@ away (progress since the last save is lost). The main ones:
 | Effects style | **Enhanced** (the default): modern glow, sharpening, colour, vignette and ambient occlusion, without the game's speed blur and light streaks. **Original**: the Xbox's picture, speed blur and light streaks included. **Custom**: every value by itself, speed blur and light streaks too |
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
+| HUD | the game's, or mc3port's: speedometer, rev counter, gear and special ability drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 | Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
 | `hud_aspect` (ini only) | in 16:9, the HUD keeps its shape (1, the default) or is stretched as on a widescreen TV (0) |

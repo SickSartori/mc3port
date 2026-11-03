@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "pc/hud.h"
 #include "pc/log.h"
 #include "pc/nv2a_combiner.h"
 #include "pc/nv2a_texture.h"
@@ -853,6 +854,33 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
         if (flat) {
             g_k.draw.screen_left = left, g_k.draw.screen_right = right;
             g_k.draw.screen_top = top, g_k.draw.screen_bottom = bottom;
+        }
+        // Setting hud_style: the game's dials are read here and left out (hud.cpp).
+        if (flat && count == 4 && hud_enabled()) {
+            const HudPicture picture = renderer_hud_picture();
+            if (left >= (picture.surface_width + 2 * picture.surface_left) / 2) {
+                HudQuad quad{};
+                quad.program = !fixed_function;
+                quad.texture = (g_k.texture_control0[0] & 0x40000000)
+                                   ? dma_address(g_k.texture_format[0] & 3, g_k.texture_offset[0])
+                                   : 0;
+                for (uint32_t i = 0; i < 4; ++i) {
+                    std::copy(std::begin(g_k.attribute), std::end(g_k.attribute), inputs);
+                    fetch(i, inputs);
+                    if (fixed_function) {
+                        transform_fixed_function(inputs, outputs);
+                    } else {
+                        g_k.vertex_program.execute(inputs, g_k.constants, outputs);
+                    }
+                    quad.x[i] = outputs[kOutPosition][0], quad.y[i] = outputs[kOutPosition][1];
+                    quad.u[i] = outputs[kOutTexture0][0], quad.v[i] = outputs[kOutTexture0][1];
+                    if (i == 0) std::memcpy(quad.colour, outputs[kOutDiffuse].data(), sizeof(quad.colour));
+                }
+                if (hud_take_quad(quad)) {
+                    ++g_draws;
+                    return;
+                }
+            }
         }
     }
 

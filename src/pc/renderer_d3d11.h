@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "pc/hud.h"
 #include "pc/nv2a_combiner.h"
 #include "pc/nv2a_texture.h"
 
@@ -147,6 +148,8 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
 // The shape the picture is shown in: 16:9 with the widescreen setting (the game then draws for a widescreen TV),
 // otherwise 4:3.
 float renderer_aspect();
+// Where the last frame shown is in the window (for the new HUD, drawn over it).
+HudPicture renderer_hud_picture();
 
 // F10: the modern effects (mc3port.ini) off and on, to compare with the original picture.
 void renderer_toggle_effects();

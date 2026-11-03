@@ -736,6 +736,8 @@ uint32_t g_occlusion_scenes = 0, g_full_depth_clears = 0;  // for the log: every
 // radar's map is cut to its box); the radar's clear of the alpha does not: its mask then covered less than the original
 // box, and the frame showed the previous one through the rest.
 uint32_t g_picture_width = 0, g_picture_height = 0;  // the last frame shown
+HudPicture g_hud_picture{};                           // and where it is in the window
+constexpr uint32_t kOverscan = 48;                    // 1 / kOverscan of each side is not shown
 int g_debug_hud = -1;                                 // MC3_DEBUG_HUD=<n>: the first n decisions in the log
 std::unordered_map<uint32_t, ULONGLONG> g_hud_general_textures;  // when last seen in a flat draw away from the sides
 
@@ -2189,6 +2191,8 @@ void renderer_blit(const BlitRequest& b) {
 
 float renderer_aspect() { return setting_at_start("widescreen") != 0 ? 16.0f / 9.0f : 4.0f / 3.0f; }
 
+HudPicture renderer_hud_picture() { return g_hud_picture; }
+
 void renderer_toggle_effects() { renderer_set_effects(!g_effects_enabled); }
 
 void renderer_set_effects(bool on) {
@@ -2206,17 +2210,34 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     if (target != g_targets.end()) {
         g_shown_surfaces.insert(address);
         g_picture_width = width, g_picture_height = height;
+        const float aspect = renderer_aspect();
+        float window_width = static_cast<float>(g_swap_width), window_height = static_cast<float>(g_swap_height);
+        if (window_width > window_height * aspect) {
+            window_width = window_height * aspect;
+        } else {
+            window_height = window_width / aspect;
+        }
+        const float edge_x = static_cast<float>(width / kOverscan), edge_y = static_cast<float>(height / kOverscan);
+        g_hud_picture = {edge_x,
+                         edge_y,
+                         static_cast<float>(width) - 2 * edge_x,
+                         static_cast<float>(height) - 2 * edge_y,
+                         std::floor((static_cast<float>(g_swap_width) - window_width) / 2),
+                         std::floor((static_cast<float>(g_swap_height) - window_height) / 2),
+                         window_width,
+                         window_height};
         frame = target->second.texture.Get();
         frame_view = target->second.srv.Get();
         // Only the picture's part of a wider surface (widescreen: 720 of 768 pixels), copied out once per present.
         // Like a television, the outermost pixels are not shown either: games park things there that the TV's
-        // overscan hid (MC3 slides its notification box off to the left and leaves its last 3 pixels on screen).
-        // 1/80 of each side, the same share across and down so the picture keeps its shape.
+        // overscan hid (MC3 slides its notification box off to the left and leaves its last 3 pixels on screen, and
+        // when it is in, the box stops 13 pixels short of the edge, which a TV's overscan covered). 1/48 of each side,
+        // the same share across and down so the picture keeps its shape.
         D3D11_TEXTURE2D_DESC desc{};
         frame->GetDesc(&desc);
         const uint32_t full_width = std::min(scaled_size(width), desc.Width);
         const uint32_t full_height = std::min(scaled_size(height), desc.Height);
-        const uint32_t crop_x = full_width / 80, crop_y = full_height / 80;
+        const uint32_t crop_x = full_width / kOverscan, crop_y = full_height / kOverscan;
         const uint32_t visible_width = full_width - 2 * crop_x, visible_height = full_height - 2 * crop_y;
         {
             static ComPtr<ID3D11Texture2D> visible;
@@ -2275,9 +2296,13 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     D3D11_TEXTURE2D_DESC frame_desc{};
     if (frame) frame->GetDesc(&frame_desc);
     present_frame(frame_view, frame_desc.Width, frame_desc.Height);
+    hud_frame_shown();
     ++g_presented;
     ++g_stats.presents;
     log_statistics();
+    if (const RendererOverlay overlay = g_overlay.load(); overlay && g_back_buffer_rtv) {
+        overlay(g_device.Get(), g_context.Get(), g_back_buffer_rtv.Get(), g_swap_width, g_swap_height);
+    }
     // MC3_DUMP_SECONDS=<s>: a frame every s seconds of real time (frame-<milliseconds>.bmp... named by count).
     static const double dump_seconds = [] {
         char value[16] = {};
@@ -2296,16 +2321,13 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     if ((g_dump_every && g_presented % g_dump_every == 0) || timed_dump) {
         dump_frame(frame);  // the game's frame at its own size, not the window
         static const bool dump_window = GetEnvironmentVariableA("MC3_DUMP_WINDOW", nullptr, 0) != 0;
-        if (dump_window) {  // what the window shows, with the effects (window-NNNNN.bmp)
+        if (dump_window) {  // what the window shows, with the effects and the overlay (window-NNNNN.bmp)
             ComPtr<ID3D11Texture2D> back_buffer;
             g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
             dump_frame(back_buffer.Get(), "window");
         }
         const auto extra = g_targets.find(g_dump_target);
         if (extra != g_targets.end()) dump_frame(extra->second.texture.Get(), "target");
-    }
-    if (const RendererOverlay overlay = g_overlay.load(); overlay && g_back_buffer_rtv) {
-        overlay(g_device.Get(), g_context.Get(), g_back_buffer_rtv.Get(), g_swap_width, g_swap_height);
     }
     const uint64_t swap_start = ticks();
     g_swap_chain->Present(0, 0);
