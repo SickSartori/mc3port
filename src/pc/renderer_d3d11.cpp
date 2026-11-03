@@ -726,15 +726,15 @@ struct SceneState {
 std::unordered_map<uint32_t, SceneState> g_scenes;
 uint32_t g_occlusion_scenes = 0, g_full_depth_clears = 0;  // for the log: every scene should get its pass
 
-// Setting hud_aspect. In 16:9 MC3 draws its HUD with the pixel sizes of 4:3 on a picture 720 pixels wide that is
-// shown 16:9 wide, so round things (radar, dials) come out oval. A flat draw (nv2a_kelvin.cpp) over the 3D scene on
-// a shown frame, in the lower half and in the third along a side (the radar, the dials and the icons on the radar's
-// edge), is narrowed by (720 / 480) / (16 / 9) towards that side. Texts stay as the game draws them: a line comes in
-// pieces, and narrowing the pieces near a side tore it apart, so a texture seen away from the sides in the last half
-// second (a font) is not narrowed. Not for longer: the game reuses texture memory, and the title screen's menus left
-// the radar's later textures marked. The scissor rectangle follows the draw (the radar's map is cut to its box); the
-// radar's clear of the alpha does not: its mask then covered less than the original box, and the frame showed the
-// previous one through the rest.
+// Setting hud_aspect. In 16:9 MC3 draws its HUD with the pixel sizes of 4:3 on a picture 720 pixels wide that is shown
+// 16:9 wide, so round things (radar, dials) come out oval. A flat draw (nv2a_kelvin.cpp) over the 3D scene on a shown
+// frame, ending in the lower half and in the third along a side (the radar, the dials, the special ability's arc rising
+// above them, the icons on the radar's edge), is narrowed by (720 / 480) / (16 / 9) towards that side. Texts stay as
+// the game draws them: a line comes in pieces, and narrowing the pieces near a side tore it apart, so a texture seen
+// away from the sides in the last half second (a font) is not narrowed. Not for longer: the game reuses texture memory,
+// and the title screen's menus left the radar's later textures marked. The scissor rectangle follows the draw (the
+// radar's map is cut to its box); the radar's clear of the alpha does not: its mask then covered less than the original
+// box, and the frame showed the previous one through the rest.
 uint32_t g_picture_width = 0, g_picture_height = 0;  // the last frame shown
 int g_debug_hud = -1;                                 // MC3_DEBUG_HUD=<n>: the first n decisions in the log
 std::unordered_map<uint32_t, ULONGLONG> g_hud_general_textures;  // when last seen in a flat draw away from the sides
@@ -762,7 +762,7 @@ Narrowing hud_narrowing(const SurfaceState& surface, float left, float right, fl
     const bool over_scene = scene != g_scenes.end() && scene->second.drawn;
     const bool shown = g_shown_surfaces.count(surface.color_address) != 0;
     constexpr float kSideBand = 1 / 3.0f;
-    const bool low = top >= static_cast<float>(g_picture_height) / 2 && bottom <= static_cast<float>(g_picture_height);
+    const bool low = bottom >= static_cast<float>(g_picture_height) / 2 && bottom <= static_cast<float>(g_picture_height);
     const bool side = right <= width * kSideBand || left >= width * (1 - kSideBand);
     const ULONGLONG now = GetTickCount64();
     if (over_scene && shown && !side && texture) g_hud_general_textures[texture] = now;
