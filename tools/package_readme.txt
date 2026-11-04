@@ -142,9 +142,17 @@ LINUX (EXPERIMENTAL)
 mc3port also runs on Linux through a recent Wine (tested: 11.0) with
 32-bit support
 (on Debian and Ubuntu: the i386 architecture and the 32-bit OpenGL and
-Vulkan libraries libgl1:i386, libegl1:i386, libvulkan1:i386). Use this
-zip: put your .iso in this folder, then run "wine mc3.exe" here. Your
-files are in the Wine prefix, under
+Vulkan libraries libgl1:i386, libegl1:i386, libvulkan1:i386).
+
+Linux package (mc3port-<version>-linux.tar.gz): run "sh install.sh" in
+this folder. It copies mc3port to ~/.local/share/mc3port, makes a Wine
+prefix of its own there, and adds the "mc3port" command (~/.local/bin)
+and an entry in the applications menu. Run it again to update. Your
+settings and saves are in that folder too; the script says how to remove
+everything.
+
+Zip, by hand: put your .iso in this folder, then run "wine mc3.exe"
+here. Your files are then in the Wine prefix, under
 drive_c/users/<you>/AppData/Local/mc3port.
 
 It has been tested on one machine only, with Wine 11 under WSL2: the

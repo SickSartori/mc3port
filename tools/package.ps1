@@ -3,6 +3,7 @@
 #                                                  changelog and licences; the same folder name in every version, so a
 #                                                  new zip extracted in the same place updates the old one)
 #   dist/mc3port-<version>-windows-x86-setup.exe  (installer, with Inno Setup 6.6+; skipped if it is missing)
+#   dist/mc3port-<version>-linux.tar.gz           (the portable folder plus install.sh for Wine, and the menu icon)
 #   dist/SHA256SUMS
 # The version comes from project(... VERSION ...) in CMakeLists.txt. No game file can end up in the package.
 # PowerShell 7 (pwsh), as in the workflow: Windows PowerShell 5's Compress-Archive writes backslashes in the zip's
@@ -43,6 +44,16 @@ if ($forbidden) { throw "not for the package: $($forbidden.Name -join ', ')" }
 
 Compress-Archive -Path $stage -DestinationPath "dist/$name.zip"
 
+# Linux (Wine): the same folder plus install.sh (Wine prefix, "mc3port" command, menu entry) and the icon for the
+# menu, as a tar.gz.
+$linux = Join-Path "dist" "linux\mc3port"
+New-Item -ItemType Directory -Force $linux | Out-Null
+Copy-Item "$stage\*" $linux -Recurse
+Copy-Item tools/install-linux.sh "$linux\install.sh"
+Copy-Item docs/logo.png "$linux\mc3port.png"
+tar -czf "dist/mc3port-$version-linux.tar.gz" -C dist/linux mc3port; if ($LASTEXITCODE) { throw "tar failed" }
+Remove-Item dist/linux -Recurse -Force
+
 $iscc = @($env:ISCC, "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
           "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 if ($iscc) {
@@ -52,7 +63,7 @@ if ($iscc) {
     Write-Warning "Inno Setup not found: no installer"
 }
 
-$lines = foreach ($file in Get-ChildItem dist -File | Where-Object { $_.Extension -in ".zip", ".exe" } | Sort-Object Name) {
+$lines = foreach ($file in Get-ChildItem dist -File | Where-Object { $_.Extension -in ".zip", ".exe", ".gz" } | Sort-Object Name) {
     $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
     "$($file.Name)  ($([math]::Round($file.Length / 1MB, 1)) MB)  sha256 $hash" | Write-Host
     "$hash  $($file.Name)"

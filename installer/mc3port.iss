@@ -23,6 +23,7 @@ AppPublisherURL=https://github.com/SickSartori/mc3port
 AppSupportURL=https://github.com/SickSartori/mc3port/issues
 AppUpdatesURL=https://github.com/SickSartori/mc3port/releases
 AppComments=Unofficial native Windows port of Midnight Club 3: DUB Edition Remix (Xbox, PAL). No game files included.
+AppCopyright=MIT licence. Not affiliated with Rockstar Games, Take-Two Interactive or Microsoft.
 VersionInfoVersion={#AppVersion}
 VersionInfoDescription=mc3port setup
 DefaultDirName={autopf}\mc3port
@@ -39,6 +40,9 @@ WizardImageFile=wizard-100.png,wizard-150.png,wizard-200.png,wizard-250.png
 WizardSmallImageFile=wizard-small-100.png,wizard-small-150.png,wizard-small-200.png,wizard-small-250.png
 ShowLanguageDialog=auto
 CloseApplications=yes
+; Windows caches the icons it has shown; after mc3.exe is replaced, the shortcuts kept the old one. This makes
+; Setup tell the shell that associations changed, so it reloads them.
+ChangesAssociations=yes
 RestartApplications=no
 OutputDir={#OutputDir}
 OutputBaseFilename=mc3port-{#AppVersion}-windows-x86-setup
@@ -79,29 +83,6 @@ Name: "{autoprograms}\{cm:ShortcutName}"; Filename: "{app}\mc3.exe"
 Name: "{autodesktop}\{cm:ShortcutName}"; Filename: "{app}\mc3.exe"; Tasks: desktopicon
 
 [Run]
-; After a normal install, offered on the last page; after a silent update started by a launcher of 0.2.4 or earlier
-; (/UPDATE), always. Newer launchers only download the installer and show it, and the player starts it.
+; Offered on the last page. No [Code] section and no automatic start after a silent install: with them, antivirus
+; heuristics (Microsoft, Elastic, DeepInstinct on VirusTotal) took the installer for malware.
 Filename: "{app}\mc3.exe"; Description: "{cm:StartNow}"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\mc3.exe"; Flags: nowait; Check: IsLauncherUpdate
-
-[Code]
-function IsLauncherUpdate: Boolean;
-var
-  I: Integer;
-begin
-  Result := False;
-  for I := 1 to ParamCount do
-    if CompareText(ParamStr(I), '/UPDATE') = 0 then
-      Result := True;
-end;
-
-// Windows caches the icons it has shown; after mc3.exe is replaced, the desktop and Start menu shortcuts kept the
-// old one. Telling the shell that associations changed makes it reload them.
-procedure SHChangeNotify(wEventId: Integer; uFlags: Cardinal; dwItem1, dwItem2: Cardinal);
-  external 'SHChangeNotify@shell32.dll stdcall';
-
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssPostInstall then
-    SHChangeNotify($08000000, 0, 0, 0);  { SHCNE_ASSOCCHANGED, SHCNF_IDLIST }
-end;

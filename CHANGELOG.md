@@ -6,11 +6,16 @@
 
 - **Crash dump**: the first crash of a run writes `mc3port-crash.dmp` next to `mc3port.log`, to attach to a report
   with the log. It holds no file paths.
+- **Linux package** (Wine): `mc3port-<version>-linux.tar.gz`, with `install.sh`: it copies mc3port to your user
+  folder, makes a Wine prefix of its own there, and adds the `mc3port` command and an entry in the applications menu.
+  Run it again to update; settings and saves are in the same folder.
 
 ### Improved
 
 - Fewer antivirus false alarms: `mc3.exe` no longer has a section shaped like a packed program's (on VirusTotal, 3
-  engines instead of 9).
+  engines instead of 9). The installer no longer has a script section nor starts the game by itself after a silent
+  update (3 engines instead of 6, Microsoft among those gone): after an update started by a launcher of 0.2.4 or
+  earlier, start mc3port as usual.
 - mc3port's HUD: the special ability's arc pulses when it is full and the ability can be used.
 
 ### Fixed

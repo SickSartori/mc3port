@@ -7,3 +7,6 @@
 *.jpg binary
 *.mp3 binary
 *.ttf binary
+
+# Shell scripts run on Linux from a package built on Windows
+*.sh text eol=lf

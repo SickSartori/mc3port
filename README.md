@@ -75,7 +75,9 @@ in Explorer, and you start it.
 `mc3port`, and `mc3.exe` inside it starts the game. To update, extract the new version in the same place, replacing
 the files.
 
-Both packages contain `README.txt`, a short guide to what you need, the first start and where your files are, and
+**Linux (Wine)**: download `mc3port-<version>-linux.tar.gz`: see [Linux](#linux-experimental).
+
+All packages contain `README.txt`, a short guide to what you need, the first start and where your files are, and
 `CHANGELOG.md`, what changed in each version.
 
 To check a download, compare its SHA-256 with the `SHA256SUMS` file of the release. The files are not code signed,
@@ -100,11 +102,15 @@ What it takes:
   `i386` architecture and the 32-bit OpenGL and Vulkan libraries (`libgl1:i386`, `libegl1:i386`,
   `libvulkan1:i386`); without them Wine has no Direct3D 11 and the game window stays black. The packages from
   [WineHQ](https://gitlab.winehq.org/wine/wine/-/wikis/Download) bring the rest.
-- The **portable zip**. Extract it, put your `.iso` in the `mc3port` folder (it is found there without asking) or
-  choose it in the launcher, then start it with `wine mc3.exe` from that folder. With Steam, "Add a non-Steam game"
-  pointing at `mc3.exe` starts it through Proton (not tested yet).
-- Your files are in the Wine prefix: `~/.wine/drive_c/users/<you>/AppData/Local/mc3port` (or next to `mc3.exe` with
-  `portable.txt`). The log there starts with the Wine and Linux versions.
+- The **Linux package**, `mc3port-<version>-linux.tar.gz`. Extract it and run `sh mc3port/install.sh`: it copies
+  mc3port to `~/.local/share/mc3port`, makes a Wine prefix of its own there (without Mono and Gecko), and adds the
+  `mc3port` command in `~/.local/bin` and an entry in the applications menu. Run it again to update. Everything,
+  settings and saves included, is in that one folder; the script says how to remove it. The log there starts with
+  the Wine and Linux versions.
+- Or the **portable zip**, by hand: extract it, put your `.iso` in the `mc3port` folder (it is found there without
+  asking) or choose it in the launcher, then start it with `wine mc3.exe` from that folder. Your files are then in
+  the Wine prefix, `~/.wine/drive_c/users/<you>/AppData/Local/mc3port` (or next to `mc3.exe` with `portable.txt`).
+  With Steam, "Add a non-Steam game" pointing at `mc3.exe` starts it through Proton (not tested yet).
 
 ## First start
 
