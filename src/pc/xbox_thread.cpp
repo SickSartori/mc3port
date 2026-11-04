@@ -69,6 +69,9 @@ XboxThreadContext* attach_xbox_thread_context(const XbeTlsTemplate& tls, uint32_
         g_process[kKProcessBasePriority] = kNormalBasePriority;
     });
     if (g_game_cores) SetThreadAffinityMask(GetCurrentThread(), g_game_cores);
+    // No dynamic boosts (input, foreground window, wake-ups): one could lift a normal game thread to the interrupt
+    // thread's priority, and Windows would then take turns between them while the interrupt is at DISPATCH_LEVEL.
+    SetThreadPriorityBoost(GetCurrentThread(), TRUE);
 
     auto* context = new XboxThreadContext{};
     // The TLS area sits right below the thread's StackBase; XAPI sets the TLS index to -(area size / 4), so
@@ -296,12 +299,15 @@ void log_game_threads(const char* reason) {
     for (XboxThreadContext* context : threads) {
         if (context == current_xbox_thread()) continue;  // cannot suspend itself
         if (WaitForSingleObject(context->windows_thread, 0) == WAIT_OBJECT_0) continue;  // exited
+        // Allocated before suspending: the thread may hold the heap's lock.
+        std::string trace;
+        trace.reserve(128);
+        StackCopy copy;
+        copy.bytes.reserve(64 * 1024);
         if (SuspendThread(context->windows_thread) == static_cast<DWORD>(-1)) continue;
         CONTEXT registers{};
         registers.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
         const bool ok = GetThreadContext(context->windows_thread, &registers) != 0;
-        std::string trace;
-        StackCopy copy;
         if (ok) {
             const auto* stack = reinterpret_cast<const uint32_t*>(static_cast<uintptr_t>(registers.Esp));
             MEMORY_BASIC_INFORMATION info{};

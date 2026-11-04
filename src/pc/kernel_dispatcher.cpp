@@ -13,12 +13,12 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
-#include <deque>
 #include <map>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 #include "pc/game_pause.h"
 #include "pc/handles.h"
@@ -41,7 +41,13 @@ std::condition_variable g_dpc_queued;
 
 std::multimap<Clock::time_point, uint32_t> g_timer_queue;
 std::unordered_map<uint32_t, std::multimap<Clock::time_point, uint32_t>::iterator> g_active_timers;
-std::deque<uint32_t> g_dpc_queue;
+// Queued from interrupt service routines, so it must not allocate (the heap's lock can be busy on another core,
+// and waiting for it lets other game threads run at that level): a vector with room for every DPC the game has.
+std::vector<uint32_t> g_dpc_queue = [] {
+    std::vector<uint32_t> queue;
+    queue.reserve(256);
+    return queue;
+}();
 
 volatile uint32_t g_tick_count = 0;
 #pragma pack(push, 1)
@@ -213,7 +219,7 @@ void run_queued_dpcs_locked(std::unique_lock<std::mutex>& lock) {
     XboxThreadContext* context = current_xbox_thread();
     while (!g_dpc_queue.empty()) {
         const uint32_t dpc_address = g_dpc_queue.front();
-        g_dpc_queue.pop_front();
+        g_dpc_queue.erase(g_dpc_queue.begin());
         XKDpc* dpc = guest<XKDpc>(dpc_address);
         dpc->inserted = 0;
         const XKDpc snapshot = *dpc;
