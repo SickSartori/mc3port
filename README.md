@@ -211,7 +211,9 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 - **The update fails**: download the installer from the [releases page](https://github.com/SickSartori/mc3port/releases)
   and run it; settings and saves are kept.
 
-To report a problem, open an [issue](https://github.com/SickSartori/mc3port/issues) with your Windows version, your
+To report a problem, press **Report a problem** on the launcher's **About** page: it opens the form on GitHub with
+your version and PC filled in, and the folder with `mc3port.log` to attach. Or open an
+[issue](https://github.com/SickSartori/mc3port/issues) yourself with your Windows version, your
 graphics card, what you were doing and `mc3port.log` attached (normally in `%LOCALAPPDATA%\mc3port`; the launcher's
 **About** page opens the folder). On Linux, also give the distribution, the Wine or Proton version, the graphics
 driver (for example Mesa 25.2 or NVIDIA 580) and how you started the game.

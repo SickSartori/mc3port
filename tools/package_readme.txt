@@ -127,7 +127,9 @@ IF SOMETHING GOES WRONG
 - The disc is refused: only the European release is supported; the
   launcher's message says what it found.
 
-To report a problem, open an issue at
+To report a problem, press "Report a problem" on the launcher's About
+page: it opens the form on GitHub with your version and PC filled in, and
+the folder with mc3port.log to attach. Or open an issue at
 https://github.com/SickSartori/mc3port/issues with your Windows version,
 your graphics card, what you were doing and mc3port.log attached. On
 Linux, also give the distribution, the Wine or Proton version, the

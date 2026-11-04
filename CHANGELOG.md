@@ -6,6 +6,8 @@
 
 - **Split and compressed disc images**: an image split in parts, as for the Xbox's own hard disk (`name.1.iso`,
   `name.2.iso`; choose any part), and the compressed CCI format (`.cci`, also split) work like a single `.iso`.
+- **Report a problem** (launcher, About): opens the bug report form on GitHub with the version and the PC filled in,
+  and the folder with `mc3port.log` to attach.
 
 ### Improved
 

@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -67,7 +68,8 @@ struct Texts {
     const char *anisotropy, *gpu_vertices, *gpu_vertices_sub, *effects, *effects_sub, *on, *off;
     const char *sharpen, *bloom, *bloom_threshold, *saturation, *contrast, *vignette, *occlusion, *occlusion_radius;
     const char *defaults, *controls_lead, *press_key, *reset_keys, *system_keys, *full_screen_key, *effects_key, *launcher_keys, *pads_note;
-    const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *legal, *credits;
+    const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *report, *report_sub, *legal,
+        *credits;
     const char *update_now, *update_install_sub, *downloading, *update_failed;
     const char *welcome, *welcome_lead, *next, *quality_title, *quality_lead, *all_set, *all_set_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
@@ -100,7 +102,8 @@ const Texts kEnglish = {
     "PlayStation and other pads: through Steam Input or DS4Windows, which present them as Xbox controllers.",
     "Unofficial native Windows port. No game files included: you need your own copy.", "Looking for updates...",
     "This is the latest version", "Version %s is available", "Opens the release page; nothing downloads by itself",
-    "Open", "Log folder", "For bug reports, attach mc3port.log",
+    "Open", "Log folder", "For bug reports, attach mc3port.log", "Report a problem",
+    "Opens the form on GitHub with your version and PC filled in, and the log folder to attach mc3port.log",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "MIT licence \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
     "Update", "Downloads and checks the installer, then shows it to you to start", "Downloading the update...",
@@ -147,7 +150,8 @@ const Texts kItalian = {
     "Port nativo non ufficiale per Windows. Nessun file del gioco incluso: serve la tua copia.",
     "Cerco aggiornamenti...", "Questa \xC3\xA8 l'ultima versione", "\xC3\x88 disponibile la versione %s",
     "Apre la pagina della versione; niente si scarica da solo", "Apri", "Cartella dei log",
-    "Per segnalare un problema allega mc3port.log",
+    "Per segnalare un problema allega mc3port.log", "Segnala un problema",
+    "Apre il modulo su GitHub con versione e PC giÃ  compilati, e la cartella del log per allegare mc3port.log",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenza MIT \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
     "Aggiorna", "Scarica e verifica l'installer, poi te lo mostra da avviare", "Scarico l'aggiornamento...",
@@ -1647,9 +1651,40 @@ void Launcher::page_about() {
     if (status(true, heading, t.credits, "GitHub", "##github")) {
         ShellExecuteA(nullptr, "open", (std::string("https://github.com/") + kRepository).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     }
-    if (status(true, t.logs, t.logs_sub, t.open, "##logs")) {
-        const std::wstring argument = L"/select,\"" + (data_directory() / "mc3port.log").wstring() + L"\"";
+    const std::filesystem::path log = data_directory() / "mc3port.log";
+    const auto show_log = [&] {
+        const std::wstring argument = L"/select,\"" + log.wstring() + L"\"";
         ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
+    };
+    if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
+    if (status(true, t.report, t.report_sub, t.open, "##report")) {
+        // The issue form (.github/ISSUE_TEMPLATE/bug_report.yml) takes its fields from the address: the version, and
+        // the machine as the log's first lines describe it. Sending stays with the player, signed in on GitHub.
+        std::string system;
+        if (std::FILE* file = _wfopen(log.c_str(), L"r")) {
+            char line[512];
+            for (int i = 0; i < 80 && std::fgets(line, sizeof(line), file); ++i) {
+                line[std::strcspn(line, "\r\n")] = 0;
+                if (std::strncmp(line, "host: ", 6) != 0 || std::strstr(line, "(software)")) continue;
+                if (!system.empty()) system += "; ";
+                system += line + 6;
+            }
+            std::fclose(file);
+        }
+        const auto encode = [](const std::string& text) {
+            std::string encoded;
+            for (const unsigned char c : text) {
+                char escape[4];
+                std::snprintf(escape, sizeof(escape), "%%%02X", c);
+                encoded += std::isalnum(c) || std::strchr("-._~", c) ? std::string(1, static_cast<char>(c)) : escape;
+            }
+            return encoded;
+        };
+        const std::string url = std::string("https://github.com/") + kRepository +
+                                "/issues/new?template=bug_report.yml&version=" + encode(MC3PORT_VERSION) +
+                                "&system=" + encode(system);
+        ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        show_log();
     }
     cursor_ += px(8);
     const ImVec2 size = measure(body_, px(16), t.legal, panel_width_);
