@@ -573,6 +573,21 @@ uint64_t hash_memory(const uint8_t* data, size_t size) {
     return hash;
 }
 
+// Only to see whether memory changed: four independent 32-bit lanes, which a 32-bit build multiplies in one
+// instruction each (hash_memory's 64-bit multiply is a library call here); about three times faster.
+uint64_t change_hash(const uint8_t* data, size_t size) {
+    uint32_t lane[4] = {0x811C9DC5u, 0x01000193u, 0x9E3779B1u, 0x85EBCA6Bu};
+    size_t i = 0;
+    for (; i + 16 <= size; i += 16) {
+        uint32_t words[4];
+        std::memcpy(words, data + i, 16);
+        for (int k = 0; k < 4; ++k) lane[k] = (lane[k] ^ words[k]) * 0x01000193u;
+    }
+    for (; i < size; ++i) lane[i & 3] = (lane[i & 3] ^ data[i]) * 0x01000193u;
+    const uint32_t low = lane[0] ^ (lane[2] * 0x9E3779B1u), high = lane[1] ^ (lane[3] * 0x85EBCA6Bu);
+    return (static_cast<uint64_t>(high) << 32 | low) ^ size;
+}
+
 ComPtr<ID3DBlob> compile(const char* source, size_t size, const char* profile, const char* name) {
     ComPtr<ID3DBlob> code, errors;
     const HRESULT hr = D3DCompile(source, size, name, nullptr, nullptr, "main", profile, D3DCOMPILE_OPTIMIZATION_LEVEL1,
@@ -658,7 +673,31 @@ ComPtr<ID3D11PixelShader> g_copy_pixel_shader;
 
 // Switches a render target to a float format (keeping its contents), for the Xbox's signed blend equations: on
 // UNORM a subtraction below zero would clamp and lose the count.
+// What bind_draw_state last gave Direct3D: a draw like the one before (most are) sets only what differs. Code that
+// binds other state (effects, occlusion, presenting) forgets it on the way out (ForgetBound).
+struct BoundState {
+    bool valid = false;
+    ID3D11RenderTargetView* rtv = nullptr;
+    ID3D11DepthStencilView* dsv = nullptr;
+    D3D11_VIEWPORT viewport{};
+    D3D11_RECT scissor{};
+    ID3D11RasterizerState* rasterizer = nullptr;
+    ID3D11BlendState* blend = nullptr;
+    float blend_color[4] = {};
+    ID3D11DepthStencilState* depth = nullptr;
+    UINT stencil_reference = 0;
+    CombinerConstants constants{};
+    ID3D11ShaderResourceView* views[4] = {};
+    ID3D11SamplerState* samplers[4] = {};
+    ID3D11PixelShader* shader = nullptr;
+};
+BoundState g_bound;
+struct ForgetBound {
+    ~ForgetBound() { g_bound.valid = false; }
+};
+
 void make_float_target(Target& target, uint32_t address) {
+    const ForgetBound forget;
     if (target.format == DXGI_FORMAT_R16G16B16A16_FLOAT || !g_copy_pixel_shader) return;
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = scaled_size(target.width);
@@ -863,6 +902,7 @@ Narrowing hud_narrowing(const SurfaceState& surface, float left, float right, fl
 }
 
 void apply_occlusion(Target& target, DepthTarget& depth) {
+    const ForgetBound forget;
     const float strength = setting("ambient_occlusion");
     if (strength <= 0 || !g_occlusion_pixel_shader || !depth.srv || !g_effects_enabled) return;
     const OcclusionConstants constants{setting("ambient_occlusion_radius") * 14.0f * g_scale, std::min(strength, 1.0f)};
@@ -1183,13 +1223,16 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     const uint64_t hash_start = ticks();
     // The texture's own bytes name its replacement (the palette address is set for every format, and its memory
     // changes between runs).
-    const uint64_t own_hash = hash_memory(memory, bytes);
-    const uint64_t hash = own_hash ^ (d.palette ? hash_memory(physical_pointer(d.palette), 1024) : 0);
+    const uint64_t hash = change_hash(memory, bytes) ^ (d.palette ? change_hash(physical_pointer(d.palette), 1024) : 0);
     g_stats.hash_ticks += ticks() - hash_start;
     g_stats.hashed_bytes += bytes;
     cached.checked_generation = g_write_generation;
     if (cached.srv && cached.content_hash == hash) return cached.srv.Get();
     static const bool replacements = (find_replacements(), !g_replacements.empty());
+    // The name of replacement and dumped pictures: hash_memory of the texture's own bytes, as in earlier versions.
+    static const bool dumping = GetEnvironmentVariableA("MC3_DUMP_TEXTURE", nullptr, 0) != 0 ||
+                                GetEnvironmentVariableA("MC3_DUMP_2D", nullptr, 0) != 0;
+    const uint64_t own_hash = replacements || dumping ? hash_memory(memory, bytes) : 0;
     if (replacements && !texture_is_linear(d)) {
         const auto replacement = g_replacements.find(own_hash);
         if (replacement != g_replacements.end()) {
@@ -1360,6 +1403,7 @@ void dump_frame(ID3D11Texture2D* texture, const char* prefix = "frame") {
 
 // The swap chain follows the window's client area (it changes with resizing and full screen).
 void ensure_swap_chain_size() {
+    const ForgetBound forget;
     RECT client{};
     GetClientRect(g_window_handle, &client);
     const auto width = static_cast<uint32_t>(std::max<LONG>(1, client.right - client.left));
@@ -1465,6 +1509,7 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
 )";
 
 void ensure_bloom_targets(uint32_t width, uint32_t height) {
+    const ForgetBound forget;
     width = std::max(1u, width / 4), height = std::max(1u, height / 4);
     if (g_bloom_texture[0] && g_bloom_width == width && g_bloom_height == height) return;
     for (int i = 0; i < 2; ++i) {
@@ -1490,6 +1535,7 @@ void ensure_bloom_targets(uint32_t width, uint32_t height) {
 // One full-surface pass into `rtv` (viewport `area`) reading `sources`.
 void post_pass(ID3D11RenderTargetView* rtv, const D3D11_VIEWPORT& area, ID3D11PixelShader* shader,
                ID3D11ShaderResourceView* const* sources, UINT source_count, const PostConstants& constants) {
+    const ForgetBound forget;
     g_context->UpdateSubresource(g_post_constants.Get(), 0, nullptr, &constants, 0, 0);
     g_context->OMSetRenderTargets(1, &rtv, nullptr);
     g_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
@@ -1516,6 +1562,7 @@ void post_pass(ID3D11RenderTargetView* rtv, const D3D11_VIEWPORT& area, ID3D11Pi
 // Draws the frame into the window: the largest rectangle of the picture's shape (renderer_aspect) that fits,
 // centred, filtered, with the effects.
 void present_frame(ID3D11ShaderResourceView* frame, uint32_t frame_width, uint32_t frame_height) {
+    const ForgetBound forget;
     ensure_swap_chain_size();
     if (!g_back_buffer_rtv || !g_present_pixel_shader) return;
     if (g_effects_enabled && g_final_pixel_shader && frame_width && frame_height) {
@@ -1850,6 +1897,7 @@ bool renderer_start(HWND window) {
 }
 
 bool renderer_over_shown_scene(const SurfaceState& surface) {
+    const ForgetBound forget;
     const auto scene = g_scenes.find(surface.zeta_address);
     return scene != g_scenes.end() && scene->second.drawn && g_shown_surfaces.count(surface.color_address) != 0;
 }
@@ -2003,25 +2051,55 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
         g_surface_scale_narrow = hud.factor;
         g_surface_scale_anchor = hud.anchor;
     }
-    ID3D11Buffer* surface_constants = g_surface_constants.Get();
-    g_context->VSSetConstantBuffers(0, 1, &surface_constants);
+    BoundState& bound = g_bound;
+    if (!bound.valid) {
+        bound = BoundState{};
+        ID3D11Buffer* surface_constants = g_surface_constants.Get();
+        g_context->VSSetConstantBuffers(0, 1, &surface_constants);
+        ID3D11Buffer* constants = g_constants.Get();
+        g_context->PSSetConstantBuffers(0, 1, &constants);
+    }
 
     ID3D11RenderTargetView* rtv = target->rtv.Get();
-    // A surface can be both the target and a texture of the same draw; unbind it from the pixel shader first.
-    ID3D11ShaderResourceView* none[4] = {};
-    g_context->PSSetShaderResources(0, 4, none);
-    g_context->OMSetRenderTargets(1, &rtv, draw.depth ? draw.depth->dsv.Get() : nullptr);
+    ID3D11DepthStencilView* dsv = draw.depth ? draw.depth->dsv.Get() : nullptr;
+    if (!bound.valid || rtv != bound.rtv || dsv != bound.dsv) {
+        // A surface can be both the target and a texture of the same draw; unbind it from the pixel shader first.
+        ID3D11ShaderResourceView* none[4] = {};
+        g_context->PSSetShaderResources(0, 4, none);
+        std::fill(std::begin(bound.views), std::end(bound.views), nullptr);
+        g_context->OMSetRenderTargets(1, &rtv, dsv);
+        bound.rtv = rtv, bound.dsv = dsv;
+    }
     const D3D11_VIEWPORT viewport{0, 0, scaled_float(target->width), scaled_float(target->height), 0, 1};
-    g_context->RSSetViewports(1, &viewport);
+    if (!bound.valid || std::memcmp(&viewport, &bound.viewport, sizeof(viewport)) != 0) {
+        g_context->RSSetViewports(1, &viewport);
+        bound.viewport = viewport;
+    }
     const auto clip_x0 = static_cast<uint32_t>(std::lround(hud.apply(static_cast<float>(surface.clip_x))));
     const auto clip_x1 =
         static_cast<uint32_t>(std::lround(hud.apply(static_cast<float>(surface.clip_x + surface.clip_width))));
     const D3D11_RECT scissor{scaled(clip_x0), scaled(surface.clip_y), scaled(clip_x1),
                              scaled(surface.clip_y + surface.clip_height)};
-    g_context->RSSetScissorRects(1, &scissor);
-    g_context->RSSetState(rasterizer_for(state));
-    g_context->OMSetBlendState(blend_state(state), state.blend_color, 0xFFFFFFFF);
-    g_context->OMSetDepthStencilState(depth_state(state), state.stencil_reference);
+    if (!bound.valid || std::memcmp(&scissor, &bound.scissor, sizeof(scissor)) != 0) {
+        g_context->RSSetScissorRects(1, &scissor);
+        bound.scissor = scissor;
+    }
+    if (ID3D11RasterizerState* rasterizer = rasterizer_for(state); !bound.valid || rasterizer != bound.rasterizer) {
+        g_context->RSSetState(rasterizer);
+        bound.rasterizer = rasterizer;
+    }
+    if (ID3D11BlendState* blend = blend_state(state);
+        !bound.valid || blend != bound.blend || std::memcmp(state.blend_color, bound.blend_color, sizeof(bound.blend_color)) != 0) {
+        g_context->OMSetBlendState(blend, state.blend_color, 0xFFFFFFFF);
+        bound.blend = blend;
+        std::memcpy(bound.blend_color, state.blend_color, sizeof(bound.blend_color));
+    }
+    if (ID3D11DepthStencilState* depth = depth_state(state);
+        !bound.valid || depth != bound.depth || state.stencil_reference != bound.stencil_reference) {
+        g_context->OMSetDepthStencilState(depth, state.stencil_reference);
+        bound.depth = depth;
+        bound.stencil_reference = state.stencil_reference;
+    }
 
     // A linear texture is addressed in texels; when it is one of our render targets, its real width (from the
     // surface pitch) can be larger than the texture's rectangle, so normalise by the render target's size.
@@ -2052,9 +2130,10 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
         const char* key = state.blend_destination == 1 ? "light_streaks" : "motion_blur";
         constants_data.alpha_reference[2] = 1 - std::clamp(setting(key), 0.0f, 1.0f);
     }
-    g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
-    ID3D11Buffer* constants = g_constants.Get();
-    g_context->PSSetConstantBuffers(0, 1, &constants);
+    if (!bound.valid || std::memcmp(&constants_data, &bound.constants, sizeof(constants_data)) != 0) {
+        g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
+        bound.constants = constants_data;
+    }
 
     ID3D11ShaderResourceView* views[4] = {};
     ID3D11SamplerState* samplers[4] = {};
@@ -2070,9 +2149,19 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
             g_blur_surface = surface.color_address;
         }
     }
-    g_context->PSSetShaderResources(0, 4, views);
-    g_context->PSSetSamplers(0, 4, samplers);
-    g_context->PSSetShader(draw.shader, nullptr, 0);
+    if (!bound.valid || std::memcmp(views, bound.views, sizeof(views)) != 0) {
+        g_context->PSSetShaderResources(0, 4, views);
+        std::memcpy(bound.views, views, sizeof(views));
+    }
+    if (!bound.valid || std::memcmp(samplers, bound.samplers, sizeof(samplers)) != 0) {
+        g_context->PSSetSamplers(0, 4, samplers);
+        std::memcpy(bound.samplers, samplers, sizeof(samplers));
+    }
+    if (!bound.valid || draw.shader != bound.shader) {
+        g_context->PSSetShader(draw.shader, nullptr, 0);
+        bound.shader = draw.shader;
+    }
+    bound.valid = true;
 }
 
 // Appends `bytes` to a dynamic ring buffer: written without waiting (NO_OVERWRITE), renamed (DISCARD) only when
@@ -2422,6 +2511,7 @@ void renderer_set_effects(bool on) {
 void renderer_set_overlay(RendererOverlay overlay) { g_overlay = overlay; }
 
 void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_t pitch) {
+    const ForgetBound forget;  // presenting draws effects and the overlay (ImGui) with their own state
     if (!g_device || !width || !height) return;
     ID3D11Texture2D* frame = nullptr;
     ID3D11ShaderResourceView* frame_view = nullptr;
