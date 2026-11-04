@@ -33,7 +33,6 @@ struct Player {
     Dial speed, rpm;
     int gear = 0;  // 1-6; 0 none seen, -1 reverse, -2 neutral, -3 a cell not known yet
     float special = -1;  // the special ability's charge, 0 to 1; -1 none seen
-    int bar_lit = 0, bar_total = 0;
 };
 struct Reading {
     std::vector<Dial> faces;  // in draw order, with their textures
@@ -49,7 +48,6 @@ struct Reading {
     std::vector<Arc> arcs;
     struct Segment {
         float x, y;
-        bool lit;
     };
     std::vector<Segment> segments;
     std::vector<std::pair<uint32_t, float>> early_needles;  // (texture, angle): drawn before their face
@@ -134,12 +132,6 @@ void publish(Reading& r) {
         if (Player* p = nearest((arc.left + arc.right) / 2, arc.bottom)) {
             const float span = std::max(1.0f, arc.fill_bottom - arc.top);
             p->special = arc.filled ? std::clamp((arc.fill_bottom - arc.fill_top) / span, 0.0f, 1.0f) : 0;
-        }
-    }
-    for (const Reading::Segment& s : r.segments) {
-        if (Player* p = nearest(s.x, s.y)) {
-            ++p->bar_total;
-            if (s.lit) ++p->bar_lit;
         }
     }
     // A reading whose largest dial is much smaller than the last speedometer missed the speedometer (its rev
@@ -308,22 +300,14 @@ bool hud_take_quad(const HudQuad& q) {
         }
     }
     if (!q.program && q.colour[0] > 0.6f && q.colour[1] < 0.2f && q.colour[2] < 0.2f && width < 40 && height < 40) {
-        // The red bar under the speedometer: ten small segments, lit or not, around a speedometer already read (a
-        // small red letter elsewhere stays).
+        // The red bar under the speedometer (the rev limiter): ten small segments around a speedometer already read
+        // (a small red letter elsewhere stays). Left out with the dials.
         const float x = (left + right) / 2, y = (top + bottom) / 2;
         const bool near_speedometer = std::any_of(g_players.begin(), g_players.end(), [&](const Player& p) {
             return std::hypot(p.speed.centre_x() - x, p.speed.centre_y() - y) < p.speed.size() * 0.75f;
         });
         if (!near_speedometer) return false;
-        // A lit segment can be drawn twice in a frame: the same place counts once (only the faces and the arc
-        // start a new frame).
-        for (Reading::Segment& s : r.segments) {
-            if (std::fabs(s.x - x) < 1 && std::fabs(s.y - y) < 1) {
-                s.lit = s.lit || q.colour[3] > 0.05f;
-                return hide;
-            }
-        }
-        r.segments.push_back({x, y, q.colour[3] > 0.05f});
+        r.segments.push_back({x, y});
         return hide;
     }
     return false;
@@ -454,19 +438,10 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
             if (!text) std::snprintf(digit, sizeof(digit), "%d", p.gear), text = digit;
             centred_text(list, fonts.numbers, 34 * s, ImVec2(c.x - 1 * s, c.y), colour(17, 17, 17), text);
         }
-        if (p.bar_total > 0) {  // the game's red bar: three bars filling with it
-            const float level = static_cast<float>(p.bar_lit) / static_cast<float>(p.bar_total) * 3;
-            for (int i = 0; i < 3; ++i) {
-                const float x = speed_centre.x - 149 * s, y = speed_centre.y - 44 * s + (2 - i) * 29 * s;
-                const float lit = std::clamp(level - static_cast<float>(i), 0.0f, 1.0f);
-                list->AddRectFilled(ImVec2(x, y), ImVec2(x + 16 * s, y + 24 * s), colour(255, 255, 255, 0.14f), 3 * s);
-                if (lit > 0) {
-                    list->AddRectFilled(ImVec2(x, y + 24 * s * (1 - lit)), ImVec2(x + 16 * s, y + 24 * s),
-                                        colour(56, 200, 255), 3 * s);
-                }
-            }
-        }
-        if (p.special >= 0) {  // the special ability: an arc outside the speedometer, lower right, filling upwards
+        // The game's red bar under the speedometer is not redrawn: it lights only at the rev limiter, which the rev
+        // counter's red zone already shows.
+        if (p.special > 0) {  // the special ability: an arc outside the speedometer, lower right, filling upwards;
+                              // none while it is empty (a car without an ability never charges it)
             const float r = 127 * s;
             arc(list, speed_centre, r, 60, 140, colour(255, 255, 255, 0.16f), 5 * s);
             arc(list, speed_centre, r, 140 - 80 * p.special, 140, kAccent, 5 * s);
