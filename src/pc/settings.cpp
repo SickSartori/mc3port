@@ -34,6 +34,7 @@ const Setting kSettings[] = {
     {"volume", 100, "Overall volume, 0 to 100."},
     {"launcher_music", 70, "Volume of the launcher's background music, 0 to 100 (0 = off)."},
     {"fps_counter", 0, "Frames per second shown in a corner while playing: 1 = yes, 0 = no."},
+    {"loading_screen_seconds", 6, "The game's loading screens stay at least this many seconds (0 = as short as loading)."},
     {"skip_intro", 1, "Skip the films at start (Rockstar logos and the game's intro): 1 = yes, 0 = show them."},
     {"pause_in_background", 1, "Pause the game (in-game menu) when its window goes to the background: 1 = yes, 0 = no."},
     {"check_updates", 1, "Look for a newer mc3port release on GitHub when the launcher opens: 1 = yes, 0 = no."},
