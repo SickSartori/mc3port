@@ -215,7 +215,7 @@ To report a problem, press **Report a problem** in the launcher's bottom bar (or
 form on GitHub with your version and PC filled in, and the folder with `mc3port.log` to attach. Or open an
 [issue](https://github.com/SickSartori/mc3port/issues) yourself with your Windows version, your
 graphics card, what you were doing and `mc3port.log` attached (normally in `%LOCALAPPDATA%\mc3port`; the launcher's
-**About** page opens the folder). On Linux, also give the distribution, the Wine or Proton version, the graphics
+**About** page opens the folder). After a crash, also attach `mc3port-crash.dmp` from the same folder. On Linux, also give the distribution, the Wine or Proton version, the graphics
 driver (for example Mesa 25.2 or NVIDIA 580) and how you started the game.
 
 ## Building from source
