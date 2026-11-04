@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.6 (2026-11-04)
 
 ### New
 
@@ -14,7 +14,6 @@
 - A newer version shows in the same bar too, next to the version number ("Update to ..."), and leads to the About
   page that installs it.
 - A row's description in the launcher stops before its button instead of running under it.
-
 - mc3port's HUD drops the three small bars left of the speedometer (the game's light for the rev limiter, which
   the rev counter's red zone already shows) and draws the special ability's arc only once it holds a charge.
 - The log says which part of showing a frame took the time when it took more than a quarter of a second.
