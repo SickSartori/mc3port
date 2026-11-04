@@ -109,7 +109,7 @@ std::vector<std::filesystem::path> nearby_discs(const std::filesystem::path& exe
             std::wstring extension = item.path().extension().wstring();
             std::transform(extension.begin(), extension.end(), extension.begin(),
                            [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-            if (item.is_regular_file(ignored) && extension == L".iso" &&
+            if (item.is_regular_file(ignored) && (extension == L".iso" || extension == L".cci") &&
                 std::find(found.begin(), found.end(), item.path()) == found.end()) {
                 found.push_back(item.path());
             }
@@ -125,8 +125,8 @@ std::filesystem::path ask_for_disc_image(void* owner_window) {
     const std::wstring title = wide(text("Choose your Midnight Club 3: DUB Edition Remix disc image (Xbox, Europe)",
                                          "Scegli l'immagine del disco di Midnight Club 3: DUB Edition Remix (Xbox, "
                                          "Europa)"));
-    const std::wstring filter = wide(text("Xbox disc image (*.iso)", "Immagine disco Xbox (*.iso)")) +
-                                std::wstring(L"\0*.iso\0", 7) + wide(text("All files", "Tutti i file")) +
+    const std::wstring filter = wide(text("Xbox disc image (*.iso, *.cci)", "Immagine disco Xbox (*.iso, *.cci)")) +
+                                std::wstring(L"\0*.iso;*.cci\0", 13) + wide(text("All files", "Tutti i file")) +
                                 std::wstring(L"\0*.*\0\0", 6);
     OPENFILENAMEW dialog{};
     dialog.lStructSize = sizeof(dialog);

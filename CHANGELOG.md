@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- **Split and compressed disc images**: an image split in parts, as for the Xbox's own hard disk (`name.1.iso`,
+  `name.2.iso`; choose any part), and the compressed CCI format (`.cci`, also split) work like a single `.iso`.
+
+### Improved
+
+- mc3port's HUD drops the three small bars left of the speedometer (the game's light for the rev limiter, which
+  the rev counter's red zone already shows) and draws the special ability's arc only once it holds a charge.
+- The log says which part of showing a frame took the time when it took more than a quarter of a second.
+
 ## 0.2.5 (2026-11-04)
 
 ### New

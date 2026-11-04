@@ -21,8 +21,10 @@ WHAT YOU NEED
   Windows "N" editions only: install the Media Feature Pack (Settings >
   Apps > Optional features), or mc3runtime.dll will not load.
 - A graphics card and driver with Direct3D 11 (feature level 11_0).
-- A disc image (.iso) of Midnight Club 3: DUB Edition Remix, Xbox, Europe
-  (En, Fr, De, Es, It). XISO and full Redump dumps both work. Other
+- A disc image (.iso or .cci) of Midnight Club 3: DUB Edition Remix, Xbox,
+  Europe (En, Fr, De, Es, It). XISO and full Redump dumps both work, in one
+  file or split in parts (name.1.iso, name.2.iso: choose any part), and so
+  does the compressed CCI format. Other
   releases (for example the North American one) are not supported: the
   launcher checks the game's executable and tells you if the disc is a
   different version.
@@ -45,7 +47,7 @@ FIRST START
 2. Start mc3.exe. The files are not code signed, so Windows SmartScreen
    may ask once: "More info", then "Run anyway". To check a download,
    compare its SHA-256 with the SHA256SUMS file of the release.
-3. The launcher asks for your disc image: choose the .iso file. mc3port
+3. The launcher asks for your disc image: choose the .iso (or .cci) file. mc3port
    checks it and remembers where it is; if you move the file later,
    choose it again.
 4. Pick a quality preset, the aspect ratio and the frame rate, then PLAY.
