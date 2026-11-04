@@ -696,4 +696,14 @@ std::vector<CompletedPacket> take_completed_packets() {
     return completed;
 }
 
+std::vector<CompletedPacket> take_completed_packets(const Voice& voice) {
+    std::vector<CompletedPacket> taken;
+    const auto of_voice = [&](const CompletedPacket& packet) {
+        return packet.callback == voice.callback && packet.stream_context == voice.callback_context;
+    };
+    std::copy_if(g_completed.begin(), g_completed.end(), std::back_inserter(taken), of_voice);
+    g_completed.erase(std::remove_if(g_completed.begin(), g_completed.end(), of_voice), g_completed.end());
+    return taken;
+}
+
 }  // namespace mc3::pc

@@ -251,9 +251,28 @@ std::string describe_code_address(uint32_t address) {
     return text;
 }
 
+// The first crash of a run also goes to mc3port-crash.dmp next to the log: every thread's registers and stack, and
+// the memory they point at, for crashes the log alone does not explain. Module paths are left out (they hold the
+// user's name), so the file can be attached to a public report.
+void write_crash_dump(EXCEPTION_POINTERS* info) {
+    static volatile long written = 0;
+    if (InterlockedExchange(&written, 1)) return;
+    const std::filesystem::path path = data_directory() / "mc3port-crash.dmp";
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return;
+    MINIDUMP_EXCEPTION_INFORMATION exception{GetCurrentThreadId(), info, FALSE};
+    const auto type = static_cast<MINIDUMP_TYPE>(MiniDumpWithIndirectlyReferencedMemory | MiniDumpWithThreadInfo |
+                                                 MiniDumpFilterModulePaths);
+    const bool ok = MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file, type, &exception, nullptr,
+                                      nullptr) != FALSE;
+    CloseHandle(file);
+    log_line(ok ? "crash dump written: %ls" : "crash dump failed: %ls", path.c_str());
+}
+
 LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
     const CONTEXT* context = info->ContextRecord;
+    write_crash_dump(info);
     log_line("");
     log_line("unhandled exception %08lX at %08X %s", record->ExceptionCode, address_of(record->ExceptionAddress),
              describe_code_address(address_of(record->ExceptionAddress)).c_str());

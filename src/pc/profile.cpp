@@ -15,6 +15,7 @@
 
 #include "pc/log.h"
 #include "pc/nv2a.h"
+#include "pc/xbox_thread.h"
 
 namespace mc3::pc {
 namespace {
@@ -138,8 +139,11 @@ void profile_exclusion_break(const char* site, uint32_t caller, uint32_t owner) 
         ++g_breaks[key];
     }
     if (count < 12) {
-        log_line("profile: %s ran %s while that thread was at DISPATCH_LEVEL", thread_name(GetCurrentThreadId()).c_str(),
-                 key);
+        log_line("profile: %s (id %lu, priority %d) ran %s (id %u) while that thread was at DISPATCH_LEVEL",
+                 thread_name(GetCurrentThreadId()).c_str(), GetCurrentThreadId(), GetThreadPriority(GetCurrentThread()),
+                 key, owner);
+        // Where the owner is (and every other game thread's priority): what let this thread run.
+        if (count < 4) log_game_threads("exclusion break");
     }
 }
 

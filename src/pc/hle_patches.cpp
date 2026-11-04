@@ -188,7 +188,27 @@ void time_frame_shown(uint32_t vblanks) {
     g_frame_period = period;
     if (*g_fixed_mode == 1) use_fixed_step(period);
 }
+bool g_game_loaded = false;  // the XBE is in place: its variables can be read
+
+int32_t* career_money() {
+    if (!g_game_loaded) return nullptr;
+    // The career's money: what the game's codes rimbuk and kubmir change by one (0x001924F7),
+    // [[0x00557F0C] + 0xC] + 0xACC.
+    const auto readable = [](uint32_t address) {
+        MEMORY_BASIC_INFORMATION info{};
+        return address >= 0x10000 &&
+               VirtualQuery(reinterpret_cast<void*>(static_cast<uintptr_t>(address)), &info, sizeof(info)) &&
+               info.State == MEM_COMMIT;
+    };
+    const uint32_t game = *reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(0x00557F0C));
+    if (!readable(game + 0xC)) return nullptr;
+    const uint32_t player = *reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(game + 0xC));
+    if (!readable(player + 0xACC)) return nullptr;
+    return reinterpret_cast<int32_t*>(static_cast<uintptr_t>(player + 0xACC));
+}
+
 void apply_hle_patches(const Xbe& /*xbe*/) {
+    g_game_loaded = true;
     for (const Patch& patch : kPatches) {
         auto* code = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(patch.address));
         if (std::memcmp(code, patch.original.data(), patch.original.size()) != 0) {

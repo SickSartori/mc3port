@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.3.0 (2026-11-04)
+
+### New
+
+- **Crash dump**: the first crash of a run writes `mc3port-crash.dmp` next to `mc3port.log`, to attach to a report
+  with the log. It holds no file paths.
+- **Linux package** (Wine): `mc3port-<version>-linux.tar.gz`, with `install.sh`: it copies mc3port to your user
+  folder, makes a Wine prefix of its own there, and adds the `mc3port` command and an entry in the applications menu.
+  Run it again to update; settings and saves are in the same folder.
+- **Cheats** in the in-game menu: with a career loaded, its money and a button that adds $10,000; and the game's own
+  cheat codes, with what each does in this version, to type in its Options > Cheat Codes.
+- **Loading screens** stay up at least 6 seconds, long enough to read who you race and for what (from a disc image
+  the loading is over at once). Settings > Game: off, 2, 4 or 6 seconds.
+
+### Improved
+
+- Faster drawing: Direct3D's state is set only when it changes and textures are checked for changes more quickly
+  (in races on the test PC, about 11% more frames).
+- mc3port's HUD is 15% smaller.
+
+- Fewer antivirus false alarms: `mc3.exe` no longer has a section shaped like a packed program's (on VirusTotal, 3
+  engines instead of 9). The installer no longer has a script section nor starts the game by itself after a silent
+  update (3 engines instead of 6, Microsoft among those gone): after an update started by a launcher of 0.2.4 or
+  earlier, start mc3port as usual.
+- mc3port's HUD: the special ability's arc pulses when it is full and the ability can be used.
+
+### Fixed
+
+- A crash in the city after some minutes of driving, in the game's sound code (XACT), then back to the dashboard:
+  memory the game gives back keeps its contents, as on the Xbox, until the game asks for it again.
+- XACT's stream callbacks run when a stream is flushed or released, as on the Xbox, instead of later.
+- The game's threads could run while the interrupt was at DISPATCH_LEVEL (something the Xbox never allows): during
+  heap allocations and when Windows raised a thread's priority, for example while the game window is in front.
+- mc3port's HUD showed the special ability as empty once it was more than a third charged.
+
 ## 0.2.6 (2026-11-04)
 
 ### New

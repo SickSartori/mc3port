@@ -32,6 +32,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "pc/game_pause.h"
+#include "pc/hle_patches.h"
 #include "pc/input_hle.h"
 #include "pc/keyboard_bindings.h"
 #include "pc/launcher_art.h"
@@ -80,6 +81,8 @@ struct Texts {
     const char *effects_style, *effects_style_sub, *enhanced, *original_effects, *light_streaks, *custom_effects;
     const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
     const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub;
+    const char *cheats, *cheats_lead, *cheat_money, *cheat_money_sub, *add_money, *game_codes, *game_codes_lead;
+    const char *loading_screens, *loading_screens_sub;
 };
 
 const Texts kEnglish = {
@@ -125,6 +128,10 @@ const Texts kEnglish = {
     "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
     "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
     "Sharp HUD pictures", "The radar's map, icons and letters enlarged with clean edges",
+    "CHEATS", "With a career loaded: money, and the game's own codes to type in its Options > Cheat Codes.",
+    "Money", "Added to the career: it stays once the game saves", "+ $10,000", "The game's codes",
+    "Type them in the game's menu, Options > Cheat Codes (as found in the game's own check).",
+    "Loading screens", "At least this long, to read them as on the Xbox (from the disc image loading is instant)",
 };
 
 const Texts kItalian = {
@@ -175,6 +182,10 @@ const Texts kItalian = {
     "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
     "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
     "Immagini dell'HUD nitide", "Mappa del radar, icone e lettere ingrandite con bordi puliti",
+    "CHEAT", "Con una carriera caricata: soldi, e i codici del gioco da scrivere in Opzioni > Codici.",
+    "Soldi", "Si aggiungono alla carriera: restano quando il gioco salva", "+ 10.000 $", "Codici del gioco",
+    "Da scrivere nel menu del gioco, Opzioni > Codici (come li controlla il gioco stesso).",
+    "Schermate di caricamento", "Almeno questa durata, per leggerle come sull'Xbox (dall'immagine del disco si carica subito)",
 };
 
 const Texts& T() {
@@ -523,7 +534,7 @@ public:
 
 private:
     // In game, kPlay is the pause page and kQuit the page that exits the game.
-    enum class Page { kPlay, kSettings, kControls, kAbout, kQuit };
+    enum class Page { kPlay, kSettings, kControls, kCheats, kAbout, kQuit };
 
     bool start_graphics();
     void start_imgui();
@@ -595,6 +606,7 @@ private:
     void page_play();
     void page_settings();
     void page_controls();
+    void page_cheats();
     void page_about();
     void update_row(bool always);
     bool update_available();
@@ -662,6 +674,7 @@ private:
     Page page_ = Page::kPlay;
     float page_since_ = 0;
     int settings_tab_ = 0;
+    bool show_codes_ = false;  // the Cheats page lists the game's codes
     float tab_since_ = 0;                 // the settings tab's content fades in from here
     int hover_item_ = -1;                 // side menu: the item the mouse rests on, selected after a short dwell
     float hover_since_ = 0;
@@ -1385,6 +1398,10 @@ void Launcher::page_settings() {
             int skip = setting("skip_intro") != 0 ? 1 : 0;
             if (segmented("##skip_intro", toggle, 2, &skip)) set_setting("skip_intro", static_cast<float>(skip));
         }
+        row(t.loading_screens, t.loading_screens_sub);
+        const char* durations[] = {t.off, "2 s", "4 s", "6 s"};
+        int duration = std::clamp(static_cast<int>(setting("loading_screen_seconds")) / 2, 0, 3);
+        if (segmented("##loading_screens", durations, 4, &duration)) set_setting("loading_screen_seconds", duration * 2.0f);
     } else if (settings_tab_ == 1) {
         row(t.aspect, t.aspect_sub, true);
         const char* aspects[] = {"4:3", "16:9"};
@@ -1500,7 +1517,7 @@ void Launcher::page_settings() {
     ImVec2 defaults_size;
     if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults", &defaults_size)) {
         for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background",
-                                "skip_intro", "widescreen", "fullscreen", "fps_counter", "render_scale", "hud_style",
+                                "skip_intro", "loading_screen_seconds", "widescreen", "fullscreen", "fps_counter", "render_scale", "hud_style",
                                 "hud_units", "anisotropy", "gpu_vertices", "sharp_2d", "effects", "sharpen", "bloom",
                                 "bloom_threshold", "saturation", "contrast", "vignette", "motion_blur", "light_streaks",
                                 "effects_advanced", "ambient_occlusion", "ambient_occlusion_radius"}) {
@@ -1517,6 +1534,59 @@ void Launcher::page_settings() {
     ImGui::PopStyleVar();
     g_alpha = panel_alpha;
     origin_.x = origin_x;
+}
+
+// The game's cheat codes, decoded from its check (0x001923B0 compares the typed text, encoded by 0x00192350, with
+// the strings at 0x00463D10), with what each sets there.
+struct CheatCode {
+    const char *code, *english, *italian;
+};
+const CheatCode kCheatCodes[] = {
+    {"roadtrip", "Unlocks (the same as the next two)", "Sblocca (come i due seguenti)"},
+    {"crosscountry", "Unlocks", "Sblocca"},
+    {"urbansprawl", "Unlocks", "Sblocca"},
+    {"ontheroad", "No damage", "Nessun danno"},
+    {"hyperagro", "Heavier cars", "Auto pi\xC3\xB9 pesanti"},
+    {"dfens", "Agro special ability", "Abilit\xC3\xA0 Agro"},
+    {"allin", "Zone special ability", "Abilit\xC3\xA0 Zone"},
+    {"Rjnr", "Roar ability (capital R)", "Abilit\xC3\xA0 Roar (R maiuscola)"},
+    {"trythisathome", "Flaming head, on or off", "Testa in fiamme, s\xC3\xAC o no"},
+    {"getheadj", "Smiley head", "Testa sorridente"},
+    {"getheadk", "Pumpkin head", "Testa di zucca"},
+    {"getheadl", "Bunny head", "Testa di coniglio"},
+    {"getheadm", "Snowman head", "Testa di pupazzo"},
+    {"kubmir", "+$1 each time", "+1 $ ogni volta"},
+    {"rimbuk", "-$1 each time", "-1 $ ogni volta"},
+};
+
+void Launcher::page_cheats() {
+    const Texts& t = T();
+    title(t.cheats);
+    lead(t.cheats_lead);
+    // Money: with a career loaded, in the in-game menu (the game is paused, nothing else writes it meanwhile).
+    if (int32_t* money = in_game_ ? career_money() : nullptr) {
+        char heading[48];
+        std::snprintf(heading, sizeof(heading), "%s: $%d", t.cheat_money, *money);
+        row(heading, t.cheat_money_sub);
+        const ImVec2 at(origin_.x + panel_width_ - px(170), origin_.y + cursor_ + px(6));
+        // shortcut: capped at $999,999, the most the game's six-digit counters are sure to show; raise once checked.
+        if (small_button(t.add_money, at, "##add_money")) *money = std::min(*money + 10000, 999999);
+        cursor_ += px(58);
+    }
+    if (small_button(t.game_codes, ImVec2(origin_.x, origin_.y + cursor_), "##game_codes")) show_codes_ = !show_codes_;
+    cursor_ += px(52);
+    if (!show_codes_) return;
+    text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.game_codes_lead, panel_width_);
+    cursor_ += px(30);
+    const float row_height = px(28), column = panel_width_ / 2 + px(10);
+    const int count = static_cast<int>(std::size(kCheatCodes));
+    for (int i = 0; i < count; ++i) {
+        const CheatCode& c = kCheatCodes[i];
+        const float x = origin_.x + (i % 2 ? column : 0.0f), y = origin_.y + cursor_ + row_height * static_cast<float>(i / 2);
+        text(body_bold_, px(16), ImVec2(x, y), kInk, c.code);
+        text(body_, px(15), ImVec2(x + px(130), y + px(1)), kInk, italian() ? c.italian : c.english);
+    }
+    cursor_ += row_height * static_cast<float>((count + 1) / 2) + px(12);
 }
 
 void Launcher::page_controls() {
@@ -1848,6 +1918,7 @@ void Launcher::panel(float now, float since) {
             case Page::kPlay: in_game_ ? page_paused() : page_play(); break;
             case Page::kSettings: page_settings(); break;
             case Page::kControls: page_controls(); break;
+            case Page::kCheats: page_cheats(); break;
             case Page::kAbout: page_about(); break;
             case Page::kQuit:
                 if (in_game_) page_exit();
@@ -2396,9 +2467,9 @@ void Launcher::frame_in_game(float now) {
     list_ = ImGui::GetWindowDrawList();
     // The launcher's entrance, twice as quick.
     header(since * 2);
-    const char* labels[] = {t.resume, t.settings, t.controls, t.quit};
-    const Page targets[] = {Page::kPlay, Page::kSettings, Page::kControls, Page::kQuit};
-    side_menu(now, since * 2, labels, targets, 4);
+    const char* labels[] = {t.resume, t.settings, t.controls, t.cheats, t.quit};
+    const Page targets[] = {Page::kPlay, Page::kSettings, Page::kControls, Page::kCheats, Page::kQuit};
+    side_menu(now, since * 2, labels, targets, 5);
     panel(now, since * 2);
     bottom_bar(since * 2);
     g_alpha = 1;
@@ -2568,10 +2639,10 @@ std::optional<GameDisc> Launcher::run() {
     wizard_ = !disc_;
     if (disc_) start_art_loader(disc_->path);
     if (setting("check_updates") != 0) update_thread_ = std::thread(check_for_updates, &updates_);
-    char page[16] = {};  // MC3_LAUNCHER_PAGE=settings|controls|about: test screenshots
+    char page[16] = {};  // MC3_LAUNCHER_PAGE=settings|controls|cheats|about: test screenshots
     if (GetEnvironmentVariableA("MC3_LAUNCHER_PAGE", page, sizeof(page)) && !wizard_) {
         page_ = !std::strcmp(page, "settings") ? Page::kSettings : !std::strcmp(page, "controls") ? Page::kControls
-                : !std::strcmp(page, "about") ? Page::kAbout : Page::kPlay;
+                : !std::strcmp(page, "about") ? Page::kAbout : !std::strcmp(page, "cheats") ? Page::kCheats : Page::kPlay;
     }
     music_ = std::make_unique<LauncherMusic>();
     log_line("launcher: open (%s)", disc_ ? "disc found" : "first-run guide");

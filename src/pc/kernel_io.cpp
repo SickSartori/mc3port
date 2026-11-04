@@ -491,6 +491,7 @@ NTSTATUS __stdcall NtCreateFile(uint32_t* file_handle, uint32_t desired_access, 
     log_line("NtCreateFile('%s' -> %s, disposition %u, options %X) = %08X", name.c_str(),
              location->xbox_path.c_str(), disposition, options, static_cast<uint32_t>(status));
     if (status >= 0) input_note_file_opened(location->xbox_path);
+    if (status >= 0 && lower(location->xbox_path).find("\\flash\\loadscreen_") != std::string::npos) note_loading_screen();
     complete(io_status, status, information);
     if (status < 0) return status;
     if (location->device == Device::Disc) {

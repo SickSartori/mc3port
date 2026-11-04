@@ -9,9 +9,9 @@
 /* Covers the XBE image (0x57A280 bytes for MC3) with room for sections loaded on demand. */
 #define XBE_RESERVE_SIZE 0x01000000u
 
-#pragma bss_seg(".xbe")
+/* In the ordinary uninitialised data (.data, no file bytes): a section of its own with an unusual name and no data is
+ * what packed executables look like, and antivirus heuristics flagged mc3.exe for it. */
 unsigned char g_xbe_reserve[XBE_RESERVE_SIZE];
-#pragma bss_seg()
 
 typedef void(__cdecl* Mc3RunFunction)(void* reserved, unsigned long reserved_size);
 

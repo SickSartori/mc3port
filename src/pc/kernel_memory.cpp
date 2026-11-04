@@ -4,7 +4,9 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cstring>
 #include <mutex>
+#include <set>
 #include <unordered_map>
 
 #include "pc/kernel_internal.h"
@@ -39,6 +41,48 @@ NTSTATUS status_from_last_error() {
 // ahead of its input). Reads there commit a zero page (commit_reserved_page).
 constexpr uint32_t kTailReserve = 64 * 1024;
 
+// Pages the game decommitted stay committed with their contents: XACT reads the next cue from one it has just freed
+// (0x004100A6, after the release at 0x0040FE54), which on the Xbox still holds the old data but here was a zero page
+// and crashed it. They are zeroed when the game commits them again, as it expects new pages to be.
+std::mutex g_kept_mutex;
+std::set<uint32_t> g_kept_pages;
+
+// False (nothing kept) unless every page in the range is committed and writable.
+bool keep_decommitted_pages(uint32_t base, uint32_t size) {
+    const uint32_t begin = base & ~0xFFFu, end = (base + size + 0xFFF) & ~0xFFFu;
+    for (uint32_t page = begin; page < end;) {
+        MEMORY_BASIC_INFORMATION info;
+        if (!VirtualQuery(reinterpret_cast<void*>(static_cast<uintptr_t>(page)), &info, sizeof(info)) ||
+            info.State != MEM_COMMIT || !(info.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE))) {
+            return false;
+        }
+        page = address_of(info.BaseAddress) + static_cast<uint32_t>(info.RegionSize);
+    }
+    std::lock_guard<std::mutex> lock(g_kept_mutex);
+    for (uint32_t page = begin; page < end; page += 0x1000) g_kept_pages.insert(page);
+    static uint32_t logged = 0;
+    if (logged++ < 3) log_line("memory: %08X+%X decommitted, kept with its contents until committed again", base, size);
+    return true;
+}
+
+// Zeroes the kept pages in the range (the game commits them again); true if there were any.
+bool zero_kept_pages(uint32_t base, uint32_t size) {
+    std::lock_guard<std::mutex> lock(g_kept_mutex);
+    bool any = false;
+    auto it = g_kept_pages.lower_bound(base & ~0xFFFu);
+    while (it != g_kept_pages.end() && *it < base + size) {
+        std::memset(reinterpret_cast<void*>(static_cast<uintptr_t>(*it)), 0, 0x1000);
+        it = g_kept_pages.erase(it);
+        any = true;
+    }
+    return any;
+}
+
+void forget_kept_pages(uint32_t base, uint32_t size) {
+    std::lock_guard<std::mutex> lock(g_kept_mutex);
+    g_kept_pages.erase(g_kept_pages.lower_bound(base), g_kept_pages.lower_bound(base + size));
+}
+
 NTSTATUS __stdcall NtAllocateVirtualMemory(uint32_t* base_address, uint32_t /*zero_bits*/, uint32_t* region_size,
                                            uint32_t allocation_type, uint32_t protect) {
     const DWORD type = allocation_type & ~kXboxMemNoZero;
@@ -53,6 +97,7 @@ NTSTATUS __stdcall NtAllocateVirtualMemory(uint32_t* base_address, uint32_t /*ze
         }
         if (reserved) VirtualFree(reserved, 0, MEM_RELEASE);
     }
+    const bool recommit = (type & MEM_COMMIT) && *base_address && zero_kept_pages(*base_address, *region_size);
     void* result = VirtualAlloc(reinterpret_cast<void*>(static_cast<uintptr_t>(*base_address)), *region_size,
                                 type, windows_protection(protect));
     if (!result) {
@@ -62,6 +107,9 @@ NTSTATUS __stdcall NtAllocateVirtualMemory(uint32_t* base_address, uint32_t /*ze
     }
     MEMORY_BASIC_INFORMATION info;
     VirtualQuery(result, &info, sizeof(info));
+    if (recommit) {  // the kept pages around it are committed too: report only what was asked for, as the Xbox does
+        info.RegionSize = ((*base_address + *region_size + 0xFFF) & ~0xFFFu) - address_of(result);
+    }
     *base_address = address_of(result);
     *region_size = static_cast<uint32_t>(info.RegionSize);
     return kStatusSuccess;
@@ -69,8 +117,30 @@ NTSTATUS __stdcall NtAllocateVirtualMemory(uint32_t* base_address, uint32_t /*ze
 
 NTSTATUS __stdcall NtFreeVirtualMemory(uint32_t* base_address, uint32_t* region_size, uint32_t free_type) {
     void* address = reinterpret_cast<void*>(static_cast<uintptr_t>(*base_address));
-    const SIZE_T size = (free_type & MEM_RELEASE) ? 0 : *region_size;
-    if (!VirtualFree(address, size, free_type)) return status_from_last_error();
+    if (free_type & MEM_RELEASE) {
+        MEMORY_BASIC_INFORMATION info;
+        uint32_t end = *base_address;  // the whole allocation goes, whatever state its parts are in
+        while (VirtualQuery(reinterpret_cast<void*>(static_cast<uintptr_t>(end)), &info, sizeof(info)) &&
+               info.AllocationBase == address && info.State != MEM_FREE) {
+            end += static_cast<uint32_t>(info.RegionSize);
+        }
+        if (!VirtualFree(address, 0, MEM_RELEASE)) return status_from_last_error();
+        forget_kept_pages(*base_address, end - *base_address);
+        return kStatusSuccess;
+    }
+    if (free_type & MEM_DECOMMIT) {
+        uint32_t size = *region_size;
+        if (!size) {  // to the end of the region
+            MEMORY_BASIC_INFORMATION info;
+            if (!VirtualQuery(address, &info, sizeof(info))) return kStatusInvalidParameter;
+            size = static_cast<uint32_t>(info.RegionSize);
+        }
+        if (keep_decommitted_pages(*base_address, size)) return kStatusSuccess;
+        if (!VirtualFree(address, *region_size, free_type)) return status_from_last_error();
+        forget_kept_pages(*base_address & ~0xFFFu, size + (*base_address & 0xFFF));  // really gone now
+        return kStatusSuccess;
+    }
+    if (!VirtualFree(address, *region_size, free_type)) return status_from_last_error();
     return kStatusSuccess;
 }
 
@@ -179,6 +249,25 @@ uint32_t __stdcall ExQueryPoolBlockSize(uint32_t pool) {
     return static_cast<uint32_t>(HeapSize(GetProcessHeap(), 0, reinterpret_cast<void*>(static_cast<uintptr_t>(pool))));
 }
 
+// Decommitted pages keep their contents, come back zeroed, and are forgotten when the region goes.
+bool memory_self_test() {
+    uint32_t base = 0, size = 0x2000;
+    if (NtAllocateVirtualMemory(&base, 0, &size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE) != kStatusSuccess) return false;
+    auto* bytes = reinterpret_cast<volatile uint8_t*>(static_cast<uintptr_t>(base));
+    bytes[0x1010] = 0x5A;
+    uint32_t page = base + 0x1000, page_size = 0x1000;
+    bool ok = NtFreeVirtualMemory(&page, &page_size, MEM_DECOMMIT) == kStatusSuccess && bytes[0x1010] == 0x5A;
+    page = base + 0x1000, page_size = 0x1000;
+    ok = ok && NtAllocateVirtualMemory(&page, 0, &page_size, MEM_COMMIT, PAGE_READWRITE) == kStatusSuccess &&
+         page_size == 0x1000 && bytes[0x1010] == 0;
+    page = base + 0x1000, page_size = 0x1000;
+    ok = ok && NtFreeVirtualMemory(&page, &page_size, MEM_DECOMMIT) == kStatusSuccess;
+    uint32_t zero = 0;
+    ok = ok && NtFreeVirtualMemory(&base, &zero, MEM_RELEASE) == kStatusSuccess;
+    std::lock_guard<std::mutex> lock(g_kept_mutex);
+    return ok && g_kept_pages.empty();
+}
+
 }  // namespace
 
 bool commit_reserved_page(uint32_t address) {
@@ -197,6 +286,7 @@ bool commit_reserved_page(uint32_t address) {
 }
 
 void register_memory_functions() {
+    if (!memory_self_test()) log_line("memory: self-test of kept decommitted pages FAILED");
     register_kernel(184, &NtAllocateVirtualMemory);
     register_kernel(199, &NtFreeVirtualMemory);
     register_kernel(217, &NtQueryVirtualMemory);

@@ -218,13 +218,9 @@ bool hud_take_quad(const HudQuad& q) {
     Reading& r = g_reading;
 
     if (q.program && aligned) {
-        if (starts_next_frame(r, q.texture, left, top)) publish(r);
         // The special ability: a tall track, then its fill on the same texture and columns (height 0 when empty).
-        if (height > 3 * width && width >= 20) {
-            r.arcs.push_back({q.texture, left, right, top, bottom, bottom, bottom, false});
-            g_presents_without = 0;
-            return hide;
-        }
+        // The fill comes first here: once the charge passes a third it is tall too, and was read as a new track
+        // starting the next frame, so a charged ability showed as empty.
         if (!r.arcs.empty()) {
             Reading::Arc& arc = r.arcs.back();
             if (arc.texture == q.texture && std::fabs(arc.left - left) < 1 && std::fabs(arc.right - right) < 1 &&
@@ -232,6 +228,12 @@ bool hud_take_quad(const HudQuad& q) {
                 arc.fill_top = top, arc.fill_bottom = bottom, arc.filled = true;
                 return hide;
             }
+        }
+        if (starts_next_frame(r, q.texture, left, top)) publish(r);
+        if (height > 3 * width && width >= 20) {
+            r.arcs.push_back({q.texture, left, right, top, bottom, bottom, bottom, false});
+            g_presents_without = 0;
+            return hide;
         }
         // The gear: its digit, one cell of an atlas (0.164 x 0.148 of the texture), inside the circle just drawn on
         // the same texture. Without the circle it is a letter of some text, not the gear.
@@ -406,7 +408,7 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     static const ImU32 kAccent = colour(255, 138, 0);
     for (const Player& p : g_players) {
         // Style A's layout (1280 x 720), around the speedometer: s = 1 when the game's face is 108 lines of 480.
-        const float s = p.speed.size() * scale_y / 162;
+        const float s = p.speed.size() * scale_y / 162 * 0.85f;  // 0.85: style A at full size covered too much
         const ImVec2 original = to_window(p.speed.centre_x(), p.speed.centre_y());
         // Where the game's speedometer was, kept inside the picture with style A's margin below it.
         const float lowest = pic.window_top + pic.window_height - 124 * s;
@@ -445,6 +447,11 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
             const float r = 127 * s;
             arc(list, speed_centre, r, 60, 140, colour(255, 255, 255, 0.16f), 5 * s);
             arc(list, speed_centre, r, 140 - 80 * p.special, 140, kAccent, 5 * s);
+            if (p.special > 0.98f) {  // full, ready to use: a glow that pulses twice a second, as the game's own
+                const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 4 * kPi);
+                arc(list, speed_centre, r, 60, 140, colour(255, 138, 0, 0.15f + 0.30f * pulse), (9 + 6 * pulse) * s);
+                arc(list, speed_centre, r, 60, 140, colour(255, 214, 140, 0.55f + 0.45f * pulse), 5 * s);
+            }
         }
     }
 }

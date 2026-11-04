@@ -3,12 +3,14 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 
 #include "pc/game_pause.h"
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
 #include "pc/profile.h"
+#include "pc/settings.h"
 
 namespace mc3::pc {
 namespace {
@@ -28,7 +30,26 @@ struct ThreadStart {
     XboxThreadContext* context;
 };
 
+// Setting loading_screen_seconds: the game loads behind its loading screens in a thread started at 0x0001BBF0, and
+// the screen goes when that thread ends. From a disc image that is at once, and the screen with the race's details
+// went by unread; the thread's end now waits until the screen has been up that long. The screen keeps playing.
+constexpr uint32_t kLoaderStart = 0x0001BBF0;
+std::atomic<ULONGLONG> g_loading_screen_since{0};
+thread_local uint32_t t_start_routine = 0;
+
+void hold_loading_screen() {
+    if (t_start_routine != kLoaderStart) return;
+    const ULONGLONG since = g_loading_screen_since.exchange(0);
+    const ULONGLONG until = since + static_cast<ULONGLONG>(std::max(0.0f, setting("loading_screen_seconds")) * 1000);
+    const ULONGLONG now = GetTickCount64();
+    if (!since || now >= until) return;
+    log_line("loading screen held %llu ms more (loaded in %llu ms)", until - now, now - since);
+    ProfileScope scope(ProfileTime::sleeps);
+    Sleep(static_cast<DWORD>(until - now));
+}
+
 [[noreturn]] void terminate_current_thread(uint32_t exit_status) {
+    hold_loading_screen();
     if (XboxThreadContext* context = current_xbox_thread()) signal_thread_object(kthread_address(context));
     ExitThread(exit_status);
 }
@@ -41,6 +62,7 @@ DWORD WINAPI xbox_thread_main(void* parameter) {
     WaitForSingleObject(start->go, INFINITE);
 
     const ThreadStart copy = *start;
+    t_start_routine = copy.start_routine;
     CloseHandle(start->ready);
     CloseHandle(start->go);
     delete start;
@@ -169,6 +191,8 @@ NTSTATUS __stdcall ObReferenceObjectByHandle(uint32_t handle, uint32_t /*object_
 void __fastcall ObfDereferenceObject(uint32_t /*object*/) {}
 
 }  // namespace
+
+void note_loading_screen() { g_loading_screen_since = GetTickCount64(); }
 
 void register_thread_functions() {
     register_kernel(255, &PsCreateSystemThreadEx);

@@ -147,6 +147,8 @@ uint32_t play_region_bytes(const Voice& voice);
 
 // Packets finished since the last call, for DirectSoundDoWork to report to the game.
 std::vector<CompletedPacket> take_completed_packets();
+// Only those of one stream (its callback and context), in order; the others stay for DirectSoundDoWork.
+std::vector<CompletedPacket> take_completed_packets(const Voice& voice);
 void complete_packet(Voice& voice, const StreamPacket& packet, uint32_t status);
 
 }  // namespace mc3::pc
