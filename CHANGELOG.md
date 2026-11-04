@@ -9,8 +9,16 @@
 - **Linux package** (Wine): `mc3port-<version>-linux.tar.gz`, with `install.sh`: it copies mc3port to your user
   folder, makes a Wine prefix of its own there, and adds the `mc3port` command and an entry in the applications menu.
   Run it again to update; settings and saves are in the same folder.
+- **Cheats** in the in-game menu: with a career loaded, its money and a button that adds $10,000; and the game's own
+  cheat codes, with what each does in this version, to type in its Options > Cheat Codes.
+- **Loading screens** stay up at least 6 seconds, long enough to read who you race and for what (from a disc image
+  the loading is over at once). Settings > Game: off, 2, 4 or 6 seconds.
 
 ### Improved
+
+- Faster drawing: Direct3D's state is set only when it changes and textures are checked for changes more quickly
+  (in races on the test PC, about 11% more frames).
+- mc3port's HUD is 15% smaller.
 
 - Fewer antivirus false alarms: `mc3.exe` no longer has a section shaped like a packed program's (on VirusTotal, 3
   engines instead of 9). The installer no longer has a script section nor starts the game by itself after a silent
