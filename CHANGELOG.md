@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.0 (2026-11-04)
+
+### New
+
+- **Crash dump**: the first crash of a run writes `mc3port-crash.dmp` next to `mc3port.log`, to attach to a report
+  with the log. It holds no file paths.
+
+### Improved
+
+- Fewer antivirus false alarms: `mc3.exe` no longer has a section shaped like a packed program's (on VirusTotal, 3
+  engines instead of 9).
+- mc3port's HUD: the special ability's arc pulses when it is full and the ability can be used.
+
+### Fixed
+
+- A crash in the city after some minutes of driving, in the game's sound code (XACT), then back to the dashboard:
+  memory the game gives back keeps its contents, as on the Xbox, until the game asks for it again.
+- XACT's stream callbacks run when a stream is flushed or released, as on the Xbox, instead of later.
+- The game's threads could run while the interrupt was at DISPATCH_LEVEL (something the Xbox never allows): during
+  heap allocations and when Windows raised a thread's priority, for example while the game window is in front.
+- mc3port's HUD showed the special ability as empty once it was more than a third charged.
+
 ## 0.2.6 (2026-11-04)
 
 ### New
