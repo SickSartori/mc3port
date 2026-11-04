@@ -44,6 +44,8 @@ Compared with the console:
 - **A launcher** that checks your disc, sets everything up on the first start and holds all the settings.
 - **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
 - **A frame counter**, optional, and the opening films skipped (they can be switched back on).
+- **Loading screens you can read**: they stay up a few seconds, as from the Xbox's disc, instead of flashing by.
+- **Cheats** in the in-game menu: money for your career, and the game's own cheat codes with what each does.
 - **Keyboard support** with rebindable keys, and Xbox controllers for up to four players.
 
 ## Requirements
@@ -174,6 +176,7 @@ straight away (progress since the last save is lost). The main ones:
 | Sharp HUD pictures | the radar's map, the icons and the letters enlarged with clean edges instead of blurred; on by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 | Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
+| Loading screens | stay up at least 2, 4 or 6 seconds (6 by default) so you can read them, or as short as the loading (off) |
 | `hud_aspect` (ini only) | in 16:9, the HUD keeps its shape (1, the default) or is stretched as on a widescreen TV (0) |
 
 **Replacement pictures**: a PNG or JPG in a folder `textures_replace` next to `mc3port.ini`, named after a 2D
@@ -200,6 +203,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 - The Xbox sound chip's own effects, such as reverb, are not reproduced (the game loads them, mc3port leaves them
   out): the sound can be drier than on the console.
 - Linux (Wine, Proton) is experimental and only partly tested: see [Linux](#linux-experimental).
+- In 16:9 a little of the radar's map shows outside its ring.
+- With a controller, some items of the launcher's menu (such as Quit) do not respond: use the keyboard or mouse.
 
 ## Troubleshooting
 
@@ -214,6 +219,9 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 - **The sound is quiet**: check Volume in Settings (100 is the loudest), then the Windows volume. The level leaves room
   for the moments when many sounds play at once, in the city, so that they do not distort.
 - **The disc is refused**: only the European release is supported; the launcher's message says what it found.
+- **An antivirus flags the download**: a few engines mistake mc3.exe for a packed program (it loads the game's code
+  from your disc image at start). Check the file against `SHA256SUMS` on the release page; if it matches, it is the
+  one built from this repository, and you can restore it from quarantine.
 - **The update fails**: download the installer from the [releases page](https://github.com/SickSartori/mc3port/releases)
   and run it; settings and saves are kept.
 
