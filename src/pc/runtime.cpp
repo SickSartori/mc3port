@@ -563,6 +563,13 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
         }
     }
     log_open(data_directory() / "mc3port.log");
+    // Started by RecompLauncher (recomplauncher.json in the release): it installs updates itself, and in its Big
+    // Picture mode the player is on a controller in front of a full screen. Set before the settings read MC3_*.
+    if (GetEnvironmentVariableW(L"RECOMPLAUNCHER", nullptr, 0)) SetEnvironmentVariableW(L"MC3_CHECK_UPDATES", L"0");
+    wchar_t launcher_mode[16] = {};
+    if (GetEnvironmentVariableW(L"RECOMPLAUNCHER_MODE", launcher_mode, 16) && std::wcscmp(launcher_mode, L"bigpicture") == 0) {
+        SetEnvironmentVariableW(L"MC3_FULLSCREEN", L"1");
+    }
     settings_load(data_directory() / "mc3port.ini");
     log_line("files: program in %s, data in %s%s", reinterpret_cast<const char*>(exe_directory.u8string().c_str()),
              reinterpret_cast<const char*>(data_directory().u8string().c_str()), portable_mode() ? " (portable)" : "");
@@ -586,7 +593,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
         skip_launcher ? open_game_disc(exe_directory) : run_launcher(nv2a_open_window(), exe_directory);
     if (!disc) {
         log_line("no game disc: exiting");
-        ExitProcess(0);
+        ExitProcess(command_line_disc().empty() ? 0 : 2);  // 2: the disc given was refused (recomplauncher.json explains it)
     }
     log_line("disc image: %s", reinterpret_cast<const char*>(disc->path.u8string().c_str()));
     settings_freeze();  // from here on, keys the game reads once change only for the next start

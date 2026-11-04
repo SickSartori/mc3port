@@ -31,7 +31,7 @@ $name = "mc3port-$version-windows-x86"
 $stage = Join-Path "dist" "mc3port"
 if (Test-Path dist) { Remove-Item dist -Recurse -Force }
 New-Item -ItemType Directory -Force "$stage\licenses" | Out-Null
-Copy-Item build/pc-x86/Release/mc3.exe, build/pc-x86/Release/mc3runtime.dll, README.md, CHANGELOG.md, LICENSE, THIRD_PARTY.md $stage
+Copy-Item build/pc-x86/Release/mc3.exe, build/pc-x86/Release/mc3runtime.dll, recomplauncher.json, README.md, CHANGELOG.md, LICENSE, THIRD_PARTY.md $stage
 # README.txt: the short guide (what you need, first start, where the files are), with the version filled in and
 # Windows line endings, so that Notepad shows it properly.
 $readme = ((Get-Content tools/package_readme.txt -Raw).Replace("<version>", $version) -replace "`r?`n", "`r`n")
