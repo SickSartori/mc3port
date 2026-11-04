@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -67,7 +68,9 @@ struct Texts {
     const char *anisotropy, *gpu_vertices, *gpu_vertices_sub, *effects, *effects_sub, *on, *off;
     const char *sharpen, *bloom, *bloom_threshold, *saturation, *contrast, *vignette, *occlusion, *occlusion_radius;
     const char *defaults, *controls_lead, *press_key, *reset_keys, *system_keys, *full_screen_key, *effects_key, *launcher_keys, *pads_note;
-    const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *legal, *credits;
+    const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *report, *report_sub, *update_to,
+        *legal,
+        *credits;
     const char *update_now, *update_install_sub, *downloading, *update_failed;
     const char *welcome, *welcome_lead, *next, *quality_title, *quality_lead, *all_set, *all_set_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
@@ -100,7 +103,8 @@ const Texts kEnglish = {
     "PlayStation and other pads: through Steam Input or DS4Windows, which present them as Xbox controllers.",
     "Unofficial native Windows port. No game files included: you need your own copy.", "Looking for updates...",
     "This is the latest version", "Version %s is available", "Opens the release page; nothing downloads by itself",
-    "Open", "Log folder", "For bug reports, attach mc3port.log",
+    "Open", "Log folder", "For bug reports, attach mc3port.log", "Report a problem",
+    "The form on GitHub, already filled in, and the log to attach", "Update to %s",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "MIT licence \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
     "Update", "Downloads and checks the installer, then shows it to you to start", "Downloading the update...",
@@ -147,7 +151,8 @@ const Texts kItalian = {
     "Port nativo non ufficiale per Windows. Nessun file del gioco incluso: serve la tua copia.",
     "Cerco aggiornamenti...", "Questa \xC3\xA8 l'ultima versione", "\xC3\x88 disponibile la versione %s",
     "Apre la pagina della versione; niente si scarica da solo", "Apri", "Cartella dei log",
-    "Per segnalare un problema allega mc3port.log",
+    "Per segnalare un problema allega mc3port.log", "Segnala un problema",
+    "Il modulo su GitHub, gi\xC3\xA0 compilato, e il log da allegare", "Aggiorna alla %s",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenza MIT \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
     "Aggiorna", "Scarica e verifica l'installer, poi te lo mostra da avviare", "Scarico l'aggiornamento...",
@@ -1029,13 +1034,12 @@ bool Launcher::status(bool good, const char* heading, const char* detail, const 
         const float p = std::fmod(static_cast<float>(ImGui::GetTime()), 1.8f) / 1.8f;
         list_->AddCircle(dot, px(12) + px(14) * p, fade(accent, 0.6f * (1 - p)), 0, px(2));
     }
+    const float button_x = button_label ? b.x - measure(body_bold_, px(18), button_label).x - px(28) - px(14) : b.x;
+    list_->PushClipRect(a, ImVec2(button_x - px(12), b.y), true);  // texts stop before the button
     text(body_bold_, px(21), ImVec2(a.x + px(46), a.y + px(9)), kInk, heading);
     text(body_, px(17), ImVec2(a.x + px(46), a.y + px(35)), kDim, detail);
-    bool pressed = false;
-    if (button_label) {
-        const ImVec2 size = measure(body_bold_, px(18), button_label);
-        pressed = small_button(button_label, ImVec2(b.x - size.x - px(28) - px(14), a.y + px(14)), id);
-    }
+    list_->PopClipRect();
+    const bool pressed = button_label && small_button(button_label, ImVec2(button_x, a.y + px(14)), id);
     cursor_ += height + px(10);
     return pressed;
 }
@@ -1637,6 +1641,43 @@ bool Launcher::update_available() {
     return updates_.state == 2 && updates_.download != 2;
 }
 
+// mc3port.log selected in Explorer.
+void show_log() {
+    const std::wstring argument = L"/select,\"" + (data_directory() / "mc3port.log").wstring() + L"\"";
+    ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
+}
+
+// The issue form (.github/ISSUE_TEMPLATE/bug_report.yml) takes its fields from the address: the version, and the
+// machine as the log's first lines describe it; the log to attach is shown too. Sending stays with the player, signed
+// in on GitHub.
+void report_problem() {
+    std::string system;
+    if (std::FILE* file = _wfopen((data_directory() / "mc3port.log").c_str(), L"r")) {
+        char line[512];
+        for (int i = 0; i < 80 && std::fgets(line, sizeof(line), file); ++i) {
+            line[std::strcspn(line, "\r\n")] = 0;
+            if (std::strncmp(line, "host: ", 6) != 0 || std::strstr(line, "(software)")) continue;
+            if (!system.empty()) system += "; ";
+            system += line + 6;
+        }
+        std::fclose(file);
+    }
+    const auto encode = [](const std::string& text) {
+        std::string encoded;
+        for (const unsigned char c : text) {
+            char escape[4];
+            std::snprintf(escape, sizeof(escape), "%%%02X", c);
+            encoded += std::isalnum(c) || std::strchr("-._~", c) ? std::string(1, static_cast<char>(c)) : escape;
+        }
+        return encoded;
+    };
+    const std::string url = std::string("https://github.com/") + kRepository +
+                            "/issues/new?template=bug_report.yml&version=" + encode(MC3PORT_VERSION) +
+                            "&system=" + encode(system);
+    ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    show_log();
+}
+
 void Launcher::page_about() {
     const Texts& t = T();
     title(t.about);
@@ -1647,10 +1688,8 @@ void Launcher::page_about() {
     if (status(true, heading, t.credits, "GitHub", "##github")) {
         ShellExecuteA(nullptr, "open", (std::string("https://github.com/") + kRepository).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     }
-    if (status(true, t.logs, t.logs_sub, t.open, "##logs")) {
-        const std::wstring argument = L"/select,\"" + (data_directory() / "mc3port.log").wstring() + L"\"";
-        ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
-    }
+    if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
+    if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
     cursor_ += px(8);
     const ImVec2 size = measure(body_, px(16), t.legal, panel_width_);
     text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.legal, panel_width_);
@@ -1996,6 +2035,31 @@ void Launcher::bottom_bar(float since) {
     if (!in_game_) field(t.bar_disc, disc_ ? t.bar_disc_ok : t.bar_disc_none);
     field(t.bar_pad, pad_connected_ ? t.bar_pad_on : t.bar_pad_off);
     field(t.bar_version, MC3PORT_VERSION);
+    // In sight on every page, in the in-game menu too: a newer version (to About, which installs it) and the report.
+    const auto link = [&](const char* label, ImU32 colour) {
+        const ImVec2 at(x, text_y), size = measure(body_bold_, px(18), label);
+        const bool hover = ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size.x, at.y + size.y));
+        if (hover) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        text(body_bold_, px(18), at, hover ? kInk : colour, label);
+        list_->AddLine(ImVec2(at.x, at.y + size.y), ImVec2(at.x + size.x, at.y + size.y), fade(hover ? kInk : colour, 0.5f),
+                       px(1));
+        x += size.x + px(28);
+        return hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    };
+    if (update_available()) {
+        std::string version;
+        {
+            std::lock_guard<std::mutex> lock(updates_.mutex);
+            version = updates_.version;
+        }
+        char label[64];
+        std::snprintf(label, sizeof(label), t.update_to, version.c_str());
+        if (link(label, kAmber)) {
+            page_ = Page::kAbout;
+            page_since_ = static_cast<float>(ImGui::GetTime());
+        }
+    }
+    if (link(t.report, kInk)) report_problem();
     float right = screen.x - px(86);
     const bool pad = pad_connected_;
     const auto hint = [&](const char* key, ImU32 colour, const char* label) {

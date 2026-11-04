@@ -60,7 +60,7 @@ struct TextSetting {
 };
 
 const TextSetting kTextSettings[] = {
-    {"disc_image", "Your Midnight Club 3: DUB Edition Remix disc image (.iso). Filled in when you choose it; empty = ask."},
+    {"disc_image", "Your Midnight Club 3: DUB Edition Remix disc image (.iso or .cci; of an image split in parts, any part). Filled in when you choose it; empty = ask."},
     {"keyboard", "Keyboard keys for controller 1 (Windows virtual-key codes); change them in the launcher. Empty = defaults."},
 };
 

@@ -53,8 +53,9 @@ Compared with the console:
   Feature Pack (Settings, Apps, Optional features), or `mc3runtime.dll` will not load.
 - **A graphics card and driver with Direct3D 11** (feature level 11_0). The processor counts more than the
   graphics card: see [Performance](#performance).
-- **A disc image** (`.iso`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
-  XISO and full Redump dumps both work. Other releases (for example the North American one) are not supported yet:
+- **A disc image** (`.iso` or `.cci`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
+  XISO and full Redump dumps both work, in one file or split in parts (`name.1.iso`, `name.2.iso`: choose any part),
+  and so does the compressed CCI format (`.cci`, also split). Other releases (for example the North American one) are not supported yet:
   mc3port checks the game's executable (`default.xbe`, SHA-256 `29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09`)
   and tells you if the disc is a different version.
 - Optional: an Xbox controller (see [Controls](#controls)); an internet connection, only for the update check (it
@@ -107,7 +108,7 @@ What it takes:
 
 ## First start
 
-The launcher opens and asks for your disc image. Choose the `.iso` file: mc3port checks it and remembers where it is
+The launcher opens and asks for your disc image. Choose the `.iso` (or `.cci`) file: mc3port checks it and remembers where it is
 (if you move the file later, choose it again). Then pick a quality preset, the aspect ratio and the frame rate, and
 press **PLAY**. Next time the launcher opens on its main page; **PLAY** (or Enter, or A on a controller) starts the
 game.
@@ -210,7 +211,9 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 - **The update fails**: download the installer from the [releases page](https://github.com/SickSartori/mc3port/releases)
   and run it; settings and saves are kept.
 
-To report a problem, open an [issue](https://github.com/SickSartori/mc3port/issues) with your Windows version, your
+To report a problem, press **Report a problem** in the launcher's bottom bar (or in the in-game menu's): it opens the
+form on GitHub with your version and PC filled in, and the folder with `mc3port.log` to attach. Or open an
+[issue](https://github.com/SickSartori/mc3port/issues) yourself with your Windows version, your
 graphics card, what you were doing and `mc3port.log` attached (normally in `%LOCALAPPDATA%\mc3port`; the launcher's
 **About** page opens the folder). On Linux, also give the distribution, the Wine or Proton version, the graphics
 driver (for example Mesa 25.2 or NVIDIA 580) and how you started the game.

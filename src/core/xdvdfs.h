@@ -12,8 +12,9 @@
 
 namespace mc3 {
 
-// Read-only access to the game partition (XDVDFS) of an Xbox disc image: an XISO or a full Redump dump.
-// The game is served straight from the image, so users never have to extract 4.6 GB of files.
+// Read-only access to the game partition (XDVDFS) of an Xbox disc image: an XISO or a full Redump dump, in one file
+// or split in parts (name.1.iso, name.2.iso: 4.5 GB is too much for the Xbox's own file system), plain or compressed
+// as CCI (name.cci, name.1.cci...). The game is served straight from the image, so users never have to extract it.
 class XdvdfsImage {
 public:
     struct Entry {
@@ -41,10 +42,20 @@ public:
     std::vector<uint8_t> read_all(const Entry& file) const;
 
 private:
+    // One file of the image: its bytes from `start` of the whole image on, `size` of them. A CCI part keeps the
+    // position of each 2048-byte sector (`sectors`, one more for the end), compressed with LZ4 where flagged.
+    struct Part {
+        std::FILE* file = nullptr;
+        uint64_t start = 0;
+        uint64_t size = 0;
+        std::vector<uint32_t> sectors;
+    };
+
     XdvdfsImage() = default;
     bool read_raw(uint64_t offset, void* destination, size_t size) const;
+    bool read_cci_sector(const Part& part, uint64_t sector, uint8_t* destination) const;
 
-    std::FILE* file_ = nullptr;
+    std::vector<Part> parts_;
     uint64_t partition_offset_ = 0;
     Entry root_;
     mutable std::mutex mutex_;  // the game reads from several threads
