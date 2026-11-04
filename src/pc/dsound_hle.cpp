@@ -181,7 +181,20 @@ const void* const kBufferVtable[] = {reinterpret_cast<const void*>(&QueryInterfa
 
 // --- streams (XMediaObject) ---
 
-void flush_stream(Voice& voice) {
+using StreamCallback = void(__stdcall*)(uint32_t stream_context, uint32_t packet_context, uint32_t status);
+
+// Without the audio lock: a callback may call DirectSound again.
+void run_stream_callbacks(const std::vector<CompletedPacket>& completed) {
+    for (const CompletedPacket& packet : completed) {
+        reinterpret_cast<StreamCallback>(static_cast<uintptr_t>(packet.callback))(packet.stream_context,
+                                                                                  packet.packet_context, packet.status);
+    }
+}
+
+// Returns the stream's callbacks still to run, the ones the mixer queued for DirectSoundDoWork included: on the Xbox
+// a flush hands every packet back before it returns, and XACT frees what the callback context points to right
+// after releasing its stream, so a callback left for DirectSoundDoWork would reach freed memory.
+std::vector<CompletedPacket> flush_stream(Voice& voice) {
     for (const StreamPacket& packet : voice.packets) complete_packet(voice, packet, kPacketFlushed);
     voice.packets.clear();
     voice.stream_fraction = 0;
@@ -189,14 +202,20 @@ void flush_stream(Voice& voice) {
     voice.envelope_stage = EnvelopeStage::kOff;
     voice.playing = false;
     voice.end_of_stream = false;
+    return take_completed_packets(voice);
 }
 
 uint32_t __stdcall StreamAddRef(uint32_t self) { return ++guest<DsObject>(self)->references; }
 uint32_t __stdcall StreamRelease(uint32_t self) {
-    GameLock lock(audio_lock());
     DsObject* object = guest<DsObject>(self);
-    if (--object->references) return object->references;
-    flush_stream(*object->voice);
+    std::vector<CompletedPacket> callbacks;
+    {
+        GameLock lock(audio_lock());
+        if (--object->references) return object->references;
+        callbacks = flush_stream(*object->voice);
+    }
+    run_stream_callbacks(callbacks);  // while the stream still exists, as on the Xbox
+    GameLock lock(audio_lock());
     destroy_voice(object->voice);
     delete object;
     return 0;
@@ -259,8 +278,12 @@ HRESULT32 __stdcall StreamDiscontinuity(uint32_t self) {
 }
 
 HRESULT32 __stdcall StreamFlush(uint32_t self) {
-    GameLock lock(audio_lock());
-    flush_stream(*voice_of(self));
+    std::vector<CompletedPacket> callbacks;
+    {
+        GameLock lock(audio_lock());
+        callbacks = flush_stream(*voice_of(self));
+    }
+    run_stream_callbacks(callbacks);
     return kOk;
 }
 
@@ -309,11 +332,7 @@ void __stdcall DirectSoundDoWork() {
         GameLock lock(audio_lock());
         completed = take_completed_packets();
     }
-    using Callback = void(__stdcall*)(uint32_t stream_context, uint32_t packet_context, uint32_t status);
-    for (const CompletedPacket& packet : completed) {
-        reinterpret_cast<Callback>(static_cast<uintptr_t>(packet.callback))(packet.stream_context,
-                                                                            packet.packet_context, packet.status);
-    }
+    run_stream_callbacks(completed);
 }
 
 // --- IDirectSound ---
