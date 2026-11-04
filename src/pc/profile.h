@@ -32,6 +32,8 @@ void profile_privileged_instruction();
 // A game thread at PASSIVE_LEVEL reached `site` (called from game code at `caller`) while thread `owner` was at
 // DISPATCH_LEVEL: something the single-processor Xbox never allows. Always counted; the first few are logged.
 void profile_exclusion_break(const char* site, uint32_t caller, uint32_t owner);
+// A thread at DISPATCH_LEVEL found a GameLock busy and spun `ticks` for it; `waited` if it then waited after all.
+void profile_dispatch_spin(uint64_t ticks, bool waited);
 void profile_log_if_due();  // GPU thread
 
 class ProfileScope {

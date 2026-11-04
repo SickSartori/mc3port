@@ -46,6 +46,8 @@ uint32_t g_blanks[5] = {};  // frames that took 1, 2, 3, 4, 5 or more blanks
 std::atomic<uint32_t> g_register_accesses{0}, g_privileged{0}, g_exclusion_breaks{0};
 std::mutex g_breaks_mutex;
 std::unordered_map<std::string, uint32_t> g_breaks;  // "site@caller" -> count, since the last log
+std::atomic<uint32_t> g_dispatch_spins{0}, g_dispatch_spin_waits{0};
+std::atomic<uint64_t> g_longest_dispatch_spin{0};  // ticks
 
 std::string thread_name(DWORD id) {
     std::lock_guard<std::mutex> lock(g_threads_mutex);
@@ -141,6 +143,14 @@ void profile_exclusion_break(const char* site, uint32_t caller, uint32_t owner) 
     }
 }
 
+void profile_dispatch_spin(uint64_t ticks, bool waited) {
+    g_dispatch_spins.fetch_add(1, std::memory_order_relaxed);
+    if (waited) g_dispatch_spin_waits.fetch_add(1, std::memory_order_relaxed);
+    uint64_t longest = g_longest_dispatch_spin.load(std::memory_order_relaxed);
+    while (ticks > longest && !g_longest_dispatch_spin.compare_exchange_weak(longest, ticks)) {
+    }
+}
+
 void profile_log_if_due() {
     static ULONGLONG since = 0;
     const ULONGLONG now = GetTickCount64();
@@ -193,6 +203,10 @@ void profile_log_if_due() {
         std::string text;
         for (size_t i = 0; i < sites.size() && i < 8; ++i) text += " " + sites[i].first + " x" + std::to_string(sites[i].second);
         log_line("profile:   where:%s", text.c_str());
+    }
+    if (const uint32_t spins = g_dispatch_spins.exchange(0)) {
+        log_line("profile:   %u locks busy at DISPATCH_LEVEL, spun up to %.2f ms, %u then waited", spins,
+                 g_longest_dispatch_spin.exchange(0) / ticks_per_millisecond(), g_dispatch_spin_waits.exchange(0));
     }
     g_frames = 0;
     std::fill(std::begin(g_blanks), std::end(g_blanks), 0u);

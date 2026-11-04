@@ -182,7 +182,8 @@ uint32_t pending_interrupts() {
 }
 
 uint32_t read_register(uint32_t offset) {
-    std::lock_guard<std::mutex> lock(g_register_mutex);
+    std::unique_lock<std::mutex> lock(g_register_mutex, std::defer_lock);
+    lock_at_irql(lock);  // the interrupt service routine reads them at DIRQL
     switch (offset) {
         case kPmcIntr0: return pending_interrupts();
         case kPtimerTime0: return static_cast<uint32_t>(now_nanoseconds()) & ~0x1Fu;
@@ -207,7 +208,8 @@ uint32_t read_register(uint32_t offset) {
 }
 
 void write_register(uint32_t offset, uint32_t value) {
-    std::lock_guard<std::mutex> lock(g_register_mutex);
+    std::unique_lock<std::mutex> lock(g_register_mutex, std::defer_lock);
+    lock_at_irql(lock);
     switch (offset) {
         case kPbusIntr0:
         case kPfifoIntr0:

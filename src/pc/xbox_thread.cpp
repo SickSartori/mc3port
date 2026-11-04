@@ -173,7 +173,37 @@ void lower_irql(uint8_t new_irql) {
     }
 }
 
-GameLock::GameLock(std::mutex& mutex) : restore_(raise_to_interrupt_priority()), lock_(mutex) {}
+// At DISPATCH_LEVEL a busy lock is spun on, as the Xbox's kernel does, not waited for: waiting would leave the game's
+// core to the other game threads, which on the Xbox cannot run until this one comes down. The holder is then a host
+// thread on another core (the mixer, the timer thread) and lets go soon; one that does not within 2 ms (a game
+// thread on the game's core, which cannot run while this one spins) is waited for after all.
+void lock_at_irql(std::unique_lock<std::mutex>& lock) {
+    if (lock.try_lock()) return;
+    if (current_irql() < kDispatchLevel) {
+        lock.lock();
+        return;
+    }
+    static const uint64_t kSpinLimit = [] {
+        LARGE_INTEGER frequency;
+        QueryPerformanceFrequency(&frequency);
+        return static_cast<uint64_t>(frequency.QuadPart / 500);
+    }();
+    const uint64_t start = profile_ticks();
+    for (uint32_t spins = 1;; ++spins) {
+        _mm_pause();
+        if (lock.try_lock()) {
+            profile_dispatch_spin(profile_ticks() - start, false);
+            return;
+        }
+        if (spins % 64 == 0 && profile_ticks() - start > kSpinLimit) break;
+    }
+    lock.lock();
+    profile_dispatch_spin(profile_ticks() - start, true);
+}
+
+GameLock::GameLock(std::mutex& mutex) : restore_(raise_to_interrupt_priority()), lock_(mutex, std::defer_lock) {
+    lock_at_irql(lock_);
+}
 
 GameLock::~GameLock() {
     if (lock_.owns_lock()) lock_.unlock();

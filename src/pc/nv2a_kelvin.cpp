@@ -1278,7 +1278,10 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
         case 0x0200: g_k.clip_horizontal = argument; return true;
         case 0x0204: g_k.clip_vertical = argument; return true;
         case 0x0208:
-            if (g_k.surface_format != argument) {
+            // Each format once: the game switches between a few every frame, and a line per switch filled the log
+            // (and kept its lock busy, which the interrupt and DPC threads then waited for).
+            if (static std::vector<uint32_t> seen; std::find(seen.begin(), seen.end(), argument) == seen.end()) {
+                seen.push_back(argument);
                 log_line("nv2a: surface format %08X (colour %X, zeta %X, type %X, anti-aliasing %X)", argument,
                          argument & 0xF, (argument >> 4) & 0xF, (argument >> 8) & 0xF, (argument >> 12) & 0xF);
             }
