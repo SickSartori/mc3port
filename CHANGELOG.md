@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.5 (2026-11-04)
 
 ### New
 
@@ -17,6 +17,10 @@
 - **mc3port's HUD** (Settings, Display; off by default): the speedometer, the rev counter, the gear and the special
   ability's charge drawn again by mc3port, sharp at any resolution, in mph or km/h. The values come from the game's
   own dials, which are then left out; the radar stays the game's.
+- **Sharp HUD pictures** (Settings, Graphics; on by default): the radar's map, the icons and the letters, small
+  pictures the game stretches over many pixels, are enlarged with their edges kept instead of blurred.
+- **Replacement pictures**: a PNG or JPG named after a 2D picture's hash in a folder `textures_replace` next to
+  `mc3port.ini` is drawn instead of it, at any size. `MC3_DUMP_2D=1` saves the HUD's pictures with their names.
 - **Skip the opening films** (Settings, Game; on by default): straight from PLAY to the title screen, without the
   Rockstar logos and the game's intro.
 - **Restart from the in-game menu**: after changing a setting that applies the next time the game starts
@@ -38,6 +42,13 @@
 
 - Choosing Full screen in the in-game menu (or the launcher) made the window stop answering, and Windows then closed
   the game. F11 and Alt+Enter were not affected.
+- Crashes at random moments in the career, in the game's sound code, and while loading a race: 0.2.3 made them
+  rarer, but they were still there. On the Xbox nothing else runs while the system is in the middle of certain
+  work (interrupts, sound updates). When that work needed something another part of mc3port was using at that
+  moment (the sound mixer, the timer, the graphics chip's registers), it waited for it, and Windows ran the rest of
+  the game in the meantime. Now it waits without letting go of the processor, as on the Xbox.
+- The log no longer gets a line each time the game switches the format it draws into, several times per frame: it
+  is about a hundred times smaller, and writing it no longer holds up the game.
 
 ## 0.2.4 (2026-11-01)
 
