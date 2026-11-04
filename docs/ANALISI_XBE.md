@@ -147,7 +147,7 @@ tramite vtable.
 | `0x3C2F5C`/`0x3C2F98` | `SetFormat` (buffer/stream) | riceve un `WAVEFORMATEX` (XACT: PCM mono 48 kHz) |
 | `0x3C28DB`/`0x3C2933` | `SetOutputBuffer` | l'argomento è un'altra voce (`-0x1C`); MC3 passa sempre NULL |
 | `0x3C2F78` | `SetBufferData` | imposta dati e dimensione |
-| `0x3C20C8`/`0x3C22A3` | `SetEnvelope` | `DSENVELOPEDESC`; MC3 non la chiama mai: il rilascio dell'inviluppo è quello predefinito |
+| `0x3C20C8`/`0x3C22A3` | `SetEG` | `DSENVELOPEDESC`; XACT la chiama per quasi ogni effetto con `dwEG` 1 (ampiezza: nell'XDK 0 è il "multi" di pitch e filtro), modo 1, rilascio 32 blocchi da 512 campioni (0,34 s), sustain 255 |
 | `0x3C22BC` | `IDirectSoundStream_FlushEx` | XACT ferma gli stream con `5` (ASYNC 1 + ENVELOPE 4), i buffer con `StopEx(3)` (`0x40F229`); il lettore musicale del gioco con `1` |
 
 Elenco completo, compresi gli stream e le quattro funzioni non identificate, in `src/pc/dsound_hle.cpp`.

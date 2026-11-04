@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <iterator>
 #include <cstdio>
@@ -48,6 +49,8 @@ struct MixStatistics {
     uint32_t most_voices = 0;
     uint32_t completed_packets = 0;
     uint32_t limited_samples = 0;  // frames the limiter turned down
+    uint32_t underruns = 0;        // times XAudio2 ran out of chunks: a gap in the sound
+    float longest_lock_wait = 0;   // ms mix() waited for the voices' lock held by game code
 };
 MixStatistics g_statistics;
 
@@ -185,6 +188,9 @@ float decibels_to_gain(int32_t hundredths) {
 // Left/right gain of each source channel, from the voice volume and its mix bins: the 5.1 speaker bins folded to
 // stereo (front 1, centre and back 0.5 per side; LFE and effect sends, whose effects are not emulated, left out).
 // Bink and XACT send each channel to all six speaker bins at full level; the plain sum was 2.7 times too loud.
+// The crosstalk bins 6-9 (XTLK front left/right, back left/right) are where XACT routes its positioned voices (the
+// car's engine layers among them); the DSP's crosstalk effect would put them out on the matching speakers, so they
+// fold like those. Bin 10 is the I3DL2 reverb send (no reverb here), 11-30 the effect sends, 31 the submix.
 void channel_gains(const Voice& voice, float gains[2][2]) {
     std::memset(gains, 0, sizeof(float) * 4);
     const uint32_t channels = std::clamp<uint32_t>(voice.format.channels, 1, 2);
@@ -202,12 +208,12 @@ void channel_gains(const Voice& voice, float gains[2][2]) {
         const uint32_t channel = static_cast<uint32_t>(i) % channels;
         const float gain = decibels_to_gain(voice.volume + (bin < 32 ? voice.mix_bin_volumes[bin] : 0));
         switch (bin) {
-            case 0: gains[channel][0] += gain; break;                                      // front left
-            case 1: gains[channel][1] += gain; break;                                      // front right
+            case 0: case 6: gains[channel][0] += gain; break;                              // front left, XTLK
+            case 1: case 7: gains[channel][1] += gain; break;                              // front right, XTLK
             case 2: gains[channel][0] += gain * 0.5f; gains[channel][1] += gain * 0.5f; break;  // centre
-            case 4: gains[channel][0] += gain * 0.5f; break;                               // back left
-            case 5: gains[channel][1] += gain * 0.5f; break;                               // back right
-            default: break;  // 3 LFE, 6+ effect sends
+            case 4: case 8: gains[channel][0] += gain * 0.5f; break;                       // back left, XTLK
+            case 5: case 9: gains[channel][1] += gain * 0.5f; break;                       // back right, XTLK
+            default: break;  // 3 LFE, 10 reverb send, 11+ effect sends and submix
         }
     }
 }
@@ -274,6 +280,7 @@ float advance_envelope(Voice& voice, uint32_t frames) {
 
 // The release has faded the voice out: stop it, as the APU does at the end of the envelope.
 void finish_release(Voice& voice) {
+    trace_voice(voice, "released", 0);
     voice.envelope_stage = EnvelopeStage::kOff;
     voice.envelope_level = 1;
     voice.playing = false;
@@ -350,6 +357,7 @@ void mix_buffer_voice(Voice& voice, float* out, uint32_t frames) {
                 voice.position = loop_start + std::fmod(voice.position - end, static_cast<double>(loop_frames));
             } else {
                 voice.position = region_frames;
+                trace_voice(voice, "ended", 0);
                 voice.playing = false;
                 return;
             }
@@ -405,7 +413,11 @@ void mix_stream_voice(Voice& voice, float* out, uint32_t frames) {
 
 void mix(float* out, uint32_t frames) {
     std::memset(out, 0, frames * 2 * sizeof(float));
+    const auto before_lock = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lock(g_mutex);
+    g_statistics.longest_lock_wait = std::max(
+        g_statistics.longest_lock_wait,
+        std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - before_lock).count());
     uint32_t active = 0;
     for (Voice* voice : g_voices) {
         if (voice->paused) {
@@ -442,9 +454,9 @@ void mix(float* out, uint32_t frames) {
     statistics.most_voices = std::max(statistics.most_voices, active);
     if (statistics.chunks == 1000) {  // every 10 s
         log_line("audio: last 10 s: %u%% audible, peak %.2f, %u frames turned down, up to %u voices, %u stream packets "
-                 "completed, %zu voices",
+                 "completed, %zu voices, %u gaps, lock waited up to %.1f ms",
                  statistics.audible_chunks / 10, statistics.peak, statistics.limited_samples, statistics.most_voices,
-                 statistics.completed_packets, g_voices.size());
+                 statistics.completed_packets, g_voices.size(), statistics.underruns, statistics.longest_lock_wait);
         statistics = MixStatistics{};
         // MC3_AUDIO_VOICES=1: which voices are playing and how loud (for overlaps).
         static const bool list_voices = GetEnvironmentVariableA("MC3_AUDIO_VOICES", nullptr, 0) != 0;
@@ -564,9 +576,12 @@ void output_thread(HANDLE ready, bool* ok) {
     std::vector<std::array<float, kFramesPerChunk * 2>> ring(kChunkRing);
     uint32_t next = 0;
     WavDump dump;
+    bool primed = false;
     for (;;) {
         XAUDIO2_VOICE_STATE state;
         source->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
+        if (primed && state.BuffersQueued == 0) ++g_statistics.underruns;  // the device played silence meanwhile
+        primed = true;
         while (state.BuffersQueued < kQueuedChunks) {
             auto& chunk = ring[next];
             next = (next + 1) % kChunkRing;
@@ -589,6 +604,18 @@ void output_thread(HANDLE ready, bool* ok) {
 }  // namespace
 
 std::mutex& audio_lock() { return g_mutex; }
+
+void trace_voice(const Voice& voice, const char* what, uint32_t flags) {
+    static const bool enabled = GetEnvironmentVariableA("MC3_AUDIO_TRACE", nullptr, 0) != 0;
+    static uint32_t logged = 0;
+    if (!enabled || logged++ >= 4000) return;
+    log_line("audio: t %.2f %s %x %s %p data %p fmt %u/%u Hz ch %u vol %d pitch %d loop %u region %u+%u pos %.0f "
+             "age %.2f s bins %d",
+             GetTickCount64() / 1000.0, what, flags, voice.is_stream ? "stream" : "buffer", static_cast<const void*>(&voice),
+             static_cast<const void*>(voice.data), voice.format.format_tag, voice.format.samples_per_second,
+             voice.format.channels, voice.volume, voice.pitch, voice.looping, voice.play_start, voice.play_length,
+             voice.position, voice.active_chunks / 100.0, voice.mix_bin_count);
+}
 
 bool audio_output_present() {
     // COM may already be up on this thread, in either model: S_FALSE and RPC_E_CHANGED_MODE both leave it usable.

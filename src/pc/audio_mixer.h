@@ -136,6 +136,8 @@ void destroy_voice(Voice* voice);
 // and then stops it (a stream is flushed).
 void start_envelope(Voice& voice);
 void release_voice(Voice& voice);
+// MC3_AUDIO_TRACE=1: one log line per play, stop, release end and natural end of a voice (diagnostic).
+void trace_voice(const Voice& voice, const char* what, uint32_t flags);
 
 // Pitch for a sample rate, like XAudioCalculatePitch: 0 at 48 kHz, 4096 per octave.
 int32_t pitch_for_rate(uint32_t samples_per_second);

@@ -476,17 +476,27 @@ HRESULT32 __stdcall VoiceSetFormat(uint32_t self, uint32_t format) {
 
 // DSENVELOPEDESC. Times are in units of 512 samples, the sustain level in 1/255.
 struct XDsEnvelopeDesc {
-    uint32_t generator;  // 0 amplitude, 1 multi (pitch and filter)
+    uint32_t generator;  // DSEG_MULTI 0 (pitch and filter), DSEG_AMPLITUDE 1: the XDK's SetEG reads the pitch and
+                         // filter fields only for 0 (checked on TimeSplitters 2 by the xboxrecomp project)
     uint32_t mode;       // 0 disabled, 1 starts with the delay, 2 with the attack, 3 with the hold
     uint32_t delay, attack, hold, decay, release, sustain;
     int32_t pitch_scale, filter_cutoff;
 };
+constexpr uint32_t kEnvelopeAmplitude = 1;
 
 // The amplitude envelope is emulated (XACT fades its sounds out with the release); the multi envelope, which
 // moves pitch and filter, is not.
 HRESULT32 __stdcall VoiceSetEnvelope(uint32_t self, const XDsEnvelopeDesc* desc) {
     constexpr uint32_t kUnit = 512;
-    if (!desc || desc->generator != 0) return kOk;
+    if (!desc) return kOk;
+    static uint32_t logged_any[2] = {};
+    if (logged_any[desc->generator & 1]++ < 40) {
+        log_line("dsound: voice %p SetEG generator %u mode %u delay %u attack %u hold %u decay %u release %u sustain %u "
+                 "pitch %d cutoff %d",
+                 static_cast<void*>(voice_of(self)), desc->generator, desc->mode, desc->delay, desc->attack, desc->hold,
+                 desc->decay, desc->release, desc->sustain, desc->pitch_scale, desc->filter_cutoff);
+    }
+    if (desc->generator != kEnvelopeAmplitude) return kOk;
     GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
     Envelope& envelope = voice->envelope;
@@ -576,6 +586,7 @@ HRESULT32 __stdcall Voice3dParameters2(uint32_t self, uint32_t a) { log_unidenti
 HRESULT32 __stdcall BufferPlay(uint32_t self, uint32_t, uint32_t, uint32_t flags) {
     GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
+    trace_voice(*voice, "play", flags);
     if (flags & kPlayFromStart) voice->position = 0;
     if (!voice->playing) voice->active_chunks = 0;
     if (!voice->playing || voice->envelope_stage == EnvelopeStage::kRelease) start_envelope(*voice);
@@ -588,18 +599,21 @@ HRESULT32 __stdcall BufferPlay(uint32_t self, uint32_t, uint32_t, uint32_t flags
 HRESULT32 __stdcall BufferStop(uint32_t self) {
     GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
+    trace_voice(*voice, "stop", 0);
     voice->playing = false;
     voice->envelope_stage = EnvelopeStage::kOff;
     return kOk;
 }
 
 // DSBSTOPEX_ENVELOPE fades out with the envelope's release, DSBSTOPEX_RELEASEWAVEFORM leaves the loop and plays on
-// to the end; with both (what XACT uses) the voice ends with whichever comes first.
+// to the end; with both (what XACT uses) the voice ends with whichever comes first. A voice whose envelope is off
+// (SetEG mode 0) has no release to play: it just leaves the loop and plays to the end.
 HRESULT32 __stdcall BufferStopEx(uint32_t self, uint32_t, uint32_t, uint32_t flags) {
     GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
+    trace_voice(*voice, "stopex", flags);
     if (flags & kStopExReleaseWaveform) voice->looping = false;
-    if (flags & kStopExEnvelope) {
+    if ((flags & kStopExEnvelope) && voice->envelope.enabled) {
         if (voice->playing) release_voice(*voice);
     } else if (!(flags & kStopExReleaseWaveform)) {
         voice->playing = false;

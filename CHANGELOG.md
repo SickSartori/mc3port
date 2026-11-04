@@ -34,6 +34,9 @@
 - The game's threads could run while the interrupt was at DISPATCH_LEVEL (something the Xbox never allows): during
   heap allocations and when Windows raised a thread's priority, for example while the game window is in front.
 - mc3port's HUD showed the special ability as empty once it was more than a third charged.
+- Sound effects were cut short: the game gives nearly every effect a fade-out of a third of a second and starts
+  them looping, releasing them at once so that they play through and fade; mc3port read the fade-out from the wrong
+  envelope and faded each effect out 5 ms after it started. The engine, wind, tyre and crash sounds now play whole.
 
 ## 0.2.6 (2026-11-04)
 
