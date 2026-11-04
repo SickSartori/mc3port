@@ -5,6 +5,7 @@
 // picture, sharp at any resolution. The radar stays the game's.
 
 #include <cstdint>
+#include <vector>
 
 struct ImDrawList;
 struct ImFont;
@@ -21,8 +22,16 @@ struct HudQuad {
 };
 
 bool hud_enabled();
-// The draw is one of the dials the new HUD replaces: it is then not drawn.
+// Whether the dials are read: for the new HUD, and for hud_aspect (renderer_d3d11.cpp narrows what lies in them).
+bool hud_reading();
+// The draw is one of the dials the new HUD replaces: it is then not drawn (with hud_style only).
 bool hud_take_quad(const HudQuad& quad);
+// Where the game's dials were in the last frame read (surface pixels): each face, the gear, the special ability's arc
+// and the red bar.
+struct HudBox {
+    float left, top, right, bottom;
+};
+const std::vector<HudBox>& hud_boxes();
 // renderer_present: what this frame's draws showed becomes what the HUD draws.
 void hud_frame_shown();
 

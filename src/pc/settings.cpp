@@ -27,6 +27,7 @@ const Setting kSettings[] = {
     {"frame_rate", 30, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work)."},
     {"widescreen", 1, "16:9 widescreen: 1 = the game's own widescreen mode (wider view, no black bars), 0 = 4:3 like a classic TV."},
     {"hud_aspect", 1, "In 16:9, keep the HUD's round shapes round (radar, dials): 1 = yes, 0 = stretched as on the Xbox."},
+    {"sharp_2d", 1, "The HUD's pictures (radar map, icons, letters) enlarged with their edges kept: 1 = sharper at high resolutions, 0 = as the game's."},
     {"hud_style", 0, "HUD: 0 = the game's, 1 = mc3port's (speedometer, rev counter and gear redrawn, sharp at any resolution)."},
     {"hud_units", 0, "Speed in mc3port's HUD: 0 = mph, 1 = km/h."},
     {"fullscreen", 0, "Start in full screen: 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},

@@ -40,6 +40,7 @@ struct Reading {
     std::vector<uint32_t> face_textures;
     std::vector<std::pair<float, float>> gears;  // (x, y) of the digit
     std::vector<int> gear_values;
+    std::vector<HudBox> gear_circles;
     struct Arc {
         uint32_t texture;
         float left, right, top, bottom, fill_top, fill_bottom;
@@ -55,6 +56,7 @@ struct Reading {
 };
 Reading g_reading;
 std::vector<Player> g_players;          // the last shown frame's
+std::vector<HudBox> g_boxes;            // and where its dials were
 std::set<uint32_t> g_gear_textures;     // seen with a gear digit: their other quads (the circle) are the gear's too
 std::set<uint32_t> g_dial_textures;     // seen with a needle: their squares are dial faces
 std::set<uint32_t> g_logged_cells;
@@ -158,7 +160,23 @@ void publish(Reading& r) {
                  players.empty() ? 0.0f : players.front().speed.top,
                  largest);
     }
-    if (!players.empty() && !smaller) g_players = std::move(players);
+    if (!players.empty() && !smaller) {
+        g_players = std::move(players);
+        g_boxes.clear();
+        for (const Dial& face : r.faces) {
+            if (face.has_needle) g_boxes.push_back({face.left, face.top, face.right, face.bottom});
+        }
+        g_boxes.insert(g_boxes.end(), r.gear_circles.begin(), r.gear_circles.end());
+        for (const Reading::Arc& arc : r.arcs) g_boxes.push_back({arc.left, arc.top, arc.right, arc.bottom});
+        if (!r.segments.empty()) {
+            HudBox bar{1e9f, 1e9f, -1e9f, -1e9f};
+            for (const Reading::Segment& s : r.segments) {
+                bar = {std::min(bar.left, s.x - 12), std::min(bar.top, s.y - 12), std::max(bar.right, s.x + 12),
+                       std::max(bar.bottom, s.y + 12)};
+            }
+            g_boxes.push_back(bar);
+        }
+    }
     // A needle drawn before its face belongs to the frame that face starts.
     std::vector<std::pair<uint32_t, float>> early = std::move(r.early_needles);
     r = Reading{};
@@ -188,8 +206,17 @@ bool hud_enabled() {
     return enabled;
 }
 
+bool hud_reading() {
+    static const bool reading =
+        hud_enabled() || (setting_at_start("widescreen") != 0 && setting_at_start("hud_aspect") != 0);
+    return reading;
+}
+
+const std::vector<HudBox>& hud_boxes() { return g_boxes; }
+
 bool hud_take_quad(const HudQuad& q) {
-    if (!hud_enabled()) return false;
+    if (!hud_reading()) return false;
+    const bool hide = hud_enabled();
     float left, top, right, bottom;
     bounds(q, left, top, right, bottom);
     const float width = right - left, height = bottom - top;
@@ -204,14 +231,14 @@ bool hud_take_quad(const HudQuad& q) {
         if (height > 3 * width && width >= 20) {
             r.arcs.push_back({q.texture, left, right, top, bottom, bottom, bottom, false});
             g_presents_without = 0;
-            return true;
+            return hide;
         }
         if (!r.arcs.empty()) {
             Reading::Arc& arc = r.arcs.back();
             if (arc.texture == q.texture && std::fabs(arc.left - left) < 1 && std::fabs(arc.right - right) < 1 &&
                 !arc.filled) {
                 arc.fill_top = top, arc.fill_bottom = bottom, arc.filled = true;
-                return true;
+                return hide;
             }
         }
         // The gear: its digit, one cell of an atlas (0.164 x 0.148 of the texture), inside the circle just drawn on
@@ -222,11 +249,12 @@ bool hud_take_quad(const HudQuad& q) {
             const float x = (left + right) / 2, y = (top + bottom) / 2;
             if (x > circle.left && x < circle.right && y > circle.top && y < circle.bottom) {
                 g_gear_textures.insert(q.texture);
+                r.gear_circles.push_back({circle.left, circle.top, circle.right, circle.bottom});
                 r.faces.pop_back();
                 r.face_textures.pop_back();
                 r.gears.push_back({x, y});
                 r.gear_values.push_back(gear_of_cell(u0, v0));
-                return true;
+                return hide;
             }
         }
         // A dial's face (or the gear's circle): a square; a needle follows on the same texture (or the digit).
@@ -244,7 +272,7 @@ bool hud_take_quad(const HudQuad& q) {
             }
             r.faces.push_back(face);
             r.face_textures.push_back(q.texture);
-            return g_dial_textures.count(q.texture) != 0 || g_gear_textures.count(q.texture) != 0;
+            return hide && (g_dial_textures.count(q.texture) != 0 || g_gear_textures.count(q.texture) != 0);
         }
         return false;
     }
@@ -271,12 +299,12 @@ bool hud_take_quad(const HudQuad& q) {
             r.faces[i].has_needle = true;
             g_dial_textures.insert(q.texture);
             g_presents_without = 0;
-            return true;
+            return hide;
         }
         if (g_dial_textures.count(q.texture)) {
             r.early_needles.push_back({q.texture, direction()});
             g_presents_without = 0;
-            return true;
+            return hide;
         }
     }
     if (!q.program && q.colour[0] > 0.6f && q.colour[1] < 0.2f && q.colour[2] < 0.2f && width < 40 && height < 40) {
@@ -292,19 +320,20 @@ bool hud_take_quad(const HudQuad& q) {
         for (Reading::Segment& s : r.segments) {
             if (std::fabs(s.x - x) < 1 && std::fabs(s.y - y) < 1) {
                 s.lit = s.lit || q.colour[3] > 0.05f;
-                return true;
+                return hide;
             }
         }
         r.segments.push_back({x, y, q.colour[3] > 0.05f});
-        return true;
+        return hide;
     }
     return false;
 }
 
 void hud_frame_shown() {
     // A menu or a loading screen: no dials for a while.
-    if (hud_enabled() && ++g_presents_without > 30 && !g_players.empty()) {
+    if (hud_reading() && ++g_presents_without > 30 && !g_players.empty()) {
         g_players.clear();
+        g_boxes.clear();
         log_line("hud: no dials for 30 presents, the HUD is hidden");
     }
 }

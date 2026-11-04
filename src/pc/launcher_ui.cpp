@@ -76,7 +76,7 @@ struct Texts {
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
     const char *effects_style, *effects_style_sub, *enhanced, *original_effects, *light_streaks, *custom_effects;
     const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
-    const char *hud, *hud_sub, *hud_game, *speed_unit;
+    const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub;
 };
 
 const Texts kEnglish = {
@@ -120,6 +120,7 @@ const Texts kEnglish = {
     "Skip the opening films", "The Rockstar logos and the intro, straight to the title screen",
     "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
     "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
+    "Sharp HUD pictures", "The radar's map, icons and letters enlarged with clean edges",
 };
 
 const Texts kItalian = {
@@ -168,6 +169,7 @@ const Texts kItalian = {
     "Salta i video iniziali", "I loghi Rockstar e l'introduzione, dritto alla schermata del titolo",
     "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
     "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
+    "Immagini dell'HUD nitide", "Mappa del radar, icone e lettere ingrandite con bordi puliti",
 };
 
 const Texts& T() {
@@ -1232,7 +1234,8 @@ void Launcher::apply_quality(int preset) {
 
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
-    for (const char* key : {"game_language", "frame_rate", "widescreen", "render_scale", "anisotropy", "hud_style"}) {
+    for (const char* key :
+         {"game_language", "frame_rate", "widescreen", "render_scale", "anisotropy", "hud_style", "sharp_2d"}) {
         if (setting(key) != setting_at_start(key)) return true;
     }
     return false;
@@ -1437,6 +1440,9 @@ void Launcher::page_settings() {
         const char* toggle[] = {t.off, t.on};
         int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
         if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));
+        row(t.sharp_2d, t.sharp_2d_sub, true);
+        int sharp = setting("sharp_2d") != 0 ? 1 : 0;
+        if (segmented("##sharp_2d", toggle, 2, &sharp)) set_setting("sharp_2d", static_cast<float>(sharp));
     } else {
         // Two ready-made looks and a custom one. Original: the Xbox's picture, speed blur and light streaks included.
         // Enhanced: the modern effects, without the blur and the streaks. Custom (setting effects_advanced): every
@@ -1491,7 +1497,7 @@ void Launcher::page_settings() {
     if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults", &defaults_size)) {
         for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background",
                                 "skip_intro", "widescreen", "fullscreen", "fps_counter", "render_scale", "hud_style",
-                                "hud_units", "anisotropy", "gpu_vertices", "effects", "sharpen", "bloom",
+                                "hud_units", "anisotropy", "gpu_vertices", "sharp_2d", "effects", "sharpen", "bloom",
                                 "bloom_threshold", "saturation", "contrast", "vignette", "motion_blur", "light_streaks",
                                 "effects_advanced", "ambient_occlusion", "ambient_occlusion_radius"}) {
             set_setting(key, setting_default(key));
