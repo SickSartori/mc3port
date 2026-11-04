@@ -2514,14 +2514,17 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     }
     D3D11_TEXTURE2D_DESC frame_desc{};
     if (frame) frame->GetDesc(&frame_desc);
+    const uint64_t effects_start = ticks();
     present_frame(frame_view, frame_desc.Width, frame_desc.Height);
     hud_frame_shown();
     ++g_presented;
     ++g_stats.presents;
     log_statistics();
+    const uint64_t overlay_start = ticks();
     if (const RendererOverlay overlay = g_overlay.load(); overlay && g_back_buffer_rtv) {
         overlay(g_device.Get(), g_context.Get(), g_back_buffer_rtv.Get(), g_swap_width, g_swap_height);
     }
+    const uint64_t overlay_end = ticks();
     // MC3_DUMP_SECONDS=<s>: a frame every s seconds of real time (frame-<milliseconds>.bmp... named by count).
     static const double dump_seconds = [] {
         char value[16] = {};
@@ -2534,7 +2537,8 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
         if (!next_timed_dump) next_timed_dump = now;
         if (now >= next_timed_dump) {
             timed_dump = true;
-            next_timed_dump += static_cast<ULONGLONG>(dump_seconds * 1000);
+            // From now: a save slower than the interval (a large picture) would otherwise make every frame due.
+            next_timed_dump = now + static_cast<ULONGLONG>(dump_seconds * 1000);
         }
     }
     if ((g_dump_every && g_presented % g_dump_every == 0) || timed_dump) {
@@ -2550,7 +2554,18 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     }
     const uint64_t swap_start = ticks();
     g_swap_chain->Present(0, 0);
-    g_stats.swap_ticks += ticks() - swap_start;
+    const uint64_t swap_end = ticks();
+    g_stats.swap_ticks += swap_end - swap_start;
+    // A present that holds the GPU thread up holds up the game too (it waits for the GPU to take its commands): which
+    // part took the time, for the first few.
+    static int slow_presents = 0;
+    const double total = milliseconds(swap_end - effects_start);
+    if (total > 250 && slow_presents < 20) {
+        ++slow_presents;
+        log_line("renderer: a present took %.0f ms: effects %.0f, overlay %.0f, saved frames %.0f, Present %.0f", total,
+                 milliseconds(overlay_start - effects_start), milliseconds(overlay_end - overlay_start),
+                 milliseconds(swap_start - overlay_end), milliseconds(swap_end - swap_start));
+    }
 }
 
 }  // namespace mc3::pc
