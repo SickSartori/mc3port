@@ -79,7 +79,8 @@ Name: "{autoprograms}\{cm:ShortcutName}"; Filename: "{app}\mc3.exe"
 Name: "{autodesktop}\{cm:ShortcutName}"; Filename: "{app}\mc3.exe"; Tasks: desktopicon
 
 [Run]
-; After a normal install, offered on the last page; after an update from the launcher (/UPDATE), always.
+; After a normal install, offered on the last page; after a silent update started by a launcher of 0.2.4 or earlier
+; (/UPDATE), always. Newer launchers only download the installer and show it, and the player starts it.
 Filename: "{app}\mc3.exe"; Description: "{cm:StartNow}"; Flags: nowait postinstall skipifsilent
 Filename: "{app}\mc3.exe"; Flags: nowait; Check: IsLauncherUpdate
 

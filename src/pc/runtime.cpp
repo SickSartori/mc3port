@@ -534,6 +534,15 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
 
     const HostImage host = host_image();
     const std::filesystem::path exe_directory = program_directory();
+    // Restarted from the in-game menu: the old process first lets go of the log, the settings and the saves.
+    wchar_t restart_from[16] = {};
+    if (GetEnvironmentVariableW(L"MC3_RESTART_FROM", restart_from, 16)) {
+        SetEnvironmentVariableW(L"MC3_RESTART_FROM", nullptr);
+        if (HANDLE old = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(std::wcstoul(restart_from, nullptr, 10)))) {
+            WaitForSingleObject(old, 10000);
+            CloseHandle(old);
+        }
+    }
     log_open(data_directory() / "mc3port.log");
     settings_load(data_directory() / "mc3port.ini");
     log_line("files: program in %s, data in %s%s", reinterpret_cast<const char*>(exe_directory.u8string().c_str()),

@@ -2,15 +2,18 @@
 
 #include <d3d11_1.h>
 #include <d3dcompiler.h>
+#include <wincodec.h>
 #include <dxgi1_2.h>
 #include <wrl/client.h>
 
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -26,6 +29,7 @@
 #include "pc/paths.h"
 #include "pc/physical_memory.h"
 #include "pc/settings.h"
+#include "pc/texture_upscale.h"
 
 namespace mc3::pc {
 
@@ -54,12 +58,13 @@ struct PSInput {
     float4 t3 : TEXCOORD3;
     float fog : FOG;
 };
-// Positions arrive in pixels of the render target times w; scale = (2 / width, 2 / height).
+// Positions arrive in pixels of the render target times w; scale = (2 / width, 2 / height, the HUD's narrowing
+// across, the pixel column it narrows towards).
 cbuffer Surface : register(b0) { float4 scale; };
 PSInput main(VSInput i) {
     PSInput o;
-    o.position = float4(i.position.x * scale.x - i.position.w, i.position.w - i.position.y * scale.y,
-                        i.position.z, i.position.w);
+    const float x = (i.position.x - scale.w * i.position.w) * scale.z + scale.w * i.position.w;
+    o.position = float4(x * scale.x - i.position.w, i.position.w - i.position.y * scale.y, i.position.z, i.position.w);
     o.d0 = i.d0;
     o.d1 = i.d1;
     o.t0 = i.t0;
@@ -146,7 +151,8 @@ float4 clip_position(float4 screen, float clip_max) {
     float w = screen.w;
     if (!is_finite(w) || abs(w) < 5.42101e-20) w = w < 0 ? -5.42101e-20 : 5.42101e-20;
     const float z = clip_max != 0 ? screen.z / clip_max : screen.z;
-    return float4(screen.x * w * scale.x - w, w - screen.y * w * scale.y, z * w, w);
+    const float x = (screen.x - scale.w) * scale.z + scale.w;
+    return float4(x * w * scale.x - w, w - screen.y * w * scale.y, z * w, w);
 }
 )";
 
@@ -380,7 +386,64 @@ struct CachedTexture {
     ComPtr<ID3D11ShaderResourceView> srv;
     uint64_t content_hash = 0;
     uint32_t checked_generation = 0;  // memory unchanged since this write-tracking generation
+    bool waiting = false;             // sharp_2d: the enlarged version is being made (Enlarger)
 };
+
+// By address, format, pitch, rectangle, palette and whether it is enlarged for 2D (setting sharp_2d).
+using TextureKey = std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, bool>;
+
+// sharp_2d: textures are enlarged on a thread of their own (texture_upscale.cpp), the original showing meanwhile:
+// enlarging the radar's map at the start of a race all at once held the game up for a third of a second.
+class Enlarger {
+public:
+    void request(const TextureKey& key, uint64_t hash, const TextureImage& image) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!started_) {
+            std::thread([this] { run(); }).detach();
+            started_ = true;
+        }
+        queue_.push_back({key, hash, image});
+        wake_.notify_one();
+    }
+    // True once the texture `key` with content `hash` is done; `levels` empty when it was not worth enlarging. A
+    // result for content since replaced is dropped (a new one is on its way).
+    bool take(const TextureKey& key, uint64_t hash, std::vector<TextureImage>& levels) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto found = done_.find(key);
+        if (found == done_.end()) return false;
+        const bool current = found->second.first == hash;
+        if (current) levels = std::move(found->second.second);
+        done_.erase(found);
+        return current;
+    }
+
+private:
+    struct Job {
+        TextureKey key;
+        uint64_t hash;
+        TextureImage image;
+    };
+    void run() {
+        for (;;) {
+            Job job;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                wake_.wait(lock, [this] { return !queue_.empty(); });
+                job = std::move(queue_.front());
+                queue_.pop_front();
+            }
+            std::vector<TextureImage> levels = upscale_2d_texture(job.image);
+            std::lock_guard<std::mutex> lock(mutex_);
+            done_[job.key] = {job.hash, std::move(levels)};
+        }
+    }
+    std::mutex mutex_;
+    std::condition_variable wake_;
+    std::deque<Job> queue_;
+    std::map<TextureKey, std::pair<uint64_t, std::vector<TextureImage>>> done_;
+    bool started_ = false;
+};
+Enlarger g_enlarger;
 
 ComPtr<ID3D11Device> g_device;
 ComPtr<ID3D11DeviceContext> g_context;
@@ -426,6 +489,7 @@ ID3D11RasterizerState* rasterizer_for(const DrawState& state) {
 }
 ComPtr<ID3D11Buffer> g_surface_constants;  // vertex shader: pixel-to-clip scale of the current target
 uint32_t g_surface_scale_width = 0, g_surface_scale_height = 0;
+float g_surface_scale_narrow = 1, g_surface_scale_anchor = 0;  // hud_narrowing
 ComPtr<ID3D11VertexShader> g_clear_vertex_shader;
 ComPtr<ID3D11PixelShader> g_clear_pixel_shader;
 ComPtr<ID3D11Buffer> g_clear_constants;
@@ -444,7 +508,7 @@ ComPtr<ID3D11SamplerState> g_present_sampler;
 std::unordered_map<uint32_t, Target> g_targets;
 std::unordered_map<uint64_t, DepthTarget> g_depth_targets;
 std::unordered_map<uint64_t, ComPtr<ID3D11PixelShader>> g_pixel_shaders;
-std::map<std::tuple<uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>, CachedTexture> g_textures;
+std::map<TextureKey, CachedTexture> g_textures;
 std::map<std::tuple<bool, uint32_t, uint32_t, uint32_t, uint32_t>, ComPtr<ID3D11BlendState>> g_blend_states;
 std::map<std::tuple<bool, uint32_t, bool, bool, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>,
          ComPtr<ID3D11DepthStencilState>>
@@ -524,11 +588,14 @@ ComPtr<ID3DBlob> compile(const char* source, size_t size, const char* profile, c
 // Internal resolution: every render target is this many times the game's size in each direction, and drawn
 // scaled (positions arrive relative to the game's size, so only viewports, scissors, clears and copies change).
 // The picture is reduced to the window when presented: smoother edges and sharper detail (setting render_scale,
-// read when the renderer starts).
-uint32_t g_scale = 1;
+// read when the renderer starts). It need not be whole: 1080 lines are 2.25 times the game's 480. Texture sizes,
+// scissors and copies round with scaled(), the same everywhere, so that a colour and a depth target of the same
+// game size always match; viewports keep the exact value.
+float g_scale = 1;
 
-LONG scaled(uint32_t pixels) { return static_cast<LONG>(pixels * g_scale); }
-float scaled_float(uint32_t pixels) { return static_cast<float>(pixels * g_scale); }
+LONG scaled(uint32_t pixels) { return std::lround(static_cast<float>(pixels) * g_scale); }
+uint32_t scaled_size(uint32_t pixels) { return static_cast<uint32_t>(scaled(pixels)); }
+float scaled_float(uint32_t pixels) { return static_cast<float>(pixels) * g_scale; }
 
 // A failed creation used to pass silently and leave a hole in the picture; the log now says what was asked for,
 // since a driver may refuse a format or a size that others accept. A few lines are enough: the first ones tell.
@@ -560,8 +627,8 @@ Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     width = std::max(width, target.width);
     height = std::max(height, target.height);
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = width * g_scale;
-    desc.Height = height * g_scale;
+    desc.Width = scaled_size(width);
+    desc.Height = scaled_size(height);
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = target.format;
@@ -578,7 +645,7 @@ Target* get_target(uint32_t address, uint32_t width, uint32_t height) {
     grown.width = width;
     grown.height = height;
     if (target.texture) {
-        const D3D11_BOX box{0, 0, 0, target.width * g_scale, target.height * g_scale, 1};
+        const D3D11_BOX box{0, 0, 0, scaled_size(target.width), scaled_size(target.height), 1};
         g_context->CopySubresourceRegion(grown.texture.Get(), 0, 0, 0, 0, target.texture.Get(), 0, &box);
     }
     target = grown;
@@ -594,8 +661,8 @@ ComPtr<ID3D11PixelShader> g_copy_pixel_shader;
 void make_float_target(Target& target, uint32_t address) {
     if (target.format == DXGI_FORMAT_R16G16B16A16_FLOAT || !g_copy_pixel_shader) return;
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = target.width * g_scale;
-    desc.Height = target.height * g_scale;
+    desc.Width = scaled_size(target.width);
+    desc.Height = scaled_size(target.height);
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
@@ -640,8 +707,8 @@ DepthTarget* get_depth_target(uint32_t address, uint32_t width, uint32_t height)
                                           address];
     if (target.texture && target.width == width && target.height == height) return &target;
     D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = width * g_scale;
-    desc.Height = height * g_scale;
+    desc.Width = scaled_size(width);
+    desc.Height = scaled_size(height);
     desc.MipLevels = 1;
     desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_R24G8_TYPELESS;  // depth-stencil view and shader view of the same texture
@@ -719,6 +786,81 @@ struct SceneState {
 };
 std::unordered_map<uint32_t, SceneState> g_scenes;
 uint32_t g_occlusion_scenes = 0, g_full_depth_clears = 0;  // for the log: every scene should get its pass
+
+// Setting hud_aspect. In 16:9 MC3 draws its HUD with the pixel sizes of 4:3 on a picture 720 pixels wide that is shown
+// 16:9 wide, so round things (radar, dials) come out oval. A flat draw (nv2a_kelvin.cpp) over the 3D scene on a shown
+// frame that lies within the HUD is narrowed by (720 / 480) / (16 / 9) towards its side: the radar's box (the scissor
+// rectangle its map is cut to, with room for the icons on its edge) towards the left, the dials hud.cpp read (each
+// face, the gear, the special ability's arc, the red bar) towards the right. Nothing else: texts come in pieces, and
+// narrowing the pieces near a side tore them apart (over the tutorials' films and the loading screens too, where the
+// last 3D scene still counted). The scissor rectangle follows the draw; the radar's clear of the alpha does not: its
+// mask then covered less than the original box, and the frame showed the previous one through the rest.
+uint32_t g_picture_width = 0, g_picture_height = 0;  // the last frame shown
+HudPicture g_hud_picture{};                           // and where it is in the window
+constexpr uint32_t kOverscan = 48;                    // 1 / kOverscan of each side is not shown
+int g_debug_hud = -1;                                 // MC3_DEBUG_HUD=<n>: the first n decisions in the log
+HudBox g_radar_box{};                                 // the radar's scissor rectangle...
+ULONGLONG g_radar_seen = 0;                           // ...last seen then
+
+struct Narrowing {
+    float factor = 1, anchor = 0;
+    float apply(float x) const { return anchor + (x - anchor) * factor; }
+};
+
+bool inside(float left, float top, float right, float bottom, const HudBox& box, float margin) {
+    return left >= box.left - margin && right <= box.right + margin && top >= box.top - margin &&
+           bottom <= box.bottom + margin;
+}
+
+// The narrowing for something from `left` to `right` and `top` to `bottom` (pixels) on `surface`; none when it is
+// not HUD.
+Narrowing hud_narrowing(const SurfaceState& surface, float left, float right, float top, float bottom,
+                        uint32_t texture) {
+    Narrowing n;
+    static const bool on = setting_at_start("hud_aspect") != 0;  // flat draws are also measured for others
+    if (!on || left > right || !g_picture_width || !g_picture_height) return n;
+    const float width = static_cast<float>(g_picture_width), height = static_cast<float>(g_picture_height);
+    const ULONGLONG now = GetTickCount64();
+    // The radar's map: a small scissor rectangle in the lower left.
+    if (surface.clip_width <= 200 && surface.clip_height <= 200 && surface.clip_x + surface.clip_width <= width / 2 &&
+        surface.clip_y >= height / 2) {
+        g_radar_box = {static_cast<float>(surface.clip_x), static_cast<float>(surface.clip_y),
+                       static_cast<float>(surface.clip_x + surface.clip_width),
+                       static_cast<float>(surface.clip_y + surface.clip_height)};
+        g_radar_seen = now;
+    }
+    // What can show: the part inside the scissor rectangle (the radar's map is turning tiles, cut to its box).
+    left = std::max(left, static_cast<float>(surface.clip_x));
+    right = std::min(right, static_cast<float>(surface.clip_x + surface.clip_width));
+    top = std::max(top, static_cast<float>(surface.clip_y));
+    bottom = std::min(bottom, static_cast<float>(surface.clip_y + surface.clip_height));
+    if (left > right || top > bottom) return n;
+    const float narrow = width / height / renderer_aspect();
+    const auto scene = g_scenes.find(surface.zeta_address);
+    const bool over_scene = scene != g_scenes.end() && scene->second.drawn;
+    const bool shown = g_shown_surfaces.count(surface.color_address) != 0;
+    const bool radar = now - g_radar_seen < 1000 &&
+                       inside(left, top, right, bottom, g_radar_box, 0.35f * (g_radar_box.right - g_radar_box.left));
+    const std::vector<HudBox>& dials = hud_boxes();
+    const bool dial = std::any_of(dials.begin(), dials.end(),
+                                  [&](const HudBox& box) { return inside(left, top, right, bottom, box, 6); });
+    if (narrow < 0.99f && over_scene && shown && (radar || dial)) {
+        n.anchor = radar ? 0 : width;
+        n.factor = narrow;
+    }
+    if (g_debug_hud < 0) {
+        char value[16] = {};
+        g_debug_hud = GetEnvironmentVariableA("MC3_DEBUG_HUD", value, sizeof(value)) ? std::atoi(value) : 0;
+    }
+    if (g_debug_hud > 0) {
+        --g_debug_hud;
+        log_line("hud: %.0f..%.0f x %.0f..%.0f on %08X (clip %u,%u %ux%u), texture %08X: %s%s%s%s-> %.3f towards %.0f",
+                 left, right, top, bottom, surface.color_address, surface.clip_x, surface.clip_y, surface.clip_width,
+                 surface.clip_height, texture, over_scene ? "" : "no scene ", shown ? "" : "not shown ",
+                 radar ? "radar " : "", dial ? "dial " : "", n.factor, n.anchor);
+    }
+    return n;
+}
 
 void apply_occlusion(Target& target, DepthTarget& depth) {
     const float strength = setting("ambient_occlusion");
@@ -909,8 +1051,85 @@ void refresh_write_tracking() {
     g_write_refreshed_at = now;
 }
 
-ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
+// textures_replace\<hash>.png (or .jpg) in the data folder: a picture drawn instead of the game's texture whose
+// bytes have that hash (16 hex digits, as MC3_DUMP_2D and MC3_DUMP_TEXTURE name their files), of any size. For
+// pictures made from one's own copy of the game, sharper or redrawn; mc3port ships none. Linear textures (addressed
+// in texels) are left as they are.
+std::unordered_map<uint64_t, std::filesystem::path> g_replacements;
+
+void find_replacements() {
+    const std::filesystem::path folder = data_directory() / "textures_replace";
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(folder, error)) {
+        const std::wstring extension = entry.path().extension().wstring();
+        if (extension != L".png" && extension != L".jpg" && extension != L".PNG" && extension != L".JPG") continue;
+        const std::wstring stem = entry.path().stem().wstring();
+        if (stem.size() != 16) continue;
+        wchar_t* end = nullptr;
+        const uint64_t hash = std::wcstoull(stem.c_str(), &end, 16);
+        if (end == stem.c_str() + 16) g_replacements[hash] = entry.path();
+    }
+    if (!g_replacements.empty()) log_line("renderer: %zu replacement textures", g_replacements.size());
+}
+
+// The picture `file` as BGRA, through Windows' image decoders (PNG, JPEG).
+bool load_picture(const std::filesystem::path& file, std::vector<uint8_t>& bgra, UINT& width, UINT& height) {
+    static const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    (void)com;
+    ComPtr<IWICImagingFactory> factory;
+    ComPtr<IWICBitmapDecoder> decoder;
+    ComPtr<IWICBitmapFrameDecode> frame;
+    ComPtr<IWICFormatConverter> converter;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory))) ||
+        FAILED(factory->CreateDecoderFromFilename(file.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand,
+                                                  &decoder)) ||
+        FAILED(decoder->GetFrame(0, &frame)) || FAILED(factory->CreateFormatConverter(&converter)) ||
+        FAILED(converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0,
+                                     WICBitmapPaletteTypeCustom)) ||
+        FAILED(converter->GetSize(&width, &height)) || !width || !height || width > 8192 || height > 8192) {
+        return false;
+    }
+    bgra.resize(static_cast<size_t>(width) * height * 4);
+    return SUCCEEDED(converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(bgra.size()), bgra.data()));
+}
+
+// A replacement picture as a texture with its mip levels made by the graphics card.
+bool make_replacement(const std::filesystem::path& file, CachedTexture& cached) {
+    std::vector<uint8_t> bgra;
+    UINT width = 0, height = 0;
+    if (!load_picture(file, bgra, width, height)) {
+        log_line("renderer: cannot read the replacement texture %s", file.filename().string().c_str());
+        return false;
+    }
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 0;  // all of them
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11ShaderResourceView> srv;
+    if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &texture)) ||
+        FAILED(g_device->CreateShaderResourceView(texture.Get(), nullptr, &srv))) {
+        log_resource_failure("a replacement texture", E_FAIL, desc);
+        return false;
+    }
+    g_context->UpdateSubresource(texture.Get(), 0, nullptr, bgra.data(), width * 4, 0);
+    g_context->GenerateMips(srv.Get());
+    cached.texture = texture;
+    cached.srv = srv;
+    return true;
+}
+
+// `flat`: the draw is flat over the 3D scene (the HUD): with sharp_2d its textures are enlarged (texture_upscale.cpp);
+// not the linear ones, which are addressed in texels.
+ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     const TextureDescriptor& d = stage.descriptor;
+    static const bool sharp_2d = setting_at_start("sharp_2d") != 0;
+    const bool enlarge = flat && sharp_2d && !texture_is_linear(d);
     // A texture that is a render target (render to texture) is sampled from the GPU copy.
     const auto target = g_targets.find(d.address);
     if (target != g_targets.end()) return target->second.srv.Get();
@@ -929,18 +1148,60 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
     }
     const uint8_t* memory = physical_pointer(d.address);
     if (!memory || !physical_pointer(d.address + bytes - 1)) return nullptr;
-    CachedTexture& cached = g_textures[std::make_tuple(d.address, d.format, d.pitch, d.rect, d.palette)];
+    const TextureKey key = std::make_tuple(d.address, d.format, d.pitch, d.rect, d.palette, enlarge);
+    CachedTexture& cached = g_textures[key];
+    std::vector<TextureImage> larger;
+    if (cached.waiting && g_enlarger.take(key, cached.content_hash, larger)) {
+        cached.waiting = false;
+        if (!larger.empty()) {
+            D3D11_TEXTURE2D_DESC desc{};
+            desc.Width = larger[0].width;
+            desc.Height = larger[0].height;
+            desc.MipLevels = static_cast<UINT>(larger.size());
+            desc.ArraySize = 1;
+            desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            desc.SampleDesc.Count = 1;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            std::vector<D3D11_SUBRESOURCE_DATA> data;
+            for (const TextureImage& level : larger) data.push_back({level.data.data(), level.row_pitch, 0});
+            ComPtr<ID3D11Texture2D> texture;
+            ComPtr<ID3D11ShaderResourceView> srv;
+            if (SUCCEEDED(g_device->CreateTexture2D(&desc, data.data(), &texture)) &&
+                SUCCEEDED(g_device->CreateShaderResourceView(texture.Get(), nullptr, &srv))) {
+                cached.texture = texture;
+                cached.srv = srv;
+            } else {
+                log_resource_failure("an enlarged 2D texture", E_FAIL, desc);
+            }
+        }
+    }
     // Unchanged memory needs no look at all; written memory is hashed, and decoded again only if it differs.
     uint32_t written = physical_write_generation(d.address, bytes);
     if (d.palette) written = std::max(written, physical_write_generation(d.palette, 1024));
     if (cached.srv && written <= cached.checked_generation) return cached.srv.Get();
 
     const uint64_t hash_start = ticks();
-    const uint64_t hash = hash_memory(memory, bytes) ^ (d.palette ? hash_memory(physical_pointer(d.palette), 1024) : 0);
+    // The texture's own bytes name its replacement (the palette address is set for every format, and its memory
+    // changes between runs).
+    const uint64_t own_hash = hash_memory(memory, bytes);
+    const uint64_t hash = own_hash ^ (d.palette ? hash_memory(physical_pointer(d.palette), 1024) : 0);
     g_stats.hash_ticks += ticks() - hash_start;
     g_stats.hashed_bytes += bytes;
     cached.checked_generation = g_write_generation;
     if (cached.srv && cached.content_hash == hash) return cached.srv.Get();
+    static const bool replacements = (find_replacements(), !g_replacements.empty());
+    if (replacements && !texture_is_linear(d)) {
+        const auto replacement = g_replacements.find(own_hash);
+        if (replacement != g_replacements.end()) {
+            cached = CachedTexture{};
+            if (make_replacement(replacement->second, cached)) {
+                cached.content_hash = hash;
+                log_line("renderer: texture %08X replaced by %s", d.address,
+                         replacement->second.filename().string().c_str());
+                return cached.srv.Get();
+            }
+        }
+    }
 
     const uint64_t upload_start = ticks();
     struct Account {
@@ -953,14 +1214,36 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
     const TextureImage image = decode_texture(d);
     if (image.layout == TextureLayout::Unsupported) return nullptr;
     // MC3_DUMP_TEXTURE=<hex address>: save the textures in that 4 KB page once decoded (BGRA with alpha) as
-    // texture-<address>.bmp (resources move a little between runs).
+    // texture-<address>-<hash>.bmp (resources move a little between runs; the hash names a replacement).
     static const uint32_t dump_texture = [] {
         char value[16] = {};
         return GetEnvironmentVariableA("MC3_DUMP_TEXTURE", value, sizeof(value)) ? std::strtoul(value, nullptr, 16) : 0u;
     }();
-    if (dump_texture && (d.address & ~0xFFFu) == (dump_texture & ~0xFFFu) && image.layout == TextureLayout::Bgra8) {
+    // MC3_DUMP_2D=1: also every texture of the HUD's flat draws (those sharp_2d enlarges). Block-compressed ones as
+    // they are, in a DDS file (texture-<address>-<hash>.dds).
+    static const bool dump_2d = GetEnvironmentVariableA("MC3_DUMP_2D", nullptr, 0) != 0;
+    const bool dump = (dump_texture && (d.address & ~0xFFFu) == (dump_texture & ~0xFFFu)) || (dump_2d && flat);
+    if (dump && image.layout != TextureLayout::Bgra8) {
         char name[64];
-        std::snprintf(name, sizeof(name), "texture-%08X.bmp", d.address);
+        std::snprintf(name, sizeof(name), "texture-%08X-%016llX.dds", d.address,
+                      static_cast<unsigned long long>(own_hash));
+        if (FILE* file = std::fopen(name, "wb")) {
+            uint32_t header[32] = {0x20534444, 124, 0x1007, image.height, image.width, image.row_pitch, 0, 1};
+            header[19] = 32;      // pixel format size
+            header[20] = 4;       // DDPF_FOURCC
+            header[21] = image.layout == TextureLayout::Bc1   ? 0x31545844   // "DXT1"
+                         : image.layout == TextureLayout::Bc2 ? 0x33545844   // "DXT3"
+                                                              : 0x35545844;  // "DXT5"
+            header[27] = 0x1000;  // DDSCAPS_TEXTURE
+            std::fwrite(header, sizeof(header), 1, file);
+            std::fwrite(image.data.data(), 1, image.data.size(), file);
+            std::fclose(file);
+        }
+    }
+    if (dump && image.layout == TextureLayout::Bgra8) {
+        char name[64];
+        std::snprintf(name, sizeof(name), "texture-%08X-%016llX.bmp", d.address,
+                      static_cast<unsigned long long>(own_hash));
         if (FILE* file = std::fopen(name, "wb")) {
             BITMAPFILEHEADER header{};
             BITMAPINFOHEADER info{};
@@ -1006,6 +1289,10 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage) {
     }
     g_device->CreateShaderResourceView(cached.texture.Get(), nullptr, &cached.srv);
     cached.content_hash = hash;
+    if (enlarge) {
+        cached.waiting = true;
+        g_enlarger.request(key, hash, image);
+    }
     return cached.srv.Get();
 }
 
@@ -1357,7 +1644,18 @@ void upload_scaled(Target& to, uint32_t x, uint32_t y, uint32_t width, uint32_t 
 }  // namespace
 
 bool renderer_start(HWND window) {
-    g_scale = std::clamp<uint32_t>(static_cast<uint32_t>(setting_at_start("render_scale")), 1, 4);
+    // render_scale 0 (Automatic): as many lines as the window's monitor has, for a picture that is not resampled
+    // up or down in height. The game draws 480; 2160 (4K) at most.
+    const float requested = setting_at_start("render_scale");
+    float scale = requested;
+    if (requested <= 0) {
+        MONITORINFO monitor{sizeof(MONITORINFO)};
+        GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor);
+        scale = static_cast<float>(monitor.rcMonitor.bottom - monitor.rcMonitor.top) / 480.0f;
+    }
+    g_scale = std::clamp(scale, 1.0f, 4.5f);
+    log_line("renderer: internal resolution %.0f lines (%.3gx)%s", 480.0f * g_scale, g_scale,
+             requested <= 0 ? ", automatic" : "");
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0};
     if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 1,
                                  D3D11_SDK_VERSION, &g_device, nullptr, &g_context))) {
@@ -1551,6 +1849,11 @@ bool renderer_start(HWND window) {
     return true;
 }
 
+bool renderer_over_shown_scene(const SurfaceState& surface) {
+    const auto scene = g_scenes.find(surface.zeta_address);
+    return scene != g_scenes.end() && scene->second.drawn && g_shown_surfaces.count(surface.color_address) != 0;
+}
+
 void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color, uint32_t depth_stencil, int x0, int y0,
                     int x1, int y1) {
     if (!g_device || !surface.width || !surface.height) return;
@@ -1566,7 +1869,7 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
     if (channels == 0xF) {
         float rgba[4];
         unpack_color(color, rgba);
-        const D3D11_RECT rect{x0 * scaled(1), y0 * scaled(1), (x1 + 1) * scaled(1), (y1 + 1) * scaled(1)};
+        const D3D11_RECT rect{scaled(x0), scaled(y0), scaled(x1 + 1), scaled(y1 + 1)};
         g_context1->ClearView(target->rtv.Get(), rgba, &rect, 1);
     } else if (channels && g_clear_pixel_shader) {
         // Some channels only (the HUD clears alpha alone to reuse it as a mask).
@@ -1588,7 +1891,7 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
         g_context->OMSetDepthStencilState(nullptr, 0);
         const D3D11_VIEWPORT viewport{0, 0, scaled_float(target->width), scaled_float(target->height), 0, 1};
         g_context->RSSetViewports(1, &viewport);
-        const D3D11_RECT rect{x0 * scaled(1), y0 * scaled(1), (x1 + 1) * scaled(1), (y1 + 1) * scaled(1)};
+        const D3D11_RECT rect{scaled(x0), scaled(y0), scaled(x1 + 1), scaled(y1 + 1)};
         g_context->RSSetScissorRects(1, &rect);
         g_context->RSSetState(g_rasterizer.Get());
         g_context->IASetInputLayout(nullptr);
@@ -1688,11 +1991,17 @@ ID3D11ShaderResourceView* target_copy(const Target& target) {
 // Render target, viewport, scissor, raster, blend, depth state, combiner constants, textures and samplers.
 void bind_draw_state(const SurfaceState& surface, const DrawState& state, const PreparedDraw& draw) {
     Target* target = draw.target;
-    if (g_surface_scale_width != target->width || g_surface_scale_height != target->height) {
-        const float scale[4] = {2.0f / target->width, 2.0f / target->height, 0, 0};
+    const uint32_t texture = state.textures[0].enabled ? state.textures[0].descriptor.address : 0;
+    const Narrowing hud =
+        hud_narrowing(surface, state.screen_left, state.screen_right, state.screen_top, state.screen_bottom, texture);
+    if (g_surface_scale_width != target->width || g_surface_scale_height != target->height ||
+        g_surface_scale_narrow != hud.factor || g_surface_scale_anchor != hud.anchor) {
+        const float scale[4] = {2.0f / target->width, 2.0f / target->height, hud.factor, hud.anchor};
         g_context->UpdateSubresource(g_surface_constants.Get(), 0, nullptr, scale, 0, 0);
         g_surface_scale_width = target->width;
         g_surface_scale_height = target->height;
+        g_surface_scale_narrow = hud.factor;
+        g_surface_scale_anchor = hud.anchor;
     }
     ID3D11Buffer* surface_constants = g_surface_constants.Get();
     g_context->VSSetConstantBuffers(0, 1, &surface_constants);
@@ -1704,7 +2013,10 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
     g_context->OMSetRenderTargets(1, &rtv, draw.depth ? draw.depth->dsv.Get() : nullptr);
     const D3D11_VIEWPORT viewport{0, 0, scaled_float(target->width), scaled_float(target->height), 0, 1};
     g_context->RSSetViewports(1, &viewport);
-    const D3D11_RECT scissor{scaled(surface.clip_x), scaled(surface.clip_y), scaled(surface.clip_x + surface.clip_width),
+    const auto clip_x0 = static_cast<uint32_t>(std::lround(hud.apply(static_cast<float>(surface.clip_x))));
+    const auto clip_x1 =
+        static_cast<uint32_t>(std::lround(hud.apply(static_cast<float>(surface.clip_x + surface.clip_width))));
+    const D3D11_RECT scissor{scaled(clip_x0), scaled(surface.clip_y), scaled(clip_x1),
                              scaled(surface.clip_y + surface.clip_height)};
     g_context->RSSetScissorRects(1, &scissor);
     g_context->RSSetState(rasterizer_for(state));
@@ -1729,15 +2041,16 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
     }
     // The speed blur at high speed is made another way: the shown frame is shrunk into a surface, blended there with
     // slightly enlarged copies of itself (the streaks), and laid back over the frame by its alpha (SRC_ALPHA,
-    // INV_SRC_ALPHA). The lights' streaks go through the same surface: their halos are drawn into it, stretched the
-    // same way and added to the frame (SRC_ALPHA, ONE). The same setting scales the alpha of both.
+    // INV_SRC_ALPHA): setting motion_blur scales it. The lights' streaks go through the same surface: their halos
+    // are drawn into it, stretched the same way and added to the frame (SRC_ALPHA, ONE): setting light_streaks.
     const bool reads_frame = state.textures[0].enabled && g_shown_surfaces.count(state.textures[0].descriptor.address);
     const bool draws_frame = g_shown_surfaces.count(surface.color_address) != 0;
     if (reads_frame && !draws_frame) g_frame_copies.insert(surface.color_address);
     if (draws_frame && state.blend_enable && state.blend_source == 0x302 &&
         (state.blend_destination == 0x303 || state.blend_destination == 1) && state.textures[0].enabled &&
         g_frame_copies.count(state.textures[0].descriptor.address)) {
-        constants_data.alpha_reference[2] = 1 - std::clamp(setting("motion_blur"), 0.0f, 1.0f);
+        const char* key = state.blend_destination == 1 ? "light_streaks" : "motion_blur";
+        constants_data.alpha_reference[2] = 1 - std::clamp(setting(key), 0.0f, 1.0f);
     }
     g_context->UpdateSubresource(g_constants.Get(), 0, nullptr, &constants_data, 0, 0);
     ID3D11Buffer* constants = g_constants.Get();
@@ -1748,7 +2061,7 @@ void bind_draw_state(const SurfaceState& surface, const DrawState& state, const 
     refresh_write_tracking();
     for (int i = 0; i < 4; ++i) {
         if (!state.textures[i].enabled) continue;
-        views[i] = texture_view(state.textures[i]);
+        views[i] = texture_view(state.textures[i], state.screen_left <= state.screen_right);
         samplers[i] = sampler(state.textures[i]);
         // The draw reads its own target: the NV2A then sees what is there now (MC3's motion blur writes its mask
         // into the frame's alpha this way). Direct3D cannot read and write one texture, so it reads a copy.
@@ -2033,7 +2346,7 @@ bool renderer_probe(uint32_t address, uint32_t x, uint32_t y, uint8_t bgra[4]) {
             return false;
         }
     }
-    const D3D11_BOX box{x * g_scale, y * g_scale, 0, x * g_scale + 1, y * g_scale + 1, 1};
+    const D3D11_BOX box{scaled_size(x), scaled_size(y), 0, scaled_size(x) + 1, scaled_size(y) + 1, 1};
     g_context->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, found->second.texture.Get(), 0, &box);
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (FAILED(g_context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) return false;
@@ -2058,10 +2371,15 @@ void renderer_blit(const BlitRequest& b) {
         const uint32_t height = existing != g_targets.end() ? existing->second.height : from.height;
         Target* to = get_target(b.destination, width, height);
         if (!to || b.destination_x + b.width > to->width || b.destination_y + b.height > to->height) return;
-        const D3D11_BOX box{b.source_x * g_scale, b.source_y * g_scale, 0, (b.source_x + b.width) * g_scale,
-                            (b.source_y + b.height) * g_scale, 1};
-        g_context->CopySubresourceRegion(to->texture.Get(), 0, b.destination_x * g_scale, b.destination_y * g_scale, 0,
-                                         from.texture.Get(), 0, &box);
+        // With a scale that is not whole, the rounded source and destination may differ by a pixel: the copy stays
+        // inside the destination texture.
+        const uint32_t to_x = scaled_size(b.destination_x), to_y = scaled_size(b.destination_y);
+        const uint32_t from_x = scaled_size(b.source_x), from_y = scaled_size(b.source_y);
+        const uint32_t copy_width = std::min(scaled_size(b.source_x + b.width) - from_x, scaled_size(to->width) - to_x);
+        const uint32_t copy_height =
+            std::min(scaled_size(b.source_y + b.height) - from_y, scaled_size(to->height) - to_y);
+        const D3D11_BOX box{from_x, from_y, 0, from_x + copy_width, from_y + copy_height, 1};
+        g_context->CopySubresourceRegion(to->texture.Get(), 0, to_x, to_y, 0, from.texture.Get(), 0, &box);
         return;
     }
     // Guest memory to guest memory.
@@ -2092,6 +2410,8 @@ void renderer_blit(const BlitRequest& b) {
 
 float renderer_aspect() { return setting_at_start("widescreen") != 0 ? 16.0f / 9.0f : 4.0f / 3.0f; }
 
+HudPicture renderer_hud_picture() { return g_hud_picture; }
+
 void renderer_toggle_effects() { renderer_set_effects(!g_effects_enabled); }
 
 void renderer_set_effects(bool on) {
@@ -2108,17 +2428,36 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     const auto target = g_targets.find(address);
     if (target != g_targets.end()) {
         g_shown_surfaces.insert(address);
+        g_picture_width = width, g_picture_height = height;
+        const float aspect = renderer_aspect();
+        float window_width = static_cast<float>(g_swap_width), window_height = static_cast<float>(g_swap_height);
+        if (window_width > window_height * aspect) {
+            window_width = window_height * aspect;
+        } else {
+            window_height = window_width / aspect;
+        }
+        const float edge_x = static_cast<float>(width / kOverscan), edge_y = static_cast<float>(height / kOverscan);
+        g_hud_picture = {edge_x,
+                         edge_y,
+                         static_cast<float>(width) - 2 * edge_x,
+                         static_cast<float>(height) - 2 * edge_y,
+                         std::floor((static_cast<float>(g_swap_width) - window_width) / 2),
+                         std::floor((static_cast<float>(g_swap_height) - window_height) / 2),
+                         window_width,
+                         window_height};
         frame = target->second.texture.Get();
         frame_view = target->second.srv.Get();
         // Only the picture's part of a wider surface (widescreen: 720 of 768 pixels), copied out once per present.
         // Like a television, the outermost pixels are not shown either: games park things there that the TV's
-        // overscan hid (MC3 slides its notification box off to the left and leaves its last 3 pixels on screen).
-        // 1/80 of each side, the same share across and down so the picture keeps its shape.
+        // overscan hid (MC3 slides its notification box off to the left and leaves its last 3 pixels on screen, and
+        // when it is in, the box stops 13 pixels short of the edge, which a TV's overscan covered). 1/48 of each side,
+        // the same share across and down so the picture keeps its shape.
         D3D11_TEXTURE2D_DESC desc{};
         frame->GetDesc(&desc);
-        const uint32_t full_height = std::min(height * g_scale, desc.Height);
-        const uint32_t crop_x = width * g_scale / 80, crop_y = full_height / 80;
-        const uint32_t visible_width = width * g_scale - 2 * crop_x, visible_height = full_height - 2 * crop_y;
+        const uint32_t full_width = std::min(scaled_size(width), desc.Width);
+        const uint32_t full_height = std::min(scaled_size(height), desc.Height);
+        const uint32_t crop_x = full_width / kOverscan, crop_y = full_height / kOverscan;
+        const uint32_t visible_width = full_width - 2 * crop_x, visible_height = full_height - 2 * crop_y;
         {
             static ComPtr<ID3D11Texture2D> visible;
             static ComPtr<ID3D11ShaderResourceView> visible_view;
@@ -2176,9 +2515,13 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     D3D11_TEXTURE2D_DESC frame_desc{};
     if (frame) frame->GetDesc(&frame_desc);
     present_frame(frame_view, frame_desc.Width, frame_desc.Height);
+    hud_frame_shown();
     ++g_presented;
     ++g_stats.presents;
     log_statistics();
+    if (const RendererOverlay overlay = g_overlay.load(); overlay && g_back_buffer_rtv) {
+        overlay(g_device.Get(), g_context.Get(), g_back_buffer_rtv.Get(), g_swap_width, g_swap_height);
+    }
     // MC3_DUMP_SECONDS=<s>: a frame every s seconds of real time (frame-<milliseconds>.bmp... named by count).
     static const double dump_seconds = [] {
         char value[16] = {};
@@ -2197,16 +2540,13 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     if ((g_dump_every && g_presented % g_dump_every == 0) || timed_dump) {
         dump_frame(frame);  // the game's frame at its own size, not the window
         static const bool dump_window = GetEnvironmentVariableA("MC3_DUMP_WINDOW", nullptr, 0) != 0;
-        if (dump_window) {  // what the window shows, with the effects (window-NNNNN.bmp)
+        if (dump_window) {  // what the window shows, with the effects and the overlay (window-NNNNN.bmp)
             ComPtr<ID3D11Texture2D> back_buffer;
             g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
             dump_frame(back_buffer.Get(), "window");
         }
         const auto extra = g_targets.find(g_dump_target);
         if (extra != g_targets.end()) dump_frame(extra->second.texture.Get(), "target");
-    }
-    if (const RendererOverlay overlay = g_overlay.load(); overlay && g_back_buffer_rtv) {
-        overlay(g_device.Get(), g_context.Get(), g_back_buffer_rtv.Get(), g_swap_width, g_swap_height);
     }
     const uint64_t swap_start = ticks();
     g_swap_chain->Present(0, 0);

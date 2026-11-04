@@ -16,7 +16,7 @@ $notes = $section.Trim() + @"
 
 ### Download
 
-- **Installer**: ``mc3port-$Version-windows-x86-setup.exe`` (installs for your user; the launcher updates it).
+- **Installer**: ``mc3port-$Version-windows-x86-setup.exe`` (installs for your user; the launcher downloads its updates).
 - **Portable**: ``mc3port-$Version-windows-x86.zip`` (extract anywhere and start ``mc3.exe``).
 - Check a download against ``SHA256SUMS``. You need your own disc image of the European Xbox release: see the README.
 "@

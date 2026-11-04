@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "pc/hud.h"
 #include "pc/nv2a_combiner.h"
 #include "pc/nv2a_texture.h"
 
@@ -60,6 +61,9 @@ struct DrawState {
     // and back faces both count and the light fills a solid white ellipse.
     bool cull_enable;
     uint32_t cull_face, front_face;
+    // Setting hud_aspect: a flat draw's extent on the surface in pixels, worked out on the CPU (left > right when
+    // not), so that the renderer can narrow the HUD back to its shape in 16:9 (renderer_d3d11.cpp).
+    float screen_left, screen_right, screen_top, screen_bottom;
 };
 
 // Fixed-function vertex transform done on the GPU: the state the CPU version (nv2a_kelvin.cpp) reads, laid out as
@@ -102,6 +106,8 @@ void renderer_note_vertex_work(uint64_t ticks, uint32_t vertices);
 void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color, uint32_t depth_stencil, int x0, int y0,
                     int x1, int y1);
 void renderer_draw(const SurfaceState& surface, const DrawState& state, const std::vector<RenderVertex>& triangles);
+// Whether a draw on `surface` comes after the 3D scene on a frame that is shown (where the HUD is drawn).
+bool renderer_over_shown_scene(const SurfaceState& surface);
 // Whether renderer_draw_fixed_function is available (shader compiled, buffers usable).
 bool renderer_has_fixed_function();
 // The same draw with the fixed-function transform on the GPU: `vertex_data` holds the guest vertex bytes (4-byte
@@ -142,6 +148,8 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
 // The shape the picture is shown in: 16:9 with the widescreen setting (the game then draws for a widescreen TV),
 // otherwise 4:3.
 float renderer_aspect();
+// Where the last frame shown is in the window (for the new HUD, drawn over it).
+HudPicture renderer_hud_picture();
 
 // F10: the modern effects (mc3port.ini) off and on, to compare with the original picture.
 void renderer_toggle_effects();

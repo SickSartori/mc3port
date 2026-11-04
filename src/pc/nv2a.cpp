@@ -182,7 +182,8 @@ uint32_t pending_interrupts() {
 }
 
 uint32_t read_register(uint32_t offset) {
-    std::lock_guard<std::mutex> lock(g_register_mutex);
+    std::unique_lock<std::mutex> lock(g_register_mutex, std::defer_lock);
+    lock_at_irql(lock);  // the interrupt service routine reads them at DIRQL
     switch (offset) {
         case kPmcIntr0: return pending_interrupts();
         case kPtimerTime0: return static_cast<uint32_t>(now_nanoseconds()) & ~0x1Fu;
@@ -207,7 +208,8 @@ uint32_t read_register(uint32_t offset) {
 }
 
 void write_register(uint32_t offset, uint32_t value) {
-    std::lock_guard<std::mutex> lock(g_register_mutex);
+    std::unique_lock<std::mutex> lock(g_register_mutex, std::defer_lock);
+    lock_at_irql(lock);
     switch (offset) {
         case kPbusIntr0:
         case kPfifoIntr0:
@@ -722,7 +724,16 @@ void toggle_full_screen(HWND window) {
 
 std::atomic<WindowHook> g_window_hook{nullptr};  // nv2a_set_window_hook
 
+// nv2a_set_full_screen, from the launcher's or the GPU thread: the window thread changes the mode. Changing it there
+// directly made SetWindowPos wait for the window thread, which was waiting for the menu's g_ui_mutex, held by the
+// caller: the window hung.
+constexpr UINT kSetFullScreenMessage = WM_APP + 1;
+
 LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    if (message == kSetFullScreenMessage) {
+        if ((wparam != 0) != g_full_screen) toggle_full_screen(window);
+        return 0;
+    }
     if (const WindowHook hook = g_window_hook.load()) {
         LRESULT result = 0;
         if (hook(window, message, wparam, lparam, &result)) return result;
@@ -957,7 +968,7 @@ uint32_t nv2a_frames_shown() { return g_frames_shown; }
 int nv2a_vblank_hz() { return setting_at_start("frame_rate") >= 60 ? 120 : 60; }
 
 void nv2a_set_full_screen(bool full_screen) {
-    if (g_window && full_screen != g_full_screen) toggle_full_screen(g_window);
+    if (g_window) PostMessageW(g_window, kSetFullScreenMessage, full_screen, 0);
 }
 
 void nv2a_load_icons() {

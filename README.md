@@ -34,14 +34,16 @@ The game's x86 code runs natively on your PC; mc3port replaces the Xbox around i
 
 Compared with the console:
 
-- **True 16:9**: the game's own widescreen mode, with a wider view and no stretching or black bars.
+- **True 16:9**: the game's own widescreen mode, with a wider view and no stretching or black bars, and the HUD
+  kept in shape: round radar and dials.
 - **60 fps**, or 30 like the Xbox.
-- **Higher internal resolution** (up to 4x) with anisotropic filtering, for smooth edges and sharp textures.
+- **Higher internal resolution** (from the Xbox's 480p up to 4K, or as many lines as your screen) with anisotropic
+  filtering, for smooth edges and sharp textures.
 - **Modern effects**, all optional: light glow, adaptive sharpening, colour, vignette and ambient occlusion
   (F10 switches them on and off to compare).
 - **A launcher** that checks your disc, sets everything up on the first start and holds all the settings.
 - **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
-- **A frame counter**, optional.
+- **A frame counter**, optional, and the opening films skipped (they can be switched back on).
 - **Keyboard support** with rebindable keys, and Xbox controllers for up to four players.
 
 ## Requirements
@@ -65,8 +67,8 @@ Compared with the console:
 **With the installer**: download `mc3port-<version>-windows-x86-setup.exe` from the
 [releases page](https://github.com/SickSartori/mc3port/releases) and run it. It installs for your user only (no
 administrator rights), adds Start menu and desktop shortcuts, and can be removed from Windows' installed apps. When a
-new version comes out, the launcher offers to update: it downloads the new installer, checks its SHA-256 and installs
-it, then reopens the game.
+new version comes out, the launcher offers to update: it downloads the new installer, checks its SHA-256 and shows it
+in Explorer, and you start it.
 
 **Portable**: download `mc3port-<version>-windows-x86.zip` and extract it where you like: it contains a folder
 `mc3port`, and `mc3.exe` inside it starts the game. To update, extract the new version in the same place, replacing
@@ -146,29 +148,39 @@ In the launcher and the in-game menu:
 ## Settings
 
 Everything is in the launcher's **Settings** page, in the game's in-game menu (F1), and in `mc3port.ini` (each key
-is explained there). Language, frame rate, aspect ratio, resolution and filtering apply the next time the game starts;
-the others at once. The main ones:
+is explained there). Language, frame rate, aspect ratio, resolution, filtering and the HUD apply the next time the
+game starts; the others at once. When you change one of the first in the in-game menu, it offers to restart the game
+straight away (progress since the last save is lost). The main ones:
 
 | Setting | What it does |
 |---|---|
 | Game language | English, French, German, Spanish or Italian; by default like Windows |
 | Frames per second | 60, or 30 like the Xbox |
 | Aspect ratio | 16:9 (the game's widescreen mode) or 4:3 |
-| Quality | Original (like the Xbox), Balanced or High: resolution, filtering and effects together |
-| Internal resolution | 1x (640x480) to 4x |
-| Modern effects | glow, sharpening, saturation, contrast, vignette, ambient occlusion, each adjustable |
+| Quality | Original (like the Xbox), Balanced or High: filtering and effects together; the resolution is its own setting |
+| Internal resolution | Auto (as many lines as your screen, the default), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p or 4K 2160p |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
-| Motion blur | the game's speed blur, and at high speed the streaks across the picture and from the street lights: 0 off, 1 as strong as on the Xbox; 0.5 by default |
+| Effects style | **Enhanced** (the default): modern glow, sharpening, colour, vignette and ambient occlusion, without the game's speed blur and light streaks. **Original**: the Xbox's picture, speed blur and light streaks included. **Custom**: every value by itself, speed blur and light streaks too |
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
+| HUD | the game's, or mc3port's: speedometer, rev counter, gear and special ability drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |
+| Sharp HUD pictures | the radar's map, the icons and the letters enlarged with clean edges instead of blurred; on by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
+| Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
+| `hud_aspect` (ini only) | in 16:9, the HUD keeps its shape (1, the default) or is stretched as on a widescreen TV (0) |
+
+**Replacement pictures**: a PNG or JPG in a folder `textures_replace` next to `mc3port.ini`, named after a 2D
+picture's hash (16 hex digits, for example `83E5DF1E4AC28289.png`), is drawn instead of the game's picture, at any
+size. `MC3_DUMP_2D=1` saves the HUD's pictures with their hash in the name (see `docs/DEVELOPMENT.md`). mc3port
+includes no pictures: the folder does not exist until you make it.
 
 ## Performance
 
 The game itself is light; most of the work goes into turning the Xbox's graphics commands into Direct3D 11. The
 processor does that, mostly on one thread, while the graphics card has little to do: one fast processor core
 matters more than a powerful graphics card. So far mc3port has been tested on few machines: if the game is not
-smooth on yours, choose 30 fps, or the **Balanced** or **Original** preset, and please report how it runs.
+smooth on yours, choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset, and please
+report how it runs.
 
 The first time each graphics shader is needed it is compiled in the background (meanwhile the processor does that
 work); the results are kept in the `shader_cache` folder, so later runs start without hitches.
@@ -176,8 +188,6 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 ## Known issues
 
 - Only the European release is supported.
-- In 16:9 the game stretches its HUD (radar, speedometer) to the wider screen, as it did on a widescreen TV:
-  round dials look slightly oval.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides (full screen on a 16:9 monitor has none).
 - The Xbox sound chip's own effects, such as reverb, are not reproduced (the game loads them, mc3port leaves them
@@ -191,7 +201,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
   (the SHA-256 in `SHA256SUMS` lets you check it is the original).
 - **The program closes at once, or the game crashes**: open the launcher's **About** page and press **Log folder**;
   `mc3port.log` says what happened last.
-- **The game is not smooth**: choose 30 fps, or the **Balanced** or **Original** preset, in Settings.
+- **The game is not smooth**: choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset,
+  in Settings.
 - **No sound**: the game uses the output device that is the Windows default when it starts.
 - **The sound is quiet**: check Volume in Settings (100 is the loudest), then the Windows volume. The level leaves room
   for the moments when many sounds play at once, in the city, so that they do not distort.

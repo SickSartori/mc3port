@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "pc/hud.h"
 #include "pc/log.h"
 #include "pc/nv2a_combiner.h"
 #include "pc/nv2a_texture.h"
@@ -509,15 +510,19 @@ float fog_factor(float distance) {
 
 // The fixed-function transform, producing the same outputs a vertex program would: a screen-space position
 // (x and y divided by w, the viewport offset added), colours, texture coordinates and fog.
+// The fixed function's screen position of a vertex (pixels, z, w).
+Vec4 fixed_function_position(const Vec4& position) {
+    Vec4 p = transform(g_k.composite, position);  // model view, projection and viewport scale in one
+    float w = p[3];
+    if (!std::isfinite(w) || std::fabs(w) < 5.42101e-20f) w = w < 0 ? -5.42101e-20f : 5.42101e-20f;
+    return {p[0] / w + g_k.viewport_offset[0], p[1] / w + g_k.viewport_offset[1], p[2] / w, w};
+}
+
 void transform_fixed_function(const Vec4* in, Vec4* out) {
     if (g_k.skin_mode) log_once(0x2001, "fixed-function skinning is not supported yet; the first matrix is used");
     const Vec4& position = in[kInPosition];
     const Vec4 eye = transform(g_k.model_view[0], position);  // what eye-space texgen and fog see
-
-    Vec4 p = transform(g_k.composite, position);  // model view, projection and viewport scale in one
-    float w = p[3];
-    if (!std::isfinite(w) || std::fabs(w) < 5.42101e-20f) w = w < 0 ? -5.42101e-20f : 5.42101e-20f;
-    out[kOutPosition] = {p[0] / w + g_k.viewport_offset[0], p[1] / w + g_k.viewport_offset[1], p[2] / w, w};
+    out[kOutPosition] = fixed_function_position(position);
 
     out[kOutBackDiffuse] = in[kInBackDiffuse];
     out[kOutBackSpecular] = g_k.specular ? in[kInBackSpecular] : Vec4{0, 0, 0, 1};
@@ -816,6 +821,69 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
     }
     const SurfaceState target = surface();
     if (!target.width || !target.height) return;
+
+    // Setting hud_aspect: where a flat draw over the 3D scene falls on the screen. Flat: w 1 on every vertex and one
+    // z for all, 0 when the draw compares or writes depth (the HUD: some of it does, at z 0, to stack its pieces);
+    // glows and halos of lights over the scene have a z each, and the scene's other flat passes a z of their own.
+    // Only the positions go through the CPU once more, and only for draws whose first vertex is flat: more work
+    // here slowed this thread enough to change the game's timing, and the game crashed.
+    g_k.draw.screen_left = 1, g_k.draw.screen_right = 0;
+    static const bool measure = (setting_at_start("widescreen") != 0 && setting_at_start("hud_aspect") != 0) ||
+                                setting_at_start("hud_style") != 0 || setting_at_start("sharp_2d") != 0;
+    if (measure && target.width >= 640 && count <= 1024 && renderer_over_shown_scene(target)) {
+        Vec4 inputs[kVshAttributes];
+        Vec4 outputs[kVshOutputs];
+        const auto position = [&](uint32_t i) {
+            std::copy(std::begin(g_k.attribute), std::end(g_k.attribute), inputs);
+            fetch(i, inputs);
+            if (fixed_function) return fixed_function_position(inputs[kInPosition]);
+            g_k.vertex_program.execute(inputs, g_k.constants, outputs);
+            return outputs[kOutPosition];
+        };
+        const Vec4 first = position(0);
+        constexpr uint32_t kDepthAlways = 0x207;
+        const bool uses_depth =
+            (g_k.draw.depth_test && g_k.draw.depth_function != kDepthAlways) || g_k.draw.depth_write;
+        bool flat = first[3] == 1 && (!uses_depth || first[2] == 0);
+        float left = first[0], right = first[0], top = first[1], bottom = first[1];
+        for (uint32_t i = 1; i < count && flat; ++i) {
+            const Vec4 p = position(i);
+            flat = p[3] == 1 && p[2] == first[2];
+            left = std::min(left, p[0]), right = std::max(right, p[0]);
+            top = std::min(top, p[1]), bottom = std::max(bottom, p[1]);
+        }
+        if (flat) {
+            g_k.draw.screen_left = left, g_k.draw.screen_right = right;
+            g_k.draw.screen_top = top, g_k.draw.screen_bottom = bottom;
+        }
+        // Setting hud_style: the game's dials are read here and left out (hud.cpp).
+        if (flat && count == 4 && hud_reading()) {
+            const HudPicture picture = renderer_hud_picture();
+            if (left >= (picture.surface_width + 2 * picture.surface_left) / 2) {
+                HudQuad quad{};
+                quad.program = !fixed_function;
+                quad.texture = (g_k.texture_control0[0] & 0x40000000)
+                                   ? dma_address(g_k.texture_format[0] & 3, g_k.texture_offset[0])
+                                   : 0;
+                for (uint32_t i = 0; i < 4; ++i) {
+                    std::copy(std::begin(g_k.attribute), std::end(g_k.attribute), inputs);
+                    fetch(i, inputs);
+                    if (fixed_function) {
+                        transform_fixed_function(inputs, outputs);
+                    } else {
+                        g_k.vertex_program.execute(inputs, g_k.constants, outputs);
+                    }
+                    quad.x[i] = outputs[kOutPosition][0], quad.y[i] = outputs[kOutPosition][1];
+                    quad.u[i] = outputs[kOutTexture0][0], quad.v[i] = outputs[kOutTexture0][1];
+                    if (i == 0) std::memcpy(quad.colour, outputs[kOutDiffuse].data(), sizeof(quad.colour));
+                }
+                if (hud_take_quad(quad)) {
+                    ++g_draws;
+                    return;
+                }
+            }
+        }
+    }
 
     if (gpu_fixed_function() && !g_debug_window_open &&
         (fixed_function ? draw_fixed_function_on_gpu(target, count, source) : draw_program_on_gpu(target, count, source))) {
@@ -1210,7 +1278,10 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
         case 0x0200: g_k.clip_horizontal = argument; return true;
         case 0x0204: g_k.clip_vertical = argument; return true;
         case 0x0208:
-            if (g_k.surface_format != argument) {
+            // Each format once: the game switches between a few every frame, and a line per switch filled the log
+            // (and kept its lock busy, which the interrupt and DPC threads then waited for).
+            if (static std::vector<uint32_t> seen; std::find(seen.begin(), seen.end(), argument) == seen.end()) {
+                seen.push_back(argument);
                 log_line("nv2a: surface format %08X (colour %X, zeta %X, type %X, anti-aliasing %X)", argument,
                          argument & 0xF, (argument >> 4) & 0xF, (argument >> 8) & 0xF, (argument >> 12) & 0xF);
             }

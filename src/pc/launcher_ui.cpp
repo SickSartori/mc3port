@@ -5,7 +5,6 @@
 #include <dxgi1_2.h>
 #include <shellapi.h>
 #include <bcrypt.h>
-#include <urlmon.h>
 #include <winhttp.h>
 #include <wrl/client.h>
 #include <xinput.h>
@@ -75,6 +74,9 @@ struct Texts {
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
     const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint, *tabs_hint, *play_hint;
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
+    const char *effects_style, *effects_style_sub, *enhanced, *original_effects, *light_streaks, *custom_effects;
+    const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
+    const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub;
 };
 
 const Texts kEnglish = {
@@ -87,7 +89,7 @@ const Texts kEnglish = {
     "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
     "Aspect ratio", "16:9 uses the game's own widescreen mode", "Window mode", "Alt+Enter or F11 while playing",
     "Window", "Full screen",
-    "Quality", "Sets resolution, filtering and effects together", "Original", "Balanced", "High", "Custom",
+    "Quality", "Sets filtering and effects together", "Original", "Balanced", "High", "Custom",
     "Internal resolution", "Smoother edges, more graphics card work",
     "Anisotropic filtering", "Vertices on the graphics card", "Faster; off only for troubleshooting",
     "Modern effects", "Bloom, sharpening, colour and shading (F10 while playing)", "On", "Off",
@@ -101,7 +103,7 @@ const Texts kEnglish = {
     "Open", "Log folder", "For bug reports, attach mc3port.log",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "MIT licence \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
-    "Update", "Downloads, checks and installs it; the game reopens by itself", "Downloading the update...",
+    "Update", "Downloads and checks the installer, then shows it to you to start", "Downloading the update...",
     "The update could not be downloaded or checked",
     "WELCOME", "You need your own copy: a disc image (ISO) of the European Xbox Midnight Club 3: DUB Edition Remix.",
     "NEXT", "QUALITY", "You can change it any time in the settings.", "ALL SET",
@@ -113,6 +115,12 @@ const Texts kEnglish = {
     "Opens the menu when you switch windows", "Resume", "Tabs", "Play",
     "D-pad \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: move, select, back, tabs, play", "Motion blur", "Pages", "Move", "D-pad",
     "Move \xC2\xB7 right: into the page",
+    "Effects style", "Original: as on the Xbox. Enhanced: modern picture, no blur or streaks", "Enhanced", "Original",
+    "Light streaks", "Custom",
+    "Skip the opening films", "The Rockstar logos and the intro, straight to the title screen",
+    "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
+    "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
+    "Sharp HUD pictures", "The radar's map, icons and letters enlarged with clean edges",
 };
 
 const Texts kItalian = {
@@ -126,7 +134,7 @@ const Texts kItalian = {
     "La musica di sottofondo di questa schermata; 0 la spegne",
     "Formato", "16:9 usa la modalit\xC3\xA0 panoramica del gioco", "Modalit\xC3\xA0 finestra",
     "Alt+Invio o F11 durante il gioco", "Finestra", "Schermo intero",
-    "Qualit\xC3\xA0", "Imposta insieme risoluzione, filtri ed effetti", "Originale", "Bilanciata", "Alta",
+    "Qualit\xC3\xA0", "Imposta insieme filtri ed effetti", "Originale", "Bilanciata", "Alta",
     "Personalizzata", "Risoluzione interna", "Bordi pi\xC3\xB9 lisci, pi\xC3\xB9 lavoro per la scheda video",
     "Filtro anisotropico", "Vertici sulla scheda video", "Pi\xC3\xB9 veloce; da spegnere solo in caso di problemi",
     "Effetti moderni", "Bagliore, nitidezza, colori e ombreggiatura (F10 durante il gioco)", "S\xC3\xAC", "No",
@@ -142,7 +150,7 @@ const Texts kItalian = {
     "Per segnalare un problema allega mc3port.log",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenza MIT \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
-    "Aggiorna", "Si scarica, si verifica e si installa; il gioco si riapre da solo", "Scarico l'aggiornamento...",
+    "Aggiorna", "Scarica e verifica l'installer, poi te lo mostra da avviare", "Scarico l'aggiornamento...",
     "Non \xC3\xA8 stato possibile scaricare o verificare l'aggiornamento",
     "BENVENUTO",
     "Per giocare serve la tua copia: l'immagine ISO del disco Xbox europeo di Midnight Club 3: DUB Edition Remix.",
@@ -156,6 +164,12 @@ const Texts kItalian = {
     "Apre il menu se cambi finestra", "Riprendi", "Schede", "Gioca",
     "Croce \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: muoversi, scegliere, tornare, schede, gioca", "Sfocatura in velocit\xC3\xA0", "Pagine", "Muovi",
     "Croce", "Muovi \xC2\xB7 destra: nella pagina",
+    "Stile degli effetti", "Originale: come sull'Xbox. Migliorato: immagine moderna, senza sfocatura n\xC3\xA9 scie",
+    "Migliorato", "Originale", "Scie delle luci", "Personalizzato",
+    "Salta i video iniziali", "I loghi Rockstar e l'introduzione, dritto alla schermata del titolo",
+    "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
+    "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
+    "Immagini dell'HUD nitide", "Mappa del radar, icone e lettere ingrandite con bordi puliti",
 };
 
 const Texts& T() {
@@ -276,7 +290,7 @@ struct UpdateCheck {
     int state = 0;  // 0 checking, 1 up to date, 2 newer found, 3 failed (shown as nothing)
     std::string version, url;
     std::string setup_url, sums_url;  // the release's installer and SHA256SUMS, if it has them
-    int download = 0;                 // 0 none, 1 downloading, 2 verified (start it), 3 failed
+    int download = 0;                 // 0 none, 1 downloading, 2 verified (show it), 3 failed
     std::filesystem::path setup_file;
 };
 
@@ -303,31 +317,50 @@ std::string json_string(const std::string& json, const char* key) {
     return end == std::string::npos ? std::string() : json.substr(start, end - start);
 }
 
-void check_for_updates(UpdateCheck* check) {
+// A GET over HTTPS. WinHTTP follows redirects, which GitHub's release downloads need. The body only when the answer
+// is 200; *status is the answer, for the log.
+std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* status) {
     std::string body;
+    *status = 0;
+    wchar_t host[256] = {}, path[2048] = {}, query[2048] = {};
+    URL_COMPONENTS parts = {sizeof(parts)};
+    parts.lpszHostName = host;
+    parts.dwHostNameLength = 256;
+    parts.lpszUrlPath = path;
+    parts.dwUrlPathLength = 2048;
+    parts.lpszExtraInfo = query;
+    parts.dwExtraInfoLength = 2048;
+    if (!WinHttpCrackUrl(url.c_str(), 0, 0, &parts) || parts.nScheme != INTERNET_SCHEME_HTTPS) return body;
+    const std::wstring target = std::wstring(path) + query;
     const std::string version = MC3PORT_VERSION;
     const std::wstring agent = L"mc3port/" + std::wstring(version.begin(), version.end());
     HINTERNET session = WinHttpOpen(agent.c_str(), WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, nullptr, nullptr, 0);
-    HINTERNET connection = session ? WinHttpConnect(session, L"api.github.com", INTERNET_DEFAULT_HTTPS_PORT, 0) : nullptr;
-    wchar_t path[128];
-    std::swprintf(path, 128, L"/repos/%hs/releases/latest", kRepository);
-    HINTERNET request = connection ? WinHttpOpenRequest(connection, L"GET", path, nullptr, nullptr, nullptr,
+    HINTERNET connection = session ? WinHttpConnect(session, host, parts.nPort, 0) : nullptr;
+    HINTERNET request = connection ? WinHttpOpenRequest(connection, L"GET", target.c_str(), nullptr, nullptr, nullptr,
                                                         WINHTTP_FLAG_SECURE)
                                    : nullptr;
-    DWORD status = 0, size = sizeof(status);
-    if (request && WinHttpSendRequest(request, L"Accept: application/vnd.github+json\r\n", static_cast<DWORD>(-1),
-                                      nullptr, 0, 0, 0) &&
+    DWORD size = sizeof(*status);
+    if (request && WinHttpSendRequest(request, headers ? headers : WINHTTP_NO_ADDITIONAL_HEADERS,
+                                      headers ? static_cast<DWORD>(-1) : 0, nullptr, 0, 0, 0) &&
         WinHttpReceiveResponse(request, nullptr) &&
-        WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status, &size,
+        WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, status, &size,
                             nullptr) &&
-        status == 200) {
-        char buffer[4096];
+        *status == 200) {
+        char buffer[16384];
         DWORD read = 0;
         while (WinHttpReadData(request, buffer, sizeof(buffer), &read) && read) body.append(buffer, read);
     }
     if (request) WinHttpCloseHandle(request);
     if (connection) WinHttpCloseHandle(connection);
     if (session) WinHttpCloseHandle(session);
+    return body;
+}
+
+void check_for_updates(UpdateCheck* check) {
+    wchar_t latest[160];
+    std::swprintf(latest, 160, L"https://api.github.com/repos/%hs/releases/latest", kRepository);
+    DWORD status = 0;
+    const std::string body = https_get(latest, L"Accept: application/vnd.github+json\r\n", &status);
     const std::string tag = json_string(body, "tag_name"), url = json_string(body, "html_url");
     std::lock_guard<std::mutex> lock(check->mutex);
     if (tag.empty()) {
@@ -349,9 +382,7 @@ void check_for_updates(UpdateCheck* check) {
     log_line("launcher: latest release %s (%s)", tag.c_str(), newer ? "newer" : "not newer");
 }
 
-std::string file_sha256(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    const std::vector<char> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+std::string sha256_hex(const std::string& data) {
     uint8_t digest[32] = {};
     if (data.empty() || BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, reinterpret_cast<PUCHAR>(const_cast<char*>(data.data())),
                                    static_cast<ULONG>(data.size()), digest, sizeof(digest)) != 0) {
@@ -366,7 +397,8 @@ std::string file_sha256(const std::filesystem::path& path) {
     return hex;
 }
 
-// Downloads the release's installer and SHA256SUMS to %TEMP%\mc3port-update and checks the installer's hash.
+// Downloads the release's installer and SHA256SUMS and checks the installer's hash; only a verified installer is
+// saved, to %TEMP%\mc3port-update. The player starts it (see the launcher's loop): mc3port never runs it by itself.
 void download_update(UpdateCheck* check) {
     std::string setup_url, sums_url;
     {
@@ -377,23 +409,35 @@ void download_update(UpdateCheck* check) {
     wchar_t temp[MAX_PATH] = {};
     GetTempPathW(MAX_PATH, temp);
     const std::filesystem::path folder = std::filesystem::path(temp) / "mc3port-update";
-    std::error_code ignored;
-    std::filesystem::create_directories(folder, ignored);
     const std::string name = setup_url.substr(setup_url.rfind('/') + 1);
-    const std::filesystem::path setup = folder / name, sums = folder / "SHA256SUMS";
-    const std::wstring setup_wide(setup_url.begin(), setup_url.end()), sums_wide(sums_url.begin(), sums_url.end());
-    bool good = !sums_url.empty() && SUCCEEDED(URLDownloadToFileW(nullptr, setup_wide.c_str(), setup.c_str(), 0, nullptr)) &&
-                SUCCEEDED(URLDownloadToFileW(nullptr, sums_wide.c_str(), sums.c_str(), 0, nullptr));
-    if (good) {
-        std::ifstream list(sums);
-        const std::string hash = file_sha256(setup);
-        good = false;
-        for (std::string line; std::getline(list, line);) {
-            if (!hash.empty() && line.size() > 66 && line.compare(66, std::string::npos, name) == 0 && line.compare(0, 64, hash) == 0) {
-                good = true;
-            }
+    const std::filesystem::path setup = folder / name;
+    DWORD setup_status = 0, sums_status = 0;
+    const std::string installer = sums_url.empty() ? std::string()
+                                                   : https_get(std::wstring(setup_url.begin(), setup_url.end()), nullptr,
+                                                               &setup_status);
+    const std::string list = installer.empty() ? std::string()
+                                               : https_get(std::wstring(sums_url.begin(), sums_url.end()), nullptr,
+                                                           &sums_status);
+    const std::string hash = sha256_hex(installer);
+    bool good = false;
+    for (size_t start = 0; !hash.empty() && start < list.size();) {
+        size_t end = list.find('\n', start);
+        if (end == std::string::npos) end = list.size();
+        std::string line = list.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.size() > 66 && line.compare(66, std::string::npos, name) == 0 && line.compare(0, 64, hash) == 0) {
+            good = true;
         }
+        start = end + 1;
     }
+    if (good) {
+        std::error_code ignored;
+        std::filesystem::create_directories(folder, ignored);
+        std::ofstream out(setup, std::ios::binary | std::ios::trunc);
+        out.write(installer.data(), static_cast<std::streamsize>(installer.size()));
+        good = static_cast<bool>(out.flush());
+    }
+    if (!good) log_line("launcher: update download: HTTP %lu (installer), %lu (SHA256SUMS)", setup_status, sums_status);
     log_line("launcher: update %s %s", name.c_str(), good ? "downloaded and verified" : "could not be downloaded or verified");
     std::lock_guard<std::mutex> lock(check->mutex);
     check->download = good ? 2 : 3;
@@ -533,9 +577,14 @@ private:
     bool big_button(const char* label, const char* id, bool pulse);
     bool tabs(const char* const* labels, int count, int* current);
     // `restart`: a key the game reads once; in game, the detail says it applies at the next start.
-    void row(const char* heading, const char* detail, bool restart = false);
-    bool segmented(const char* id, const char* const* labels, int count, int* current);
+    // `control`: the width (unscaled px) of the control on the row's right, which the detail wraps before.
+    void row(const char* heading, const char* detail, bool restart = false, float control = 270);
+    // `details`: a second line under each label; `wide`: the control's width (unscaled px), 270 by default.
+    bool segmented(const char* id, const char* const* labels, int count, int* current, const char* const* details = nullptr,
+                   float wide = 0);
     bool slider(const char* id, float* value, float minimum, float maximum, const char* format);
+    bool compact_slider(const char* label, const char* id, float* value, float minimum, float maximum, ImVec2 at,
+                        float width);
     void steps(int current, int total);
 
     void page_play();
@@ -1037,19 +1086,20 @@ bool Launcher::tabs(const char* const* labels, int count, int* current) {
     return changed;
 }
 
-void Launcher::row(const char* heading, const char* detail, bool restart) {
+void Launcher::row(const char* heading, const char* detail, bool restart, float control) {
     text(body_bold_, px(20), ImVec2(origin_.x, origin_.y + cursor_ + px(4)), kInk, heading);
     const bool next_start = restart && in_game_;
     if (next_start) detail = T().next_start;
     if (!detail) return;
-    // Left of the control (270 wide): a longer detail wraps, and the row grows by the extra lines.
-    const float wrap = panel_width_ - px(290);
+    // Left of the control (`control` wide): a longer detail wraps, and the row grows by the extra lines.
+    const float wrap = panel_width_ - px(control + 20);
     text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_ + px(29)), next_start ? kAmber : kDim, detail, wrap);
     row_extra_ = std::max(0.0f, measure(body_, px(16), detail, wrap).y - px(20));
 }
 
-bool Launcher::segmented(const char* id, const char* const* labels, int count, int* current) {
-    const float width = px(270), height = px(36);
+bool Launcher::segmented(const char* id, const char* const* labels, int count, int* current, const char* const* details,
+                         float wide) {
+    const float width = px(wide > 0 ? wide : 270), height = px(details ? 50 : 36);
     const ImVec2 a(origin_.x + panel_width_ - width, origin_.y + cursor_ + px(6));
     skewed_rect(list_, a, ImVec2(a.x + width, a.y + height), IM_COL32(255, 255, 255, 18), IM_COL32(255, 255, 255, 18));
     const float cell = width / static_cast<float>(count);
@@ -1073,12 +1123,38 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
                         fade(mix(IM_COL32(255, 255, 255, 30), kRedDark, on), std::max(on, hot)));
         }
         const ImVec2 size = measure(body_bold_, px(18), labels[i]);
-        text(body_bold_, px(18), ImVec2(c.x + (cell - size.x) / 2 + px(3), c.y + (height - size.y) / 2), mix(kDim, IM_COL32(255, 255, 255, 255), std::max(on, hot)), labels[i]);
+        const ImU32 ink = mix(kDim, IM_COL32(255, 255, 255, 255), std::max(on, hot));
+        if (details && details[i]) {  // a second, smaller line under the label (the lines of a resolution)
+            const ImVec2 detail = measure(body_, px(14), details[i]);
+            const float top = c.y + (height - size.y - detail.y) / 2;
+            text(body_bold_, px(18), ImVec2(c.x + (cell - size.x) / 2 + px(3), top), ink, labels[i]);
+            text(body_, px(14), ImVec2(c.x + (cell - detail.x) / 2 + px(2), top + size.y), fade(ink, 0.75f), details[i]);
+        } else {
+            text(body_bold_, px(18), ImVec2(c.x + (cell - size.x) / 2 + px(3), c.y + (height - size.y) / 2), ink, labels[i]);
+        }
     }
     ImGui::PopID();
-    cursor_ += px(58) + row_extra_;
+    cursor_ += px(details ? 72 : 58) + row_extra_;
     row_extra_ = 0;
     list_->AddLine(ImVec2(origin_.x, origin_.y + cursor_ - px(6)), ImVec2(origin_.x + panel_width_, origin_.y + cursor_ - px(6)), fade(IM_COL32(255, 255, 255, 16)));
+    return changed;
+}
+
+// A slider with its label above it, at `at` and `width` wide, for two columns of values: half the rows of slider().
+// It leaves cursor_ alone; the caller lays the columns out.
+bool Launcher::compact_slider(const char* label, const char* id, float* value, float minimum, float maximum, ImVec2 at,
+                              float width) {
+    text(body_, px(15), at, fade(kDim), label);
+    ImGui::SetCursorScreenPos(ImVec2(at.x, at.y + px(20)));
+    ImGui::PushItemWidth(width);
+    ImGui::PushFont(body_bold_, px(16));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(3)));
+    claim_focus();
+    const bool changed = ImGui::SliderFloat(id, value, minimum, maximum, "%.2f");
+    focus_ring();
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
+    ImGui::PopItemWidth();
     return changed;
 }
 
@@ -1112,16 +1188,37 @@ void Launcher::steps(int current, int total) {
 
 // --- settings ---
 
-struct Quality {
-    float render_scale, anisotropy, effects, ambient_occlusion;
+// Internal resolution (render_scale): the picture's height, the game drawing 480 lines. 0, Automatic: as many lines
+// as the screen has.
+struct Resolution {
+    float scale;
+    const char *name, *lines;
 };
-constexpr Quality kQualities[3] = {{1, 1, 0, 0}, {2, 8, 1, 0}, {2, 16, 1, 0.6f}};  // High: the defaults
+constexpr Resolution kResolutions[] = {{0, "Auto", nullptr},        {1, "SD", "480p"},  {1.5f, "HD", "720p"},
+                                       {2.25f, "Full HD", "1080p"}, {3, "2K", "1440p"}, {4.5f, "4K", "2160p"}};
+constexpr int kResolutionCount = static_cast<int>(std::size(kResolutions));
+
+// The choice for a render_scale; an earlier version's 2 or 4 shows as the nearest one.
+int resolution_index(float scale) {
+    if (scale <= 0) return 0;
+    int best = 1;
+    for (int i = 1; i < kResolutionCount; ++i) {
+        if (std::fabs(kResolutions[i].scale - scale) < std::fabs(kResolutions[best].scale - scale)) best = i;
+    }
+    return best;
+}
+
+// The quality presets leave the resolution alone (its own row): choosing one never undoes the other.
+struct Quality {
+    float anisotropy, effects, ambient_occlusion;
+};
+constexpr Quality kQualities[3] = {{1, 0, 0}, {8, 1, 0}, {16, 1, 0.6f}};  // High: the defaults
 
 int Launcher::quality_preset() const {
     for (int i = 0; i < 3; ++i) {
         const Quality& q = kQualities[i];
-        if (setting("render_scale") == q.render_scale && setting("anisotropy") == q.anisotropy &&
-            (setting("effects") != 0) == (q.effects != 0) && setting("ambient_occlusion") == q.ambient_occlusion) {
+        if (setting("anisotropy") == q.anisotropy && (setting("effects") != 0) == (q.effects != 0) &&
+            setting("ambient_occlusion") == q.ambient_occlusion) {
             return i;
         }
     }
@@ -1130,10 +1227,38 @@ int Launcher::quality_preset() const {
 
 void Launcher::apply_quality(int preset) {
     const Quality& q = kQualities[preset];
-    set_setting("render_scale", q.render_scale);
     set_setting("anisotropy", q.anisotropy);
     set_setting("effects", q.effects);
     set_setting("ambient_occlusion", q.ambient_occlusion);
+}
+
+// In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
+bool restart_pending() {
+    for (const char* key :
+         {"game_language", "frame_rate", "widescreen", "render_scale", "anisotropy", "hud_style", "sharp_2d"}) {
+        if (setting(key) != setting_at_start(key)) return true;
+    }
+    return false;
+}
+
+// A new mc3.exe, with the same command line, straight into the game (MC3_SKIP_LAUNCHER); it waits for this one to
+// end (MC3_RESTART_FROM, runtime.cpp) before it opens the log, the settings and the saves.
+void restart_game() {
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring command = GetCommandLineW();
+    SetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", L"1");
+    SetEnvironmentVariableW(L"MC3_RESTART_FROM", std::to_wstring(GetCurrentProcessId()).c_str());
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(exe, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+        log_line("game menu: restart failed (error %lu)", GetLastError());
+        return;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    log_line("game menu: restart");
+    end_process(0);
 }
 
 void Launcher::run_disc_dialog() {
@@ -1251,6 +1376,11 @@ void Launcher::page_settings() {
         const char* toggle[] = {t.off, t.on};
         int pause = setting("pause_in_background") != 0 ? 1 : 0;
         if (segmented("##background_pause", toggle, 2, &pause)) set_setting("pause_in_background", static_cast<float>(pause));
+        if (!in_game_) {  // the films are already over
+            row(t.skip_intro, t.skip_intro_sub);
+            int skip = setting("skip_intro") != 0 ? 1 : 0;
+            if (segmented("##skip_intro", toggle, 2, &skip)) set_setting("skip_intro", static_cast<float>(skip));
+        }
     } else if (settings_tab_ == 1) {
         row(t.aspect, t.aspect_sub, true);
         const char* aspects[] = {"4:3", "16:9"};
@@ -1267,14 +1397,36 @@ void Launcher::page_settings() {
         const char* qualities[] = {t.original, t.balanced, t.high};
         int preset = quality_preset();
         if (segmented("##quality", qualities, 3, &preset)) apply_quality(preset);
-        row(t.scale, t.scale_sub, true);
-        const char* scales[] = {"1x", "2x", "3x", "4x"};
-        int scale = std::clamp(static_cast<int>(setting("render_scale")) - 1, 0, 3);
-        if (segmented("##scale", scales, 4, &scale)) set_setting("render_scale", static_cast<float>(scale + 1));
+        row(t.scale, t.scale_sub, true, 380);
+        MONITORINFO monitor{sizeof(MONITORINFO)};
+        GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTOPRIMARY), &monitor);
+        char screen_lines[16];
+        std::snprintf(screen_lines, sizeof(screen_lines), "%ldp",
+                      std::clamp<long>(monitor.rcMonitor.bottom - monitor.rcMonitor.top, 480, 2160));
+        const char* names[kResolutionCount];
+        const char* lines[kResolutionCount];
+        for (int i = 0; i < kResolutionCount; ++i) {
+            names[i] = kResolutions[i].name;
+            lines[i] = kResolutions[i].lines ? kResolutions[i].lines : screen_lines;
+        }
+        int resolution = resolution_index(setting("render_scale"));
+        if (segmented("##scale", names, kResolutionCount, &resolution, lines, 380)) {
+            set_setting("render_scale", kResolutions[resolution].scale);
+        }
         row(t.fps_counter, t.fps_counter_sub);
         const char* toggle[] = {t.off, t.on};
         int counter = setting("fps_counter") != 0 ? 1 : 0;
         if (segmented("##fps_counter", toggle, 2, &counter)) set_setting("fps_counter", static_cast<float>(counter));
+        row(t.hud, t.hud_sub, true);
+        const char* huds[] = {t.hud_game, "mc3port"};
+        int hud = setting("hud_style") != 0 ? 1 : 0;
+        if (segmented("##hud", huds, 2, &hud)) set_setting("hud_style", static_cast<float>(hud));
+        if (hud) {
+            row(t.speed_unit, nullptr);
+            const char* units[] = {"mph", "km/h"};
+            int unit = setting("hud_units") != 0 ? 1 : 0;
+            if (segmented("##hud_units", units, 2, &unit)) set_setting("hud_units", static_cast<float>(unit));
+        }
     } else if (settings_tab_ == 2) {
         row(t.anisotropy, nullptr, true);
         const char* levels[] = {"1x", "4x", "8x", "16x"};
@@ -1288,13 +1440,31 @@ void Launcher::page_settings() {
         const char* toggle[] = {t.off, t.on};
         int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
         if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));
-        row(t.effects, t.effects_sub);
-        int effects = setting("effects") != 0 ? 1 : 0;
-        if (segmented("##effects", toggle, 2, &effects)) {
-            set_setting("effects", static_cast<float>(effects));
-            renderer_set_effects(effects != 0);
-        }
+        row(t.sharp_2d, t.sharp_2d_sub, true);
+        int sharp = setting("sharp_2d") != 0 ? 1 : 0;
+        if (segmented("##sharp_2d", toggle, 2, &sharp)) set_setting("sharp_2d", static_cast<float>(sharp));
     } else {
+        // Two ready-made looks and a custom one. Original: the Xbox's picture, speed blur and light streaks included.
+        // Enhanced: the modern effects, without the blur and the streaks. Custom (setting effects_advanced): every
+        // value by itself, in two columns so that the page stays on screen.
+        row(t.effects_style, t.effects_style_sub, false, 330);
+        const char* styles[] = {t.original_effects, t.enhanced, t.custom_effects};
+        const bool modern = setting("effects") != 0;
+        const float blur = setting("motion_blur"), streaks = setting("light_streaks");
+        int style = setting("effects_advanced") != 0             ? 2
+                    : !modern && blur == 1 && streaks == 1 ? 0
+                    : modern && blur == 0 && streaks == 0  ? 1
+                                                           : 2;
+        if (segmented("##effects_style", styles, 3, &style, nullptr, 330)) {
+            set_setting("effects_advanced", style == 2 ? 1.0f : 0.0f);
+            if (style != 2) {
+                set_setting("effects", style == 1 ? 1.0f : 0.0f);
+                set_setting("motion_blur", style == 1 ? 0.0f : 1.0f);
+                set_setting("light_streaks", style == 1 ? 0.0f : 1.0f);
+                renderer_set_effects(style == 1);
+            }
+        }
+        const bool advanced = style == 2;
         struct Slider {
             const char* label;
             const char* key;
@@ -1304,27 +1474,40 @@ void Launcher::page_settings() {
             {t.sharpen, "sharpen", 0, 1},           {t.bloom, "bloom", 0, 1},
             {t.bloom_threshold, "bloom_threshold", 0, 1}, {t.saturation, "saturation", 0.5f, 1.5f},
             {t.contrast, "contrast", 0.8f, 1.3f},   {t.vignette, "vignette", 0, 0.5f},
-            {t.motion_blur, "motion_blur", 0, 1},
+            {t.motion_blur, "motion_blur", 0, 1},   {t.light_streaks, "light_streaks", 0, 1},
             {t.occlusion, "ambient_occlusion", 0, 1}, {t.occlusion_radius, "ambient_occlusion_radius", 0.5f, 2},
         };
-        for (const Slider& s : sliders) {
-            row(s.label, nullptr);
+        const size_t shown = advanced ? std::size(sliders) : 0;
+        const float gap = px(28), column = (panel_width_ - gap) / 2;
+        for (size_t i = 0; i < shown; ++i) {
+            const Slider& s = sliders[i];
+            if (i > 0 && i % 2 == 0) cursor_ += px(54);
+            const ImVec2 at(origin_.x + static_cast<float>(i % 2) * (column + gap), origin_.y + cursor_ + px(2));
             float value = setting(s.key);
             char id[48];
             std::snprintf(id, sizeof(id), "##%s", s.key);
-            if (slider(id, &value, s.minimum, s.maximum, "%.2f")) set_setting(s.key, std::round(value * 100) / 100);
+            if (compact_slider(s.label, id, &value, s.minimum, s.maximum, at, column)) {
+                set_setting(s.key, std::round(value * 100) / 100);
+            }
         }
+        if (shown) cursor_ += px(58);
     }
     cursor_ += px(8);
-    if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults")) {
-        for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background", "widescreen",
-                                "fullscreen", "fps_counter", "render_scale",
-                                "anisotropy", "gpu_vertices", "effects", "sharpen", "bloom", "bloom_threshold",
-                                "saturation", "contrast", "vignette", "motion_blur", "ambient_occlusion", "ambient_occlusion_radius"}) {
+    ImVec2 defaults_size;
+    if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults", &defaults_size)) {
+        for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background",
+                                "skip_intro", "widescreen", "fullscreen", "fps_counter", "render_scale", "hud_style",
+                                "hud_units", "anisotropy", "gpu_vertices", "sharp_2d", "effects", "sharpen", "bloom",
+                                "bloom_threshold", "saturation", "contrast", "vignette", "motion_blur", "light_streaks",
+                                "effects_advanced", "ambient_occlusion", "ambient_occlusion_radius"}) {
             set_setting(key, setting_default(key));
         }
         nv2a_set_full_screen(setting("fullscreen") != 0);
         renderer_set_effects(setting("effects") != 0);
+    }
+    if (in_game_ && restart_pending()) {
+        const ImVec2 at(origin_.x + defaults_size.x + px(14), origin_.y + cursor_);
+        if (small_button(t.restart_now, at, "##restart")) restart_game();
     }
     cursor_ += px(48);
     ImGui::PopStyleVar();
@@ -1408,7 +1591,7 @@ void Launcher::page_controls() {
 }
 
 // The update notice: on the first page only when there is a newer version, on About always. An installed copy
-// (the setup's uninstaller next to mc3.exe) updates itself; a portable one opens the release page.
+// (the setup's uninstaller next to mc3.exe) downloads the installer; a portable one opens the release page.
 void Launcher::update_row(bool always) {
     const Texts& t = T();
     int state, download;
@@ -2112,6 +2295,9 @@ void Launcher::page_paused() {
         page_ = Page::kSettings;
         page_since_ = now_;
     }
+    if (restart_pending() && status(false, t.restart_needed, t.restart_lead, t.restart_now, "##restart", true)) {
+        restart_game();
+    }
     ImGui::SetCursorScreenPos(ImVec2(origin_.x, origin_.y + cursor_));
     if (big_button(t.back_to_game, "##resume", false)) resume();
 }
@@ -2278,7 +2464,8 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
     }
     const bool counter_on = setting("fps_counter") != 0;
     const bool hint_on = now < kMenuHintEnd;  // how to open the menu, for the first seconds of the game
-    if (!visible_ && !counter_on && !hint_on) return;
+    const bool hud_on = hud_enabled();
+    if (!visible_ && !counter_on && !hint_on && !hud_on) return;
 
     width_ = width;
     height_ = height;
@@ -2291,6 +2478,7 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
         ImGui_ImplWin32_NewFrame();
         poll_gamepads(now);
         ImGui::NewFrame();
+        if (hud_on) hud_draw(ImGui::GetBackgroundDrawList(), HudFonts{heading_, body_bold_});  // under the menu
         if (visible_) {
             frame_in_game(now);
         } else {
@@ -2343,11 +2531,11 @@ std::optional<GameDisc> Launcher::run() {
         upload_art();
         {
             std::lock_guard<std::mutex> lock(updates_.mutex);
-            if (updates_.download == 2) {  // verified: the installer replaces the files and reopens the game
-                updates_.download = 0;
-                ShellExecuteW(nullptr, L"open", updates_.setup_file.c_str(),
-                              L"/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /UPDATE", nullptr, SW_SHOWNORMAL);
-                log_line("launcher: installing the update, closing");
+            if (updates_.download == 2) {  // verified: Explorer shows the installer for the player to start; we close
+                updates_.download = 0;     // so that it can replace our files
+                const std::wstring argument = L"/select,\"" + updates_.setup_file.wstring() + L"\"";
+                ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
+                log_line("launcher: update downloaded, showing the installer, closing");
                 done_ = true;
             }
         }

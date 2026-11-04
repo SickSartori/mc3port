@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(mc3port VERSION 0.2.4 LANGUAGES C CXX)
+project(mc3port VERSION 0.2.5 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,6 +50,7 @@ if(WIN32)
         src/pc/game_pause.cpp
         src/pc/handles.cpp
         src/pc/hle_patches.cpp
+        src/pc/hud.cpp
         src/pc/input_hle.cpp
         src/pc/kernel.cpp
         src/pc/kernel_crypto.cpp
@@ -76,10 +77,11 @@ if(WIN32)
         src/pc/renderer_d3d11.cpp
         src/pc/runtime.cpp
         src/pc/settings.cpp
+        src/pc/texture_upscale.cpp
         src/pc/xbox_thread.cpp
         res/launcher.rc
     )
-    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp urlmon imgui mfplat mfreadwrite mfuuid shlwapi)
+    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp windowscodecs imgui mfplat mfreadwrite mfuuid shlwapi)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
                                MC3PORT_VERSION="${PROJECT_VERSION}" ${MC3_VERSION_DEFINES})
     target_compile_options(mc3runtime PRIVATE /utf-8)

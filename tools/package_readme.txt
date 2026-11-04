@@ -77,7 +77,7 @@ UPDATING
 
 Installer: when a new version is out, the launcher says so on its first
 page and offers to update. It downloads the new installer, checks its
-SHA-256, installs it and reopens the game.
+SHA-256 and shows it in Explorer: start it to install the update.
 
 Portable zip: extract the new version in the same place, replacing the
 files of this folder. Settings and saves are kept.
@@ -115,8 +115,8 @@ IF SOMETHING GOES WRONG
   the file; the SHA-256 in SHA256SUMS lets you check it is the original.
 - The program closes at once, or the game crashes: open the launcher's
   About page and press "Log folder"; mc3port.log says what happened last.
-- The game is not smooth: choose 30 fps, or the Balanced or Original
-  preset, in Settings. The processor counts more than the graphics card.
+- The game is not smooth: choose 30 fps, a lower internal resolution, or
+  the Balanced or Original preset, in Settings. The processor counts more than the graphics card.
   mc3port has been tested on few machines so far.
 - No sound: the output device that is the Windows default when the game
   starts is the one used.
@@ -154,8 +154,6 @@ KNOWN ISSUES
 ------------
 
 - Only the European release is supported.
-- In 16:9 the game stretches its HUD (radar, speedometer) to the wider
-  screen, as it did on a widescreen TV.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides.
 - The Xbox sound chip's own effects, such as reverb, are not reproduced.

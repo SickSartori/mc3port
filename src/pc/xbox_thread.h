@@ -66,6 +66,11 @@ uint32_t another_thread_at_dispatch();
 // same lock it waits, and Windows runs other game threads on the game's core in the meantime. So a game thread
 // holds the lock at the interrupt thread's priority: an interrupt that comes meanwhile waits until it lets go.
 // Host threads (mixer, GPU) take it as a plain lock.
+// Takes `lock` (deferred) for the calling thread: at DISPATCH_LEVEL or above by spinning, as the Xbox's kernel does
+// (see GameLock), at a lower level as usual. For host locks that game code reaches at any level, such as the GPU's
+// registers from the interrupt service routine.
+void lock_at_irql(std::unique_lock<std::mutex>& lock);
+
 class GameLock {
 public:
     explicit GameLock(std::mutex& mutex);
