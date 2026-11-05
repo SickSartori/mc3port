@@ -22,7 +22,7 @@ body:
       options:
         - Installer
         - Portable zip
-        - Quiver Launcher
+        - RecompLauncher
         - Linux, Wine or Proton (portable zip)
     validations:
       required: true

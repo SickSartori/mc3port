@@ -65,7 +65,7 @@ Compared with the console:
 
 ## Installing
 
-**With Quiver Launcher**: find mc3port in the catalog and install it. Quiver keeps it up to date.
+**With RecompLauncher**: find mc3port in the catalog and install it. RecompLauncher keeps it up to date.
 
 **With the installer**: download `mc3port-<version>-windows-x86-setup.exe` from the
 [releases page](https://github.com/SickSartori/mc3port/releases) and run it. It installs for your user only (no
@@ -205,6 +205,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 - Linux (Wine, Proton) is experimental and only partly tested: see [Linux](#linux-experimental).
 - In 16:9 a little of the radar's map shows outside its ring.
 - With a controller, some items of the launcher's menu (such as Quit) do not respond: use the keyboard or mouse.
+- On some PCs the game stays on "Checking for saved files" after Start. The cause is not known: if it happens to you,
+  please [report it](https://github.com/SickSartori/mc3port/issues/4) with `mc3port.log`.
 
 ## Troubleshooting
 
@@ -215,6 +217,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
   `mc3port.log` says what happened last.
 - **The game is not smooth**: choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset,
   in Settings.
+- **Very low frame rate with MSI Afterburner or RivaTuner (RTSS) running**: add `mc3.exe` to RTSS with "Application
+  detection level: None", or close them while playing.
 - **No sound**: the game uses the output device that is the Windows default when it starts.
 - **The sound is quiet**: check Volume in Settings (100 is the loudest), then the Windows volume. The level leaves room
   for the moments when many sounds play at once, in the city, so that they do not distort.

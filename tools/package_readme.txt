@@ -120,6 +120,9 @@ IF SOMETHING GOES WRONG
 - The game is not smooth: choose 30 fps, a lower internal resolution, or
   the Balanced or Original preset, in Settings. The processor counts more than the graphics card.
   mc3port has been tested on few machines so far.
+- Very low frame rate with MSI Afterburner or RivaTuner (RTSS) running:
+  add mc3.exe to RTSS with "Application detection level: None", or close
+  them while playing.
 - No sound: the output device that is the Windows default when the game
   starts is the one used.
 - The sound is quiet: check Volume in Settings (100 is the loudest), then
@@ -170,6 +173,8 @@ KNOWN ISSUES
 - On monitors wider than 16:9 there are thin black bars at the sides.
 - The Xbox sound chip's own effects, such as reverb, are not reproduced.
 - Linux (Wine, Proton) is experimental and only partly tested.
+- On some PCs the game stays on "Checking for saved files" after Start.
+  The cause is not known: please report it, with mc3port.log.
 
 
 LICENCE
