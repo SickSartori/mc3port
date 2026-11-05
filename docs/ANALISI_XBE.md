@@ -202,8 +202,9 @@ mc3port (`hud.cpp`).
     nel colore dei vertici (grigio 0,87) né in `combiner_factor0` (`FFFFFFFF`). Il pezzo del nitro (texture
     `033C0600`, 80x40, a 77,-47 dal tachimetro) porta invece il colore nei vertici.
   - I simboli dei tasti sono nell'atlante `03342700` (128x128, hash FNV `A30CEDEE3C0953C1`): A, B, X, L, R, il
-    cerchio bianco (White, ~96,68-103,83) e il nero (Black, ~9,99-31,124). Le versioni PlayStation sono atlanti
-    a parte.
+    cerchio bianco (White, ~82,63-107,88) e il nero (Black, ~8,99-33,124). mc3port scrive LB e RB sui due cerchi
+    quando decodifica la texture (`letter_shoulder_buttons` in `renderer_d3d11.cpp`), perché sui controller di oggi
+    quei tasti sono LB e RB. Le versioni PlayStation sono atlanti a parte.
   - L'anello del radar è fatto di quarti ruotati delle texture `03390200` e `033B0380`; la maschera rotonda è la
     texture 8x8 `00BD4800`.
 

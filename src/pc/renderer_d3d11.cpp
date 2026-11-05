@@ -1133,6 +1133,27 @@ bool load_picture(const std::filesystem::path& file, std::vector<uint8_t>& bgra,
     return SUCCEEDED(converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(bgra.size()), bgra.data()));
 }
 
+// The game's atlas of button symbols shows White and Black as plain discs. Here those buttons are LB and RB
+// (input_hle.cpp), so the discs get those letters, drawn in code as the texture is decoded.
+constexpr uint64_t kButtonAtlas = 0xA30CEDEE3C0953C1ull;
+
+void letter_shoulder_buttons(TextureImage& atlas) {
+    if (atlas.layout != TextureLayout::Bgra8 || atlas.width != 128 || atlas.height != 128) return;
+    static constexpr uint8_t kLetters[3][5] = {{4, 4, 4, 4, 7}, {6, 5, 6, 5, 6}, {6, 5, 6, 5, 5}};  // L, B, R; 3 x 5
+    const auto letter = [&](int which, int left, int top, uint8_t shade) {
+        for (int y = 0; y < 10; ++y) {
+            for (int x = 0; x < 6; ++x) {
+                if (!(kLetters[which][y / 2] >> (2 - x / 2) & 1)) continue;
+                uint8_t* pixel = atlas.data.data() + static_cast<size_t>(top + y) * atlas.row_pitch + (left + x) * 4;
+                pixel[0] = pixel[1] = pixel[2] = shade;
+                pixel[3] = 255;
+            }
+        }
+    };
+    letter(0, 87, 71, 24), letter(1, 95, 71, 24);    // the white disc, centred at 94,76: LB, dark
+    letter(2, 14, 107, 240), letter(1, 22, 107, 240);  // the black disc, centred at 21,112: RB, light
+}
+
 // A replacement picture as a texture with its mip levels made by the graphics card.
 bool make_replacement(const std::filesystem::path& file, CachedTexture& cached) {
     std::vector<uint8_t> bgra;
@@ -1232,7 +1253,8 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     // The name of replacement and dumped pictures: hash_memory of the texture's own bytes, as in earlier versions.
     static const bool dumping = GetEnvironmentVariableA("MC3_DUMP_TEXTURE", nullptr, 0) != 0 ||
                                 GetEnvironmentVariableA("MC3_DUMP_2D", nullptr, 0) != 0;
-    const uint64_t own_hash = replacements || dumping ? hash_memory(memory, bytes) : 0;
+    const bool maybe_atlas = width == 128 && height == 128;
+    const uint64_t own_hash = replacements || dumping || maybe_atlas ? hash_memory(memory, bytes) : 0;
     if (replacements && !texture_is_linear(d)) {
         const auto replacement = g_replacements.find(own_hash);
         if (replacement != g_replacements.end()) {
@@ -1254,8 +1276,13 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
             ++g_stats.uploads;
         }
     } account{upload_start};
-    const TextureImage image = decode_texture(d);
+    TextureImage image = decode_texture(d);
     if (image.layout == TextureLayout::Unsupported) return nullptr;
+    const bool button_atlas = own_hash == kButtonAtlas;
+    if (button_atlas) {
+        letter_shoulder_buttons(image);
+        log_line("renderer: LB and RB drawn on the button symbols at %08X", d.address);
+    }
     // MC3_DUMP_TEXTURE=<hex address>: save the textures in that 4 KB page once decoded (BGRA with alpha) as
     // texture-<address>-<hash>.bmp (resources move a little between runs; the hash names a replacement).
     static const uint32_t dump_texture = [] {
@@ -1305,7 +1332,7 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
         }
     }
     std::vector<TextureImage> lower_levels;
-    for (uint32_t level = 1; level < levels; ++level) {
+    for (uint32_t level = 1; level < levels && !button_atlas; ++level) {  // the atlas's own would keep the plain discs
         lower_levels.push_back(decode_texture(texture_level(d, level)));
         if (lower_levels.back().layout != image.layout) {
             lower_levels.clear();
@@ -1914,6 +1941,15 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
     x1 += 1, y1 += 1;
     // NV097_CLEAR_SURFACE: R 0x10, G 0x20, B 0x40, A 0x80 map onto D3D11's write-mask bits.
     const uint32_t channels = (flags >> 4) & 0xF;
+    // That clear stays where it is while the radar's quads are narrowed towards the left (hud_narrowing): the strip
+    // they gained kept the scene's alpha, and the map showed there, outside the ring. So it reaches that far too.
+    static const bool hud_aspect = setting_at_start("hud_aspect") != 0;
+    if (channels == 8 && hud_aspect && g_picture_width && g_picture_height && x1 - x0 <= 200 && y1 - y0 <= 200 &&
+        x1 <= static_cast<int>(g_picture_width / 2) && y0 >= static_cast<int>(g_picture_height / 2) &&
+        renderer_over_shown_scene(surface)) {
+        const float narrow = static_cast<float>(g_picture_width) / static_cast<float>(g_picture_height) / renderer_aspect();
+        if (narrow < 0.99f) x0 = static_cast<int>(static_cast<float>(x0) * narrow);
+    }
     if (channels == 0xF) {
         float rgba[4];
         unpack_color(color, rgba);
