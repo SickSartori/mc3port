@@ -14,10 +14,15 @@
 
 ### Improved
 
+- Sound effects are resampled with a better interpolation: less of the false high end they had, above all on the wind
+  and the engine at full speed.
 - The log says when RivaTuner Statistics Server (RTSS) is hooked into mc3port, which can slow it down a lot.
 
 ### Fixed
 
+- The nitrous gauge stayed behind in 16:9 and, with mc3port's HUD, floated between the rev counter and the gear: it now
+  follows the game's dials, and mc3port's HUD draws it as an arc above the speedometer, in the colour chosen in the shop.
+- In the garage's menus a press of the d-pad or the left stick is one step, and holding repeats at a menu's pace.
 - With a controller, A did nothing on a page just entered from the menu until a direction was pressed. On the in-game
   menu's Exit page, with its one button, the controller could not exit.
 - In 16:9 a strip of the radar's map could show outside its ring: the game's mask did not follow the narrowed radar.
