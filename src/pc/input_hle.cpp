@@ -374,6 +374,46 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
     return true;
 }
 
+// The garage's menus move on every poll a direction is down for long enough: at 60 fps a tap could skip an item. In
+// there a press is one short pulse on the d-pad, and holding repeats at a menu's pace. Only there: elsewhere the stick
+// steers, and nothing says for sure that the car is not being driven.
+bool g_in_garage = false;
+struct DirectionPace {
+    int direction = -1;
+    ULONGLONG pulse_until = 0, next_pulse = 0;
+};
+DirectionPace g_pace[kPorts];
+
+void pace_garage_directions(uint32_t index, XboxGamepad& pad) {
+    constexpr uint16_t kDirections[] = {kDpadUp, kDpadDown, kDpadLeft, kDpadRight};
+    constexpr ULONGLONG kPulseMs = 50, kDelayMs = 400, kRateMs = 150;
+    constexpr int kStickDown = 16000;
+    int direction = -1;
+    for (int i = 0; i < 4 && direction < 0; ++i) {
+        if (pad.buttons & kDirections[i]) direction = i;
+    }
+    if (direction < 0) {
+        direction = pad.thumb_ly > kStickDown    ? 0
+                    : pad.thumb_ly < -kStickDown ? 1
+                    : pad.thumb_lx < -kStickDown ? 2
+                    : pad.thumb_lx > kStickDown  ? 3
+                                                 : -1;
+    }
+    pad.buttons &= ~(kDpadUp | kDpadDown | kDpadLeft | kDpadRight);
+    pad.thumb_lx = pad.thumb_ly = 0;
+    DirectionPace& pace = g_pace[index];
+    const ULONGLONG now = GetTickCount64();
+    if (direction != pace.direction) {
+        pace.direction = direction;
+        pace.pulse_until = now + kPulseMs;
+        pace.next_pulse = now + kDelayMs;
+    } else if (direction >= 0 && now >= pace.next_pulse) {
+        pace.pulse_until = now + kPulseMs;
+        pace.next_pulse = now + kRateMs;
+    }
+    if (direction >= 0 && now < pace.pulse_until) pad.buttons |= kDirections[direction];
+}
+
 uint32_t host_mask() {
     uint32_t mask = 0;
     for (uint32_t i = 0; i < kPorts; ++i) {
@@ -445,6 +485,7 @@ uint32_t __stdcall XInputGetState(uint32_t handle, XboxInputState* state) {
     Port* port = port_of(handle);
     XboxGamepad pad{};
     if (!port || !read_host(port->index, pad)) return kErrorDeviceNotConnected;
+    if (g_in_garage) pace_garage_directions(port->index, pad);
     if (std::memcmp(&pad, &port->last, sizeof(pad)) != 0) {
         port->last = pad;
         ++port->packet_number;
@@ -504,10 +545,18 @@ const Redirect kRedirects[] = {
 }  // namespace
 
 void input_note_file_opened(const std::string& path) {
-    if (g_events.empty()) return;
     std::string lower = path;
     for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     std::lock_guard<std::mutex> lock(g_mutex);
+    // The game's own screens tell where it is: the garage's menus, until the transition out or a loading screen.
+    if (lower.find("flash\\garage.xbck") != std::string::npos) {
+        if (!g_in_garage) log_line("input: in the garage, one step per press");
+        g_in_garage = true;
+    } else if (g_in_garage && (lower.find("flash\\transition") != std::string::npos ||
+                               lower.find("flash\\loadscreen") != std::string::npos)) {
+        g_in_garage = false;
+        log_line("input: out of the garage");
+    }
     const ULONGLONG now = GetTickCount64() - g_start_ms;
     for (auto& [name, times] : g_events) {
         if (lower.find(name) != std::string::npos) times.push_back(now);
