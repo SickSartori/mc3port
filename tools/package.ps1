@@ -25,6 +25,7 @@ if (-not $SkipBuild) {
     }
     if (-not (Test-Path build/pc-x86/CMakeCache.txt)) { & $cmake -S . -B build/pc-x86 -A Win32; if ($LASTEXITCODE) { throw "configure failed" } }
     & $cmake --build build/pc-x86 --config Release; if ($LASTEXITCODE) { throw "build failed" }
+    & (Join-Path (Split-Path $cmake) ctest.exe) --test-dir build/pc-x86 -C Release --output-on-failure; if ($LASTEXITCODE) { throw "tests failed" }
 }
 
 $name = "mc3port-$version-windows-x86"

@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "pc/direction_pace.h"
 #include "pc/exec_memory.h"
 #include "pc/keyboard_bindings.h"
 #include "pc/launcher_ui.h"
@@ -36,8 +37,7 @@ constexpr uint32_t kErrorDeviceNotConnected = 1167;
 // Xbox XINPUT_GAMEPAD: digital buttons (same bits as XInput's low byte), then 8 analog buttons.
 enum : uint32_t { kAnalogA, kAnalogB, kAnalogX, kAnalogY, kAnalogBlack, kAnalogWhite, kAnalogLeftTrigger,
                   kAnalogRightTrigger };
-constexpr uint16_t kDpadUp = 0x01, kDpadDown = 0x02, kDpadLeft = 0x04, kDpadRight = 0x08, kStart = 0x10,
-                   kBack = 0x20, kLeftThumb = 0x40;
+constexpr uint16_t kStart = 0x10, kBack = 0x20, kLeftThumb = 0x40;
 
 #pragma pack(push, 1)
 struct XboxGamepad {
@@ -374,44 +374,14 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
     return true;
 }
 
-// The garage's menus move on every poll a direction is down for long enough: at 60 fps a tap could skip an item. In
-// there a press is one short pulse on the d-pad, and holding repeats at a menu's pace. Only there: elsewhere the stick
-// steers, and nothing says for sure that the car is not being driven.
-bool g_in_garage = false;
-struct DirectionPace {
-    int direction = -1;
-    ULONGLONG pulse_until = 0, next_pulse = 0;
-};
+bool g_in_garage = false;  // pace_directions (direction_pace.h) applies only there
 DirectionPace g_pace[kPorts];
 
 void pace_garage_directions(uint32_t index, XboxGamepad& pad) {
-    constexpr uint16_t kDirections[] = {kDpadUp, kDpadDown, kDpadLeft, kDpadRight};
-    constexpr ULONGLONG kPulseMs = 50, kDelayMs = 400, kRateMs = 150;
-    constexpr int kStickDown = 16000;
-    int direction = -1;
-    for (int i = 0; i < 4 && direction < 0; ++i) {
-        if (pad.buttons & kDirections[i]) direction = i;
-    }
-    if (direction < 0) {
-        direction = pad.thumb_ly > kStickDown    ? 0
-                    : pad.thumb_ly < -kStickDown ? 1
-                    : pad.thumb_lx < -kStickDown ? 2
-                    : pad.thumb_lx > kStickDown  ? 3
-                                                 : -1;
-    }
-    pad.buttons &= ~(kDpadUp | kDpadDown | kDpadLeft | kDpadRight);
-    pad.thumb_lx = pad.thumb_ly = 0;
-    DirectionPace& pace = g_pace[index];
-    const ULONGLONG now = GetTickCount64();
-    if (direction != pace.direction) {
-        pace.direction = direction;
-        pace.pulse_until = now + kPulseMs;
-        pace.next_pulse = now + kDelayMs;
-    } else if (direction >= 0 && now >= pace.next_pulse) {
-        pace.pulse_until = now + kPulseMs;
-        pace.next_pulse = now + kRateMs;
-    }
-    if (direction >= 0 && now < pace.pulse_until) pad.buttons |= kDirections[direction];
+    uint16_t buttons = pad.buttons;  // packed: no references to its fields
+    int16_t thumb_lx = pad.thumb_lx, thumb_ly = pad.thumb_ly;
+    pace_directions(g_pace[index], GetTickCount64(), buttons, thumb_lx, thumb_ly);
+    pad.buttons = buttons, pad.thumb_lx = thumb_lx, pad.thumb_ly = thumb_ly;
 }
 
 uint32_t host_mask() {

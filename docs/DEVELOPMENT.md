@@ -144,6 +144,18 @@ Variabili d'ambiente:
 | `MC3_SKIP=<texture>:<superficie>:<fusione>` / `MC3_DUMP_DRAW=...` | salta, o salva prima e dopo, i draw corrispondenti (per isolare un difetto grafico) |
 | `MC3_WATCHDOG=<s>` | ogni `s` secondi, dove si trovano i thread del gioco (cambia la temporizzazione) |
 
+## Prove automatiche
+
+```bash
+ctest --test-dir build/pc-x86 -C RelWithDebInfo --output-on-failure
+```
+
+`tests/` non contiene e non richiede file del gioco: dischi ed eseguibili sono creati dalle prove. Coprono XBE e immagini
+del disco (ISO, dump completi, divise, CCI, danneggiate), il controllo del disco, lo zip del crash (riaperto anche con
+`tar`), il ritmo dei menu del garage, le texture e il loro ingrandimento. `disc_real` controlla il disco vero se
+`MC3_TEST_DISC` indica una propria immagine, altrimenti risulta saltata. `tools/package.ps1` si ferma se una prova
+fallisce.
+
 ## Strumenti
 
 - `python -I tools/xiso_inspect.py <iso> [default.xbe di output]`: elenca i file del disco, analizza l'XBE ed eventualmente lo estrae.

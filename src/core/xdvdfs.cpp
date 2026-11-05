@@ -45,12 +45,12 @@ std::string path_to_utf8(const std::filesystem::path& path) {
 
 uint64_t load_le64(const uint8_t* p) { return load_le32(p) | static_cast<uint64_t>(load_le32(p + 4)) << 32; }
 
-// CCI, the compressed image format of Repackinator and the Xbox's homebrew dashboards: a 32-byte header ("MCCI",
+// CCI, the compressed image format of Repackinator and the Xbox's homebrew dashboards: a 32-byte header ("CCIM",
 // header size, uncompressed size, index offset, block size 2048, version 1, index alignment 2), the sectors, then the
 // index: one 32-bit entry per sector and one for the end, the position shifted right by the alignment, the top bit
 // set for an LZ4-compressed sector. A compressed sector is a byte giving the zero padding at its end, then the LZ4
 // block.
-constexpr uint32_t kCciMagic = 0x4D494343;  // "MCCI"
+constexpr uint32_t kCciMagic = 0x4D494343;  // "CCIM"
 constexpr uint32_t kCciHeaderSize = 32;
 constexpr uint32_t kCciCompressed = 0x80000000;
 
