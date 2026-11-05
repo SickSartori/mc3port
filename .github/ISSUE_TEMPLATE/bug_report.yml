@@ -45,6 +45,6 @@ body:
     id: log
     attributes:
       label: mc3port.log
-      description: Open the launcher's About page and press "Log folder"; attach mc3port.log here (drag it in). Under Wine it is in the prefix, drive_c/users/<you>/AppData/Local/mc3port.
+      description: Open the launcher's About page and press "Log folder"; attach mc3port.log here (drag it in), or mc3port-crash-report.zip after a crash. Under Wine it is in the prefix, drive_c/users/<you>/AppData/Local/mc3port.
     validations:
       required: true

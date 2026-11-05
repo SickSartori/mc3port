@@ -31,6 +31,7 @@
 #include "backends/imgui_impl_win32.h"
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "pc/crash_report.h"
 #include "pc/game_pause.h"
 #include "pc/hle_patches.h"
 #include "pc/input_hle.h"
@@ -83,6 +84,7 @@ struct Texts {
     const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub;
     const char *cheats, *cheats_lead, *cheat_money, *cheat_money_sub, *add_money, *game_codes, *game_codes_lead;
     const char *loading_screens, *loading_screens_sub;
+    const char *crash_heading, *crash_sub, *crash_button, *crash_link;
 };
 
 const Texts kEnglish = {
@@ -132,6 +134,7 @@ const Texts kEnglish = {
     "Money", "Added to the career: it stays once the game saves", "+ $10,000", "The game's codes",
     "Type them in the game's menu, Options > Cheat Codes (as found in the game's own check).",
     "Loading screens", "At least this long, to read them as on the Xbox (from the disc image loading is instant)",
+    "The game crashed last time", "mc3port-crash-report.zip is ready to attach to a report", "Report", "Report the crash",
 };
 
 const Texts kItalian = {
@@ -186,6 +189,7 @@ const Texts kItalian = {
     "Soldi", "Si aggiungono alla carriera: restano quando il gioco salva", "+ 10.000 $", "Codici del gioco",
     "Da scrivere nel menu del gioco, Opzioni > Codici (come li controlla il gioco stesso).",
     "Schermate di caricamento", "Almeno questa durata, per leggerle come sull'Xbox (dall'immagine del disco si carica subito)",
+    "L'ultima volta il gioco si \xC3\xA8 chiuso per un errore", "mc3port-crash-report.zip \xC3\xA8 pronto da allegare alla segnalazione", "Segnala", "Segnala il crash",
 };
 
 const Texts& T() {
@@ -550,6 +554,7 @@ private:
     void claim_focus() {
         if (!focus_panel_) return;
         ImGui::SetKeyboardFocusHere();
+        ImGui::SetNavCursorVisible(true);  // without it A does nothing until a direction is pressed
         focus_panel_ = false;
     }
     // Keyboard and controller: the menu on the left (handled by side_menu) or the page (ImGui's navigation).
@@ -1303,11 +1308,14 @@ void Launcher::run_disc_dialog() {
 
 // --- pages ---
 
+void report_problem();
+
 void Launcher::page_play() {
     const Texts& t = T();
     title(t.ready);
     lead(t.ready_lead);
     update_row(false);
+    if (crash_report_ready() && status(false, t.crash_heading, t.crash_sub, t.crash_button, "##crash_report")) report_problem();
     if (disc_) {
         if (status(true, t.disc_ok, "Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 PAL", t.change, "##disc")) choose_disc();
     } else if (status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), t.choose_iso, "##disc")) {
@@ -1711,9 +1719,10 @@ bool Launcher::update_available() {
     return updates_.state == 2 && updates_.download != 2;
 }
 
-// mc3port.log selected in Explorer.
+// mc3port.log selected in Explorer, or the report of a crash when there is a new one.
 void show_log() {
-    const std::wstring argument = L"/select,\"" + (data_directory() / "mc3port.log").wstring() + L"\"";
+    const std::filesystem::path file = crash_report_ready() ? crash_report_path() : data_directory() / "mc3port.log";
+    const std::wstring argument = L"/select,\"" + file.wstring() + L"\"";
     ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
 }
 
@@ -2130,7 +2139,7 @@ void Launcher::bottom_bar(float since) {
             page_since_ = static_cast<float>(ImGui::GetTime());
         }
     }
-    if (link(t.report, kInk)) report_problem();
+    if (crash_report_ready() ? link(t.crash_link, kAmber) : link(t.report, kInk)) report_problem();
     float right = screen.x - px(86);
     const bool pad = pad_connected_;
     const auto hint = [&](const char* key, ImU32 colour, const char* label) {

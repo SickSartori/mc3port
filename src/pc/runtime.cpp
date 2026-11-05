@@ -24,6 +24,7 @@
 
 #include "core/xbe.h"
 #include "core/xdvdfs.h"
+#include "pc/crash_report.h"
 #include "pc/exec_memory.h"
 #include "pc/dsound_hle.h"
 #include "pc/fs_patch.h"
@@ -562,7 +563,9 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
             CloseHandle(old);
         }
     }
+    const bool crash_report = make_crash_report();  // before this start overwrites the log
     log_open(data_directory() / "mc3port.log");
+    if (crash_report) log_line("crash report made: %ls", crash_report_path().c_str());
     // Started by RecompLauncher (recomplauncher.json in the release): it installs updates itself, and in its Big
     // Picture mode the player is on a controller in front of a full screen. Set before the settings read MC3_*.
     if (GetEnvironmentVariableW(L"RECOMPLAUNCHER", nullptr, 0)) SetEnvironmentVariableW(L"MC3_CHECK_UPDATES", L"0");

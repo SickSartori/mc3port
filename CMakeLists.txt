@@ -70,6 +70,7 @@ if(WIN32)
         src/pc/nv2a_kelvin.cpp
         src/pc/nv2a_texture.cpp
         src/pc/nv2a_vsh.cpp
+        src/pc/crash_report.cpp
         src/pc/paths.cpp
         src/pc/physical_memory.cpp
         src/pc/privileged.cpp
