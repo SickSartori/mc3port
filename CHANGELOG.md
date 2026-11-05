@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.1 (2026-11-05)
+
+### New
+
+- **RecompLauncher**: `recomplauncher.json` in the release, so the launcher checks your disc, keeps the settings on
+  the game's page and starts the game straight away. Started from it, mc3port leaves updates to the launcher, opens
+  full screen in Big Picture mode, and exits with code 2 when the disc given is refused.
+
+### Fixed
+
+- Sound effects were cut short: the game gives nearly every effect a fade-out of a third of a second and starts
+  them looping, releasing them at once so that they play through and fade; mc3port read the fade-out from the wrong
+  envelope and faded each effect out 5 ms after it started. The engine, wind, tyre and crash sounds now play whole.
+
 ## 0.3.0 (2026-11-04)
 
 ### New
@@ -13,9 +27,6 @@
   cheat codes, with what each does in this version, to type in its Options > Cheat Codes.
 - **Loading screens** stay up at least 6 seconds, long enough to read who you race and for what (from a disc image
   the loading is over at once). Settings > Game: off, 2, 4 or 6 seconds.
-- **RecompLauncher**: `recomplauncher.json` in the release, so the launcher checks your disc, keeps the settings on
-  the game's page and starts the game straight away. Started from it, mc3port leaves updates to the launcher, opens
-  full screen in Big Picture mode, and exits with code 2 when the disc given is refused.
 
 ### Improved
 
@@ -37,9 +48,6 @@
 - The game's threads could run while the interrupt was at DISPATCH_LEVEL (something the Xbox never allows): during
   heap allocations and when Windows raised a thread's priority, for example while the game window is in front.
 - mc3port's HUD showed the special ability as empty once it was more than a third charged.
-- Sound effects were cut short: the game gives nearly every effect a fade-out of a third of a second and starts
-  them looping, releasing them at once so that they play through and fade; mc3port read the fade-out from the wrong
-  envelope and faded each effect out 5 ms after it started. The engine, wind, tyre and crash sounds now play whole.
 
 ## 0.2.6 (2026-11-04)
 
