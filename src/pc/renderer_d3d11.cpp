@@ -1185,12 +1185,15 @@ bool make_replacement(const std::filesystem::path& file, CachedTexture& cached) 
     return true;
 }
 
-// `flat`: the draw is flat over the 3D scene (the HUD): with sharp_2d its textures are enlarged (texture_upscale.cpp);
-// not the linear ones, which are addressed in texels.
+// `flat`: the draw is flat over the 3D scene (the HUD): with sharp_2d its textures and the cars' liveries are enlarged
+// (texture_upscale.cpp); not the linear ones, which are addressed in texels.
 ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     const TextureDescriptor& d = stage.descriptor;
     static const bool sharp_2d = setting_at_start("sharp_2d") != 0;
-    const bool enlarge = flat && sharp_2d && !texture_is_linear(d);
+    // A car's livery is one 256x256 paletted picture stretched over the whole car, the only texture of that kind seen
+    // in the city: close up, at more than 480 lines, its texels show as steps along the stripes.
+    const bool livery = (d.format >> 8 & 0x7F) == 0x0B && (d.format >> 16 & 0xFFF) == 0x881;
+    const bool enlarge = (flat || livery) && sharp_2d && !texture_is_linear(d);
     // A texture that is a render target (render to texture) is sampled from the GPU copy.
     const auto target = g_targets.find(d.address);
     if (target != g_targets.end()) return target->second.srv.Get();

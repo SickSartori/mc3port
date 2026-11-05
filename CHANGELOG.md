@@ -18,6 +18,8 @@
   the check also compares the executable's code.
 - Sound effects are resampled with a better interpolation: less of the false high end they had, above all on the wind
   and the engine at full speed.
+- The cars' stickers no longer show steps along their edges at high resolutions: they are enlarged like the HUD's
+  pictures, under the same setting, now called **Sharp pictures**.
 - The log says when RivaTuner Statistics Server (RTSS) is hooked into mc3port, which can slow it down a lot.
 
 ### Fixed

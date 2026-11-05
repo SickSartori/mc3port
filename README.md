@@ -188,7 +188,7 @@ straight away (progress since the last save is lost). The main ones:
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
 | HUD | the game's, or mc3port's: speedometer, rev counter, gear, nitrous and special ability drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |
-| Sharp HUD pictures | the radar's map, the icons and the letters enlarged with clean edges instead of blurred; on by default |
+| Sharp pictures | the radar's map, the icons, the letters and the cars' stickers enlarged with clean edges instead of blurred or stepped; on by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 | Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
 | Loading screens | stay up at least 2, 4 or 6 seconds (6 by default) so you can read them, or as short as the loading (off) |
