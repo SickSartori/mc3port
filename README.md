@@ -70,7 +70,8 @@ Compared with the console:
   XISO and full Redump dumps both work, in one file or split in parts (`name.1.iso`, `name.2.iso`: choose any part),
   and so does the compressed CCI format (`.cci`, also split). Other releases (for example the North American one) are
   not supported: mc3port checks the game's executable (`default.xbe`, SHA-256 `29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09`)
-  and tells you if the disc is a different version.
+  and tells you if the disc is a different version. A copy whose executable differs only in its header or certificate
+  (region-free or re-signed) works too.
 - Optional: an Xbox controller (see [Controls](#controls)); an internet connection, only for the update check (it
   can be switched off in Settings). An audio output device is not required: without one the game runs silent.
 
