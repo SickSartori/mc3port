@@ -2,6 +2,15 @@
 
 # mc3port
 
+<p align="center">
+  <a href="https://recomplauncher.com/game/mc3port">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg">
+      <img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg">
+    </picture>
+  </a>
+</p>
+
 An unofficial native Windows port of **Midnight Club 3: DUB Edition Remix** for the original Xbox (European release).
 It runs the game from **your own disc image**, with 16:9 widescreen, up to 60 fps, a higher internal resolution and
 optional modern effects.
@@ -43,10 +52,12 @@ Compared with the console:
   (F10 switches them on and off to compare).
 - **A launcher** that checks your disc, sets everything up on the first start and holds all the settings.
 - **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
+- **A HUD of its own**, optional: speedometer, rev counter, gear and special ability drawn sharp at any resolution.
 - **A frame counter**, optional, and the opening films skipped (they can be switched back on).
 - **Loading screens you can read**: they stay up a few seconds, as from the Xbox's disc, instead of flashing by.
 - **Cheats** in the in-game menu: money for your career, and the game's own cheat codes with what each does.
-- **Keyboard support** with rebindable keys, and Xbox controllers for up to four players.
+- **Keyboard support** with rebindable keys, and Xbox controllers for up to four players; the game's own button
+  symbols say LB and RB where the original controller had White and Black.
 
 ## Requirements
 
@@ -57,15 +68,17 @@ Compared with the console:
   graphics card: see [Performance](#performance).
 - **A disc image** (`.iso` or `.cci`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
   XISO and full Redump dumps both work, in one file or split in parts (`name.1.iso`, `name.2.iso`: choose any part),
-  and so does the compressed CCI format (`.cci`, also split). Other releases (for example the North American one) are not supported yet:
-  mc3port checks the game's executable (`default.xbe`, SHA-256 `29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09`)
+  and so does the compressed CCI format (`.cci`, also split). Other releases (for example the North American one) are
+  not supported: mc3port checks the game's executable (`default.xbe`, SHA-256 `29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09`)
   and tells you if the disc is a different version.
 - Optional: an Xbox controller (see [Controls](#controls)); an internet connection, only for the update check (it
   can be switched off in Settings). An audio output device is not required: without one the game runs silent.
 
 ## Installing
 
-**With RecompLauncher**: find mc3port in the catalog and install it. RecompLauncher keeps it up to date.
+**With [RecompLauncher](https://recomplauncher.com/game/mc3port)**: find mc3port in the catalog and install it. The
+launcher checks your disc, keeps the main settings on the game's page, starts the game straight away and installs
+its updates. Your settings, saves and log are then in the game's folder.
 
 **With the installer**: download `mc3port-<version>-windows-x86-setup.exe` from the
 [releases page](https://github.com/SickSartori/mc3port/releases) and run it. It installs for your user only (no
@@ -91,9 +104,10 @@ named `portable.txt` there.
 
 ## Linux (experimental)
 
-mc3port is a Windows program, but it also runs on Linux through **Wine**. This is experimental: it has been tested
-on one machine only, with Wine 11 under WSL2 (Windows' Linux subsystem), where the picture is drawn by the processor.
-There the whole program works, from the launcher through the opening films to the career's menus, sound included.
+mc3port is a Windows program, but it also runs on Linux through **Wine**. This is experimental: here it has been
+tested on one machine only, with Wine 11 under WSL2 (Windows' Linux subsystem), where the picture is drawn by the
+processor. There the whole program works, from the launcher through the opening films to the career's menus, sound
+included. A player has also reported it working well on Linux through RecompLauncher.
 **Not tested yet**: the speed with a real Linux graphics driver, Proton and DXVK, controllers, the Steam Deck, the
 installer and the update check. Expect problems; if you meet one, please
 [open an issue](https://github.com/SickSartori/mc3port/issues) (see [Troubleshooting](#troubleshooting)).
@@ -134,7 +148,7 @@ Without a controller, the keyboard is controller 1. Every key can be changed in 
 | A / D | left stick (steer) |
 | Space / Esc / Z / C | A (handbrake) / B (weight transfer) / X (nitrous) / Y (look back) |
 | F | left stick click (special ability: Zone, Agro or Roar) |
-| Left Shift / Left Ctrl | Black (change camera) / White (flash headlights) |
+| Left Shift / Left Ctrl | RB (change camera) / LB (flash headlights) |
 | Enter / Backspace | Start (pause) / Back (navigation system) |
 | Arrow keys | D-pad (map, hydraulics, music) |
 | I / J / K / L | right stick (camera) |
@@ -203,8 +217,6 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 - The Xbox sound chip's own effects, such as reverb, are not reproduced (the game loads them, mc3port leaves them
   out): the sound can be drier than on the console.
 - Linux (Wine, Proton) is experimental and only partly tested: see [Linux](#linux-experimental).
-- In 16:9 a little of the radar's map shows outside its ring.
-- With a controller, some items of the launcher's menu (such as Quit) do not respond: use the keyboard or mouse.
 - On some PCs the game stays on "Checking for saved files" after Start. The cause is not known: if it happens to you,
   please [report it](https://github.com/SickSartori/mc3port/issues/4) with `mc3port.log`.
 
@@ -213,8 +225,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 - **"Cannot load mc3runtime.dll"**: the file must be next to `mc3.exe`. If it is there, the message's error says what
   is missing: on Windows N editions install the Media Feature Pack; an antivirus may also have quarantined the file
   (the SHA-256 in `SHA256SUMS` lets you check it is the original).
-- **The program closes at once, or the game crashes**: open the launcher's **About** page and press **Log folder**;
-  `mc3port.log` says what happened last.
+- **The program closes at once, or the game crashes**: start it again and press **Report the crash**; or open the
+  launcher's **About** page and press **Log folder**: `mc3port.log` says what happened last.
 - **The game is not smooth**: choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset,
   in Settings.
 - **Very low frame rate with MSI Afterburner or RivaTuner (RTSS) running**: add `mc3.exe` to RTSS with "Application
@@ -231,10 +243,16 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 
 To report a problem, press **Report a problem** in the launcher's bottom bar (or in the in-game menu's): it opens the
 form on GitHub with your version and PC filled in, and the folder with `mc3port.log` to attach. Or open an
-[issue](https://github.com/SickSartori/mc3port/issues) yourself with your Windows version, your
-graphics card, what you were doing and `mc3port.log` attached (normally in `%LOCALAPPDATA%\mc3port`; the launcher's
-**About** page opens the folder). After a crash, also attach `mc3port-crash.dmp` from the same folder. On Linux, also give the distribution, the Wine or Proton version, the graphics
-driver (for example Mesa 25.2 or NVIDIA 580) and how you started the game.
+[issue](https://github.com/SickSartori/mc3port/issues) yourself with your Windows version, your graphics card, what
+you were doing and `mc3port.log` attached (normally in `%LOCALAPPDATA%\mc3port`; the launcher's **About** page opens
+the folder). Each start overwrites the log, so copy it before starting the game again.
+
+After a crash, the next start makes `mc3port-crash-report.zip` in the same folder, with the crash's log and
+`mc3port-crash.dmp`, and offers **Report the crash** on the launcher's first page and in the bottom bars: it opens the
+form and shows the file to attach. Nothing is sent by itself. The log holds your Windows user name in its paths.
+
+On Linux, also give the distribution, the Wine or Proton version, the
+graphics driver (for example Mesa 25.2 or NVIDIA 580) and how you started the game.
 
 ## Building from source
 

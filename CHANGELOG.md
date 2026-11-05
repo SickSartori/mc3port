@@ -7,9 +7,20 @@
 - **RecompLauncher**: `recomplauncher.json` in the release, so the launcher checks your disc, keeps the settings on
   the game's page and starts the game straight away. Started from it, mc3port leaves updates to the launcher, opens
   full screen in Big Picture mode, and exits with code 2 when the disc given is refused.
+- The game's button symbols say **LB and RB** where the original controller had the White and Black buttons.
+- **Crash report**: the first start after a crash keeps that crash's log, which it used to overwrite, with the crash
+  dump in `mc3port-crash-report.zip`, and offers **Report the crash** on the launcher's first page and in the bottom
+  bars: it opens the bug report form and shows the file to attach. Nothing is sent by itself.
+
+### Improved
+
+- The log says when RivaTuner Statistics Server (RTSS) is hooked into mc3port, which can slow it down a lot.
 
 ### Fixed
 
+- With a controller, A did nothing on a page just entered from the menu until a direction was pressed. On the in-game
+  menu's Exit page, with its one button, the controller could not exit.
+- In 16:9 a strip of the radar's map could show outside its ring: the game's mask did not follow the narrowed radar.
 - Sound effects were cut short: the game gives nearly every effect a fade-out of a third of a second and starts
   them looping, releasing them at once so that they play through and fade; mc3port read the fade-out from the wrong
   envelope and faded each effect out 5 ms after it started. The engine, wind, tyre and crash sounds now play whole.
