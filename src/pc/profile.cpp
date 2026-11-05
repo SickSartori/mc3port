@@ -191,6 +191,13 @@ void profile_log_if_due() {
     }
     const uint32_t frames = std::max<uint32_t>(g_frames, 1);
     const uint32_t breaks = g_exclusion_breaks.exchange(0);
+    // RTSS hooks the presents of the thread that also runs the emulated GPU: a player saw under 20 fps with it. It can
+    // come in at any time, so it is looked for here.
+    static bool rtss_logged = false;
+    if (!rtss_logged && GetModuleHandleW(L"RTSSHooks.dll")) {
+        rtss_logged = true;
+        log_line("host: RivaTuner Statistics Server (RTSS) is hooked into mc3port");
+    }
     log_line("profile: %.1f game fps, blanks per frame at %d Hz: 1 %u%%, 2 %u%%, 3 %u%%, 4 %u%%, 5+ %u%%; "
              "game core %.0f%% busy, GPU thread %.0f%% busy; %u runs during another thread's DISPATCH_LEVEL",
              g_frames / seconds, nv2a_vblank_hz(), g_blanks[0] * 100 / frames, g_blanks[1] * 100 / frames,
