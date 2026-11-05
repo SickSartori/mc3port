@@ -172,6 +172,41 @@ Elenco completo, compresi gli stream e le quattro funzioni non identificate, in 
 DirectSound originale, senza APU, restituisce `DSERR_NODRIVER` (`0x88780078`); XACT allora fallisce e crasha nella
 propria pulizia (`0x408FFC`).
 
+## Carriera, codici e HUD
+
+Indirizzi verificati sulla versione PAL, usati dalla pagina Cheat (`launcher_ui.cpp`, `hle_patches.cpp`) e dall'HUD di
+mc3port (`hud.cpp`).
+
+- **Soldi della carriera**: `int32` a `[[0x00557F0C] + 0xC] + 0xACC` (22000 in una carriera nuova). Il puntatore vale
+  solo con una carriera caricata: `career_money()` controlla ogni passo con `VirtualQuery`.
+- **Codici del gioco**: 15 stringhe codificate a `0x463D10`..`0x463DAC`. Il gioco codifica il testo scritto con
+  `0x00192350` (`out = (c + 0x45 + i - 0x41) % 58 + 0x41`, `i` posizione del carattere) e lo confronta in
+  `0x001923B0`. Codici ed effetti:
+
+| Codice | Effetto (indirizzo scritto) |
+|--------|-----------------------------|
+| `roadtrip`, `crosscountry`, `urbansprawl` | `0x53F2EC`/`0x53F2ED` |
+| `ontheroad` | `0x509F80` |
+| `hyperagro` | `0x558818` |
+| `dfens`, `allin`, `Rjnr` | `0x4B361C` = 1, 0, 2 |
+| `getheadj`, `getheadk`, `getheadl`, `getheadm` | `0x4B39D8` = 0..3 |
+| `trythisathome` | inverte `0x557F08` |
+| `rimbuk`, `kubmir` | soldi +1 / -1 |
+
+  Scrivere quegli indirizzi da fuori non basta: il gioco applica l'effetto solo quando il codice passa dal suo
+  menu. Per questo la pagina Cheat cambia solo i soldi e per il resto elenca i codici.
+- **Sblocchi**: la domanda "questo oggetto è sbloccato?" è il `thiscall` `0x00292CD0(categoria, oggetto, flag)`
+  (primi byte `83 EC 14 8B 54 24 20`), con 33 categorie (0-21 e 100-111), non ancora mappate.
+- **HUD**:
+  - Il colore scelto nel negozio è nella texture del quadrante (gialla `02ADDC00`, personalizzata `032FF380`), non
+    nel colore dei vertici (grigio 0,87) né in `combiner_factor0` (`FFFFFFFF`). Il pezzo del nitro (texture
+    `033C0600`, 80x40, a 77,-47 dal tachimetro) porta invece il colore nei vertici.
+  - I simboli dei tasti sono nell'atlante `03342700` (128x128, hash FNV `A30CEDEE3C0953C1`): A, B, X, L, R, il
+    cerchio bianco (White, ~96,68-103,83) e il nero (Black, ~9,99-31,124). Le versioni PlayStation sono atlanti
+    a parte.
+  - L'anello del radar è fatto di quarti ruotati delle texture `03390200` e `033B0380`; la maschera rotonda è la
+    texture 8x8 `00BD4800`.
+
 ## Rete
 
 - XNet scrive i registri della scheda di rete a `0xFEF00000` e collega l'interrupt di livello 4 (ISR `0x3D437B`).
