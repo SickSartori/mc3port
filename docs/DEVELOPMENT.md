@@ -139,6 +139,7 @@ Variabili d'ambiente:
 | `MC3_TRACE_WAITS=1` | registra le attese del kernel che durano più di 5 s, con gli ultimi eventi segnalati |
 | `MC3_AUDIO_DUMP=<s>` | i primi `s` secondi dell'audio in uscita in `audio.wav` (cartella di lavoro) |
 | `MC3_AUDIO_VOICES=1` | ogni 10 s, l'elenco delle voci audio attive con formato, volume, tono, regioni, età e uscite |
+| `MC3_AUDIO_TRACE=1` | una riga di log per ogni play, stop, fine del rilascio e fine naturale di una voce (tempo, formato, volume, tono, regione, mixbin), fino a 4000 righe |
 | `MC3_SKIP=<texture>:<superficie>:<fusione>` / `MC3_DUMP_DRAW=...` | salta, o salva prima e dopo, i draw corrispondenti (per isolare un difetto grafico) |
 | `MC3_WATCHDOG=<s>` | ogni `s` secondi, dove si trovano i thread del gioco (cambia la temporizzazione) |
 
@@ -147,3 +148,21 @@ Variabili d'ambiente:
 - `python -I tools/xiso_inspect.py <iso> [default.xbe di output]`: elenca i file del disco, analizza l'XBE ed eventualmente lo estrae.
 - `python -I tools/check_xbe.py <default.xbe>`: verifica la tabella del kernel e la scansione `fs:` del loader sull'XBE reale.
 - `python -I tools/xbe_to_pe.py <default.xbe> <out.exe>`: impacchetta l'XBE come PE per disassemblarlo agli indirizzi reali, per esempio con `dumpbin /disasm /range:0x13600,0x13700 out.exe`.
+- Audio, da una corsa con le variabili qui sopra (serve solo `numpy`):
+  - `python -I tools/audio_wav_check.py audio.wav [secondo di inizio]`: livelli (picco, RMS, fattore di cresta), campioni al limite del limitatore, salti tra campioni, energia sopra i 16 kHz, buchi (da `MC3_AUDIO_DUMP`);
+  - `python -I tools/audio_trace_check.py mc3port.log`: come finiscono le voci, copie simultanee dello stesso suono, durate (da `MC3_AUDIO_TRACE`);
+  - `python -I tools/audio_voices_check.py mc3port.log`: per ogni blocco di 10 s le voci più forti e quelle instradate ai mixbin 6-9 (da `MC3_AUDIO_VOICES`).
+- Corsa di prova in città senza toccare nulla, dai salvataggi con una carriera avviata: `MC3_SKIP_INTRO=1` e
+  `MC3_INPUT_SCRIPT=8:start,@bg_savegame+5:a,@bg_savegame+9:a,@bg_main+5:a,@bg_career+4:a,@Tnavsys+2:a,@Tnavsys+4:a,@loadscreen_career_filler+20~1800:rt`
+  (acceleratore a fondo per 30 minuti dalla schermata di caricamento). La riga `audio: last 10 s` del log dice voci,
+  picco, campioni abbassati dal limitatore, buchi di XAudio2 e attesa massima sul lock del mixer; `profile:` conta le
+  violazioni di DISPATCH_LEVEL. Una build che passa 30 minuti con zero crash e zero violazioni è a posto.
+
+## RecompLauncher
+
+`recomplauncher.json` nella radice del repo finisce in cima alla zip (`tools/package.ps1`): il launcher controlla il
+disco del giocatore, lo passa come primo argomento, scrive `mc3port.ini` nella cartella del gioco (che così è
+portatile) e mostra sette impostazioni sulla pagina del gioco. Avviato dal launcher (`RECOMPLAUNCHER=1`), mc3port
+non cerca aggiornamenti; con `RECOMPLAUNCHER_MODE=bigpicture` parte a schermo intero. Un disco dato da riga di
+comando e rifiutato fa uscire con codice 2, che il file traduce in un messaggio. Il file si controlla nel tab
+Developer del launcher ("Add a build" sulla cartella della build).

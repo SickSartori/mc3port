@@ -122,15 +122,28 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
 - **Funzioni corrette** (ottobre 2026): `0x3C28F7`/`0x3C2938` sono `SetMixBins` (Bink passa un `DSMIXBINS`), non
   `SetFormat`; il vero `SetFormat` è `0x3C2F5C`/`0x3C2F98` (interna `0x2AD9`, XACT imposta lì i formati mono). Con
   i formati sbagliati video ed effetti suonavano come rumore.
-- **Uscita**: i 6 mixbin degli altoparlanti ridotti a stereo (anteriori 1, centrale e posteriori 0,5, LFE ed effetti
-  esclusi), volume generale 0,4 e limitatore morbido; interpolazione lineare nel ricampionamento e rampa del volume
-  in ogni blocco da 10 ms (niente click quando il gioco cambia volume e tono del motore). Una voce senza mixbin
-  prende quelli del suo primo `SetMixBinVolumes`.
-- **Stop e sovrapposizioni** (ottobre 2026): inviluppo d'ampiezza con rilascio (`StopEx`/`FlushEx` con ENVELOPE;
-  senza inviluppo impostato, 5 ms); stato degli stream con `DSSTREAMSTATUS_PLAYING`, `Discontinuity` e flush
-  asincrono. Prima gli effetti fermati suonavano fino alla fine e si accumulavano (fino a 63 voci in città) e la
-  musica del menu continuava sotto quella della città. Ora 20-35 voci e una sola musica. Dettagli in
-  [ANALISI_XBE.md](ANALISI_XBE.md).
+- **Mixbin** (numerazione dell'header Xbox): 0-5 altoparlanti (FL, FR, C, LFE, BL, BR), 6-9 XTLK (crosstalk:
+  FL, FR, BL, BR), 10 mandata al riverbero I3DL2, 11-30 mandate agli effetti, 31 submix. XACT instrada ogni voce
+  nuova a XTLK + centro + LFE + I3DL2 e poi la reinstrada a 0-5; in città nessuna voce resta su 6 e oltre.
+- **Uscita**: i mixbin ridotti a stereo (anteriori 1, centrale e posteriori 0,5, XTLK come i loro altoparlanti;
+  LFE, riverbero e mandate esclusi), volume generale 0,3 e limitatore con 2 ms di anticipo e 150 ms di rilascio;
+  interpolazione lineare nel ricampionamento e rampa del volume in ogni blocco da 10 ms (niente click quando il
+  gioco cambia volume e tono del motore). Una voce senza mixbin prende quelli del suo primo `SetMixBinVolumes`.
+  Il gioco mette a 0 l'headroom di tutti i mixbin e delle voci, e non chiede mai volumi sopra 0 dB.
+- **Come XACT suona un effetto**: lo avvia in loop e 10 ms dopo chiama `StopEx(ENVELOPE | RELEASEWAVEFORM)`: la
+  voce esce dal loop, suona fino alla fine del campione e sfuma con il rilascio dell'inviluppo. L'inviluppo lo
+  imposta prima con `SetEG`: `dwEG` 1 (`DSEG_AMPLITUDE`; 0 è il "multi" di tono e filtro), modo 1, attacco 0-23 e
+  rilascio 32 blocchi da 512 campioni (0,34 s), sustain 255. Fino alla 0.3.0 il port leggeva l'inviluppo dal
+  generatore 0: nessun effetto aveva il suo rilascio, tutti finivano 15 ms dopo l'avvio (motore, vento, gomme,
+  urti). Una voce con l'inviluppo spento (modo 0) non sfuma: esce dal loop e suona fino in fondo.
+- **Stop e stream** (ottobre 2026): stato degli stream con `DSSTREAMSTATUS_PLAYING`, `Discontinuity` e flush
+  asincrono; `FlushEx` con ENVELOPE sfuma lo stream. Prima la musica del menu continuava sotto quella della città.
+  Dettagli in [ANALISI_XBE.md](ANALISI_XBE.md).
+- **Diagnostica**: la riga `audio: last 10 s` del log riporta audio prodotto, picco, campioni abbassati dal
+  limitatore, voci, pacchetti, buchi di XAudio2 e attesa massima sul lock del mixer (in città: zero buchi, al
+  massimo 0,2 ms). `MC3_AUDIO_DUMP`, `MC3_AUDIO_VOICES` e `MC3_AUDIO_TRACE` con gli script `tools/audio_*.py`
+  (vedi [DEVELOPMENT.md](DEVELOPMENT.md)). Misurato così: ADPCM decodificato come vgmstream (64 campioni per
+  blocco, ultimo nibble scartato), spettro pulito (la musica cala di 41 dB sopra i 20 kHz), nessun taglio brusco.
 - **Audio 3D**: non serve, MC3 non lo usa (vedi ANALISI_XBE.md). Alcuni suoni del motore
   sono suonati da due coppie di voci identiche (stesso campione, stessa posizione), probabilmente per scelta di XACT.
 - **Mixer software** (`audio_mixer.cpp`): emula le voci dell'APU leggendo i campioni direttamente dalla memoria del
@@ -138,9 +151,12 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
   0 = 48 kHz), volumi in centesimi di dB, mixbin verso lo stereo, PCM 8/16 bit e ADPCM Xbox, pacchetti degli stream
   con eventi e callback (consegnate in `DirectSoundDoWork`).
 - **Uscita**: XAudio2, stereo 48 kHz a blocchi da 10 ms. Il log riporta ogni 10 s quanto audio è stato prodotto.
+- **Emulato anche**: il filtro DLS2 passa-basso per voce (`SetFilter`, un filtro a variabili di stato a 48 kHz;
+  XACT lo usa su pochi suoni, come l'acqua del fiume a Tokyo).
 - **Non emulati**: effetti DSP (riverbero, il file `dsstdfx.bin` viene accettato e ignorato), LFO, inviluppo
-  multiplo (tono e filtro), filtri, headroom, audio 3D (non usati da MC3). Quattro funzioni DirectSound non sono identificate con certezza: accettano gli
-  argomenti, riescono e lo registrano nel log.
+  multiplo (tono e filtro), equalizzatore parametrico, headroom (il gioco lo mette a 0), audio 3D (non usato da MC3).
+  In città il gioco non chiama LFO né inviluppo multiplo. Quattro funzioni DirectSound non sono identificate con
+  certezza: accettano gli argomenti, riescono e lo registrano nel log.
 
 ### Input e rete
 
