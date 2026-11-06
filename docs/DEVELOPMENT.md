@@ -68,8 +68,8 @@ build\pc-x86\Debug\mc3.exe "percorso\del\gioco.iso"
 
 Con un'ISO come argomento il launcher viene saltato (anche con `MC3_SKIP_LAUNCHER=1`). Senza argomenti si apre il launcher, che usa l'ISO ricordata in `mc3port.ini`, o la prima `.iso` accanto a `mc3.exe` o nella cartella corrente, o la fa scegliere.
 
-I dati dell'utente stanno in `%LOCALAPPDATA%\mc3port` (`paths.cpp`): l'hard disk dell'Xbox (salvataggi in `UDATA`,
-dati del titolo in `TDATA`, cache `Z:`) è la cartella `xbox_hdd`, il log di ogni avvio è `mc3port.log`, e lì
+I dati dell'utente stanno in `Documents\mc3port` (`paths.cpp`; fino alla 0.3.0 in `%LOCALAPPDATA%\mc3port`, che resta in uso finché il launcher non li sposta su richiesta del giocatore): l'hard disk dell'Xbox (salvataggi in `UDATA`,
+dati del titolo in `TDATA`, cache `Z:`) è la cartella `xbox_hdd`, il log di ogni avvio è `logs\mc3port.log` (con i due precedenti, `.1` e `.2`), e lì
 stanno anche `mc3port.ini` e `shader_cache`. Se accanto a `mc3.exe` c'è un file `portable.txt` o un `mc3port.ini`,
 tutto resta invece accanto a `mc3.exe` (modalità portatile): è il caso delle build in `build\pc-x86\<config>`.
 
@@ -133,17 +133,49 @@ Variabili d'ambiente:
 | `MC3_DUMP_TEXTURE=<indirizzo hex>` | salva le texture decodificate di quella pagina di 4 KB come `texture-<indirizzo>.bmp` (con l'alfa) |
 | `MC3_DUMP_2D=1` | salva ogni texture dei draw piatti dell'HUD come `texture-<indirizzo>-<hash>.bmp` (le compresse a blocchi così come sono, in `.dds`); l'hash è il nome da dare all'immagine in `textures_replace` |
 | `MC3_GPU_STATS=1` | ogni 10 s, i metodi GPU più usati |
-| `MC3_PROFILE=1` | ogni 10 s, oltre alla riga `profile:` sempre presente (fps del gioco, vblank per fotogramma, carico del core del gioco e del thread della GPU): tempo CPU e attese di ogni thread, registri della GPU letti o scritti dal gioco tramite eccezioni, con l'indirizzo del codice |
+| `MC3_PROFILE=1` | ogni 10 s, oltre alla riga `profile:` sempre presente (fps del gioco, vblank per fotogramma, carico del core del gioco e del thread della GPU): tempo CPU e attese di ogni thread, registri della GPU letti o scritti dal gioco tramite eccezioni, con l'indirizzo del codice. Anche una riga `late frame` per ogni fotogramma che arriva dopo 4 vblank o più, con dove è andato il tempo |
 | `MC3_INPUT_SCRIPT=<s>:<pulsante>,<da>-<a>:<pulsante>,...` | preme (0,2 s) o tiene premuti pulsanti del controller 1 a quei secondi dall'avvio, per i test (`start back a b x y black white up down left right lt rt`, `sl`/`sr` per sterzare). Con `@<file>[#n]+<s>[~<durata>]:<pulsante>` il tempo conta da quando il gioco apre un file con quel nome (per esempio `@bg_main+5:down`). Con il prefisso `p2`...`p4` (`p2start`, `p2rt`) i pulsanti vanno ai controller 2-4, che compaiono collegati anche senza un controller vero; con un controller vero sulla porta 1 le pressioni si sommano alle sue |
 | `MC3_DUMP_BUFFER=<byte>` | salva i dati grezzi dei buffer audio di quella dimensione in `buffer-<byte>-<indirizzo>.bin` (cartella di lavoro) |
+| `MC3_TRACE_SAVES=1` | nel log, tutti i file del disco (dimensione e hash del primo MB) e cosa il gioco chiede ai file system con la risposta e l'indirizzo che chiede (`saves: from ...`, fino a 3000 righe): per confrontare una corsa ferma su "Checking for saved files" con una che prosegue |
 | `MC3_TRACE_WAITS=1` | registra le attese del kernel che durano più di 5 s, con gli ultimi eventi segnalati |
 | `MC3_AUDIO_DUMP=<s>` | i primi `s` secondi dell'audio in uscita in `audio.wav` (cartella di lavoro) |
 | `MC3_AUDIO_VOICES=1` | ogni 10 s, l'elenco delle voci audio attive con formato, volume, tono, regioni, età e uscite |
+| `MC3_AUDIO_TRACE=1` | una riga di log per ogni play, stop, fine del rilascio e fine naturale di una voce (tempo, formato, volume, tono, regione, mixbin), fino a 4000 righe |
 | `MC3_SKIP=<texture>:<superficie>:<fusione>` / `MC3_DUMP_DRAW=...` | salta, o salva prima e dopo, i draw corrispondenti (per isolare un difetto grafico) |
 | `MC3_WATCHDOG=<s>` | ogni `s` secondi, dove si trovano i thread del gioco (cambia la temporizzazione) |
+
+## Prove automatiche
+
+```bash
+ctest --test-dir build/pc-x86 -C RelWithDebInfo --output-on-failure
+```
+
+`tests/` non contiene e non richiede file del gioco: dischi ed eseguibili sono creati dalle prove. Coprono XBE e immagini
+del disco (ISO, dump completi, divise, CCI, danneggiate), il controllo del disco, lo zip del crash (riaperto anche con
+`tar`), il ritmo dei menu del garage, le texture e il loro ingrandimento. `disc_real` controlla il disco vero se
+`MC3_TEST_DISC` indica una propria immagine, altrimenti risulta saltata. `tools/package.ps1` si ferma se una prova
+fallisce.
 
 ## Strumenti
 
 - `python -I tools/xiso_inspect.py <iso> [default.xbe di output]`: elenca i file del disco, analizza l'XBE ed eventualmente lo estrae.
 - `python -I tools/check_xbe.py <default.xbe>`: verifica la tabella del kernel e la scansione `fs:` del loader sull'XBE reale.
 - `python -I tools/xbe_to_pe.py <default.xbe> <out.exe>`: impacchetta l'XBE come PE per disassemblarlo agli indirizzi reali, per esempio con `dumpbin /disasm /range:0x13600,0x13700 out.exe`.
+- Audio, da una corsa con le variabili qui sopra (serve solo `numpy`):
+  - `python -I tools/audio_wav_check.py audio.wav [secondo di inizio]`: livelli (picco, RMS, fattore di cresta), campioni al limite del limitatore, salti tra campioni, energia sopra i 16 kHz, buchi (da `MC3_AUDIO_DUMP`);
+  - `python -I tools/audio_trace_check.py mc3port.log`: come finiscono le voci, copie simultanee dello stesso suono, durate (da `MC3_AUDIO_TRACE`);
+  - `python -I tools/audio_voices_check.py mc3port.log`: per ogni blocco di 10 s le voci più forti e quelle instradate ai mixbin 6-9 (da `MC3_AUDIO_VOICES`).
+- Corsa di prova in città senza toccare nulla, dai salvataggi con una carriera avviata: `MC3_SKIP_INTRO=1` e
+  `MC3_INPUT_SCRIPT=8:start,@bg_savegame+5:a,@bg_savegame+9:a,@bg_main+5:a,@bg_career+4:a,@Tnavsys+2:a,@Tnavsys+4:a,@loadscreen_career_filler+20~1800:rt`
+  (acceleratore a fondo per 30 minuti dalla schermata di caricamento). La riga `audio: last 10 s` del log dice voci,
+  picco, campioni abbassati dal limitatore, buchi di XAudio2 e attesa massima sul lock del mixer; `profile:` conta le
+  violazioni di DISPATCH_LEVEL. Una build che passa 30 minuti con zero crash e zero violazioni è a posto.
+
+## RecompLauncher
+
+`recomplauncher.json` nella radice del repo finisce in cima alla zip (`tools/package.ps1`): il launcher controlla il
+disco del giocatore, lo passa come primo argomento, scrive `mc3port.ini` nella cartella del gioco (che così è
+portatile) e mostra sette impostazioni sulla pagina del gioco. Avviato dal launcher (`RECOMPLAUNCHER=1`), mc3port
+non cerca aggiornamenti; con `RECOMPLAUNCHER_MODE=bigpicture` parte a schermo intero. Un disco dato da riga di
+comando e rifiutato fa uscire con codice 2, che il file traduce in un messaggio. Il file si controlla nel tab
+Developer del launcher ("Add a build" sulla cartella della build).

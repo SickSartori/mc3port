@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.3.1 (2026-11-06)
+
+### New
+
+- **RecompLauncher**: `recomplauncher.json` in the release, so the launcher checks your disc, keeps the settings on
+  the game's page and starts the game straight away. Started from it, mc3port leaves updates to the launcher, opens
+  full screen in Big Picture mode, and exits with code 2 when the disc given is refused.
+- The game's button symbols say **LB and RB** where the original controller had the White and Black buttons.
+- **Crash report**: the first start after a crash keeps that crash's log, which it used to overwrite, with the crash
+  dump in `mc3port-crash-report.zip`, and offers **Report the crash** on the launcher's first page and in the bottom
+  bars: it opens the bug report form and shows the file to attach. Nothing is sent by itself.
+- **Mods**: a file in the `mods` folder, in the data folder, with the path it has on the disc (`mods\flash\...`), is read
+  instead of the disc's.
+- Resolution up to **5K (2880p)**.
+- A replacement picture of the game's logo in `textures_replace` is shown in the launcher too.
+- **Save folder**: the launcher's About page opens the folder with your profiles.
+- If the graphics card stops responding, mc3port says so and starts again, once.
+
+### Improved
+
+- Disc images whose `default.xbe` differs only in its header or certificate (region-free or re-signed) are accepted:
+  the check also compares the executable's code.
+- Sound effects are resampled with a better interpolation: less of the false high end they had, above all on the wind
+  and the engine at full speed.
+- The cars' stickers no longer show steps along their edges at high resolutions: they are enlarged like the HUD's
+  pictures, under the same setting, now called **Sharp pictures**.
+- The log says when RivaTuner Statistics Server (RTSS) is hooked into mc3port, which can slow it down a lot.
+- The music keeps more of its top octave: streams are resampled like the effects.
+- The log says where the game's threads are when no new frame comes for 8 seconds, without any setting.
+- Times shown by the game follow the time zone of Windows.
+- **Loading screens**: off, 4, 8 or 12 seconds, off by default, also on RecompLauncher's page; `mc3port.ini` takes any number.
+- The logs of the two runs before are kept, as `mc3port.1.log` and `mc3port.2.log`: starting the game again no longer
+  loses the log of a run that went wrong. Logs and crash reports are now in the data folder's `logs` folder.
+- **Your files are easy to find**: saves, settings, logs and mods now go in `Documents\mc3port`. If you have played an
+  earlier version, your files keep working where they are, and the launcher asks at each start whether to move them.
+- **Style**: one choice above the settings' tabs, **Original** (the game as on the Xbox), **Enhanced** (the best this
+  port can show) or **Custom** (your own values, kept when you try another style). It replaces Quality and Effects
+  style, and the first-run guide asks for it. New installations start in Enhanced, so at 60 fps with mc3port's HUD;
+  existing settings stay as they are.
+- The settings' tabs are now Picture, Effects, Game and Audio, and Controls has two: game keys and PC keys. Small
+  texts are bigger and the launcher's background pictures softer.
+- With a controller or the keyboard, the launcher now lights the whole selected row, and left and right change its value
+  at once. On a page with a big button, that button is selected first, such as Back to game in the in-game menu.
+- The program's folder holds only `mc3.exe`, `mc3runtime.dll` and `README.txt`, with the other documents in `docs`.
+- If RivaTuner Statistics Server (RTSS) is hooked into mc3port, the launcher and the in-game menu say so and how to
+  turn it off for the game.
+- Lighter on the processor while driving: in a free drive at 60 fps the game's core went from 39% to 28% busy, and the
+  emulated graphics chip's thread does about a fifth less work per draw. The frame rate on a fast PC stays at 60; the
+  room is for slower ones.
+- No more pause of about a third of a second on entering a city at every start: the shaders made from the game's
+  materials are now kept in `shader_cache` too, so only the first run compiles them.
+
+### Fixed
+
+- **The cars' engines could hardly be heard and did not follow the revs**: the sounds of a car, of the wind and of other
+  traffic play through a shared voice that sets their distance, pan and, for an engine, the revs; mc3port ignored it and
+  played them at full level at the pitch of their recording. Voices also keep the 6 dB of headroom they start with. Far
+  cars and the wind no longer cover your engine, and the overall level was raised to match. These sounds are also
+  centred and stronger next to the music.
+- The nitrous gauge stayed behind in 16:9 and, with mc3port's HUD, floated between the rev counter and the gear: it now
+  follows the game's dials, and mc3port's HUD draws it as an arc above the speedometer, in the colour chosen in the shop.
+- In the garage's menus a press of the d-pad or the left stick is one step, and holding repeats at a menu's pace.
+- With a controller, A did nothing on a page just entered from the menu until a direction was pressed. On the in-game
+  menu's Exit page, with its one button, the controller could not exit.
+- In 16:9 a strip of the radar's map could show outside its ring: the game's mask did not follow the narrowed radar.
+- Sound effects were cut short: the game gives nearly every effect a fade-out of a third of a second and starts
+  them looping, releasing them at once so that they play through and fade; mc3port read the fade-out from the wrong
+  envelope and faded each effect out 5 ms after it started. The engine, wind, tyre and crash sounds now play whole.
+
 ## 0.3.0 (2026-11-04)
 
 ### New

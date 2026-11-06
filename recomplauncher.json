@@ -1,0 +1,120 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "mc3port",
+  "game": {
+    "kind": "iso",
+    "label": "Your disc image (.iso) of Midnight Club 3: DUB Edition Remix, European release (PAL).",
+    "check": { "xdvdfs": "default.xbe" }
+  },
+  "start": {
+    "program": ["mc3.exe"],
+    "args": ["{game}"]
+  },
+  "saves": ["{install}/xbox_hdd"],
+  "config": [
+    {
+      "id": "main",
+      "format": "ini",
+      "file": "{install}/mc3port.ini",
+      "game_path": "disc_image"
+    }
+  ],
+  "settings": [
+    {
+      "id": "frame_rate",
+      "label": "Frame rate",
+      "help": "30 is the Xbox's own; 60 is smoother and needs a PC that handles twice the work.",
+      "choices": [
+        { "label": "30 fps", "set": { "frame_rate": "30" } },
+        { "label": "60 fps", "set": { "frame_rate": "60" } }
+      ],
+      "defaults": { "frame_rate": "60" }
+    },
+    {
+      "id": "resolution",
+      "label": "Resolution",
+      "help": "What the game draws at: higher is smoother and costs more.",
+      "choices": [
+        { "label": "Like the screen", "set": { "render_scale": "0" } },
+        { "label": "480p (Xbox)", "set": { "render_scale": "1" } },
+        { "label": "720p", "set": { "render_scale": "1.5" } },
+        { "label": "1080p", "set": { "render_scale": "2.25" } },
+        { "label": "1440p", "set": { "render_scale": "3" } },
+        { "label": "4K", "set": { "render_scale": "4.5" } }
+      ],
+      "defaults": { "render_scale": "0" }
+    },
+    {
+      "id": "picture",
+      "label": "Picture",
+      "help": "The game's own widescreen mode (wider view, no black bars), or 4:3 like a classic TV.",
+      "choices": [
+        { "label": "16:9", "set": { "widescreen": "1" } },
+        { "label": "4:3", "set": { "widescreen": "0" } }
+      ],
+      "defaults": { "widescreen": "1" }
+    },
+    {
+      "id": "hud",
+      "label": "HUD",
+      "help": "The game's own, or mc3port's with the speedometer, rev counter and gear redrawn sharp at any resolution.",
+      "choices": [
+        { "label": "The game's", "set": { "hud_style": "0" } },
+        { "label": "mc3port's", "set": { "hud_style": "1" } }
+      ],
+      "defaults": { "hud_style": "1" }
+    },
+    {
+      "id": "speed_units",
+      "label": "Speed units",
+      "help": "In mc3port's HUD.",
+      "choices": [
+        { "label": "mph", "set": { "hud_units": "0" } },
+        { "label": "km/h", "set": { "hud_units": "1" } }
+      ],
+      "defaults": { "hud_units": "0" }
+    },
+    {
+      "id": "opening_films",
+      "label": "Opening films",
+      "help": "The Rockstar logos and the game's intro at start.",
+      "choices": [
+        { "label": "Skipped", "set": { "skip_intro": "1" } },
+        { "label": "Shown", "set": { "skip_intro": "0" } }
+      ],
+      "defaults": { "skip_intro": "1" }
+    },
+    {
+      "id": "loading_screens",
+      "label": "Loading screens",
+      "help": "How long they stay at least, to read them. From a disc image the game loads at once, so without a wait they flash by.",
+      "choices": [
+        { "label": "No wait", "set": { "loading_screen_seconds": "0" } },
+        { "label": "4 seconds", "set": { "loading_screen_seconds": "4" } },
+        { "label": "8 seconds", "set": { "loading_screen_seconds": "8" } },
+        { "label": "12 seconds", "set": { "loading_screen_seconds": "12" } }
+      ],
+      "defaults": { "loading_screen_seconds": "0" }
+    },
+    {
+      "id": "volume",
+      "label": "Volume",
+      "help": "Overall volume; 100 is the loudest.",
+      "choices": [
+        { "label": "100", "set": { "volume": "100" } },
+        { "label": "75", "set": { "volume": "75" } },
+        { "label": "50", "set": { "volume": "50" } },
+        { "label": "25", "set": { "volume": "25" } }
+      ],
+      "defaults": { "volume": "100" }
+    }
+  ],
+  "folders": {
+    "saves": "{install}/xbox_hdd",
+    "logs": "{install}/logs"
+  },
+  "exit_codes": {
+    "2": "mc3port could not use your disc image. It needs the European release (PAL) of Midnight Club 3: DUB Edition Remix as a complete .iso: pick it again on the game's page."
+  }
+}

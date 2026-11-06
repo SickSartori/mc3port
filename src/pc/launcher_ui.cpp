@@ -31,6 +31,7 @@
 #include "backends/imgui_impl_win32.h"
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "pc/crash_report.h"
 #include "pc/game_pause.h"
 #include "pc/hle_patches.h"
 #include "pc/input_hle.h"
@@ -41,6 +42,7 @@
 #include "pc/nv2a.h"
 #include "pc/paths.h"
 #include "pc/renderer_d3d11.h"
+#include "pc/launcher_style.h"
 #include "pc/settings.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
@@ -62,27 +64,31 @@ struct Texts {
     const char *play, *settings, *controls, *about, *quit;
     const char *ready, *ready_lead, *disc_ok, *disc_none, *disc_none_sub, *change, *choose_iso;
     const char *pad_on, *pad_on_sub, *pad_off, *pad_off_sub, *edit;
-    const char *tab_game, *tab_display, *tab_graphics, *tab_effects;
+    const char *tab_picture, *tab_effects, *tab_game, *tab_audio;
     const char *game_language, *game_language_sub, *like_windows, *fps, *fps_sub, *volume, *music_volume, *music_volume_sub;
     const char *aspect, *aspect_sub, *window_mode, *window_mode_sub, *windowed, *fullscreen;
-    const char *quality, *quality_sub, *original, *balanced, *high, *custom, *scale, *scale_sub;
+    const char *style, *original_sub, *enhanced_sub, *custom_sub, *original, *enhanced, *custom, *scale, *scale_sub;
     const char *anisotropy, *gpu_vertices, *gpu_vertices_sub, *effects, *effects_sub, *on, *off;
     const char *sharpen, *bloom, *bloom_threshold, *saturation, *contrast, *vignette, *occlusion, *occlusion_radius;
-    const char *defaults, *controls_lead, *press_key, *reset_keys, *system_keys, *full_screen_key, *effects_key, *launcher_keys, *pads_note;
+    const char *tab_keys, *controls_lead, *press_key, *reset_keys, *system_keys, *full_screen_key, *effects_key, *launcher_keys, *pads_note;
     const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *report, *report_sub, *update_to,
         *legal,
         *credits;
     const char *update_now, *update_install_sub, *downloading, *update_failed;
-    const char *welcome, *welcome_lead, *next, *quality_title, *quality_lead, *all_set, *all_set_lead;
+    const char *welcome, *welcome_lead, *next, *style_title, *style_lead, *all_set, *all_set_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
     const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint, *tabs_hint, *play_hint;
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
-    const char *effects_style, *effects_style_sub, *enhanced, *original_effects, *light_streaks, *custom_effects;
+    const char *light_streaks;
     const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
     const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub;
     const char *cheats, *cheats_lead, *cheat_money, *cheat_money_sub, *add_money, *game_codes, *game_codes_lead;
     const char *loading_screens, *loading_screens_sub;
+    const char *crash_heading, *crash_sub, *crash_button, *crash_link;
+    const char *rtss_heading, *rtss_sub, *saves, *saves_sub;
+    const char *move_heading, *move_sub, *move_failed, *move_button;
+    const char *move_title, *move_lead, *move_now, *move_later;
 };
 
 const Texts kEnglish = {
@@ -90,19 +96,20 @@ const Texts kEnglish = {
     "READY TO RACE", "The streets of San Diego, Atlanta, Detroit and Tokyo are waiting.", "Disc verified",
     "No disc chosen", "Choose the disc image (ISO) of your European Xbox copy.", "Change", "Choose the ISO",
     "Controller connected", "Xbox and compatible controllers", "No controller", "The keyboard works too", "Edit",
-    "Game", "Display", "Graphics", "Effects",
+    "Picture", "Effects", "Game", "Audio",
     "Game language", "The game's text and speech", "Like Windows", "Frames per second", "60 is smoother; 30 like the Xbox",
     "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
     "Aspect ratio", "16:9 uses the game's own widescreen mode", "Window mode", "Alt+Enter or F11 while playing",
     "Window", "Full screen",
-    "Quality", "Sets filtering and effects together", "Original", "Balanced", "High", "Custom",
+    "Style", "As on the Xbox: 30 fps, 4:3, 480p, no modern effects", "60 fps, 16:9, your screen's resolution, modern effects", "Your own choices",
+    "Original", "Enhanced", "Custom",
     "Internal resolution", "Smoother edges, more graphics card work",
-    "Anisotropic filtering", "Vertices on the graphics card", "Faster; off only for troubleshooting",
+    "Texture filter", "Vertices on the graphics card", "Faster; off only for troubleshooting",
     "Modern effects", "Bloom, sharpening, colour and shading (F10 while playing)", "On", "Off",
     "Sharpening", "Light glow", "Glow threshold", "Saturation", "Contrast", "Vignette", "Ambient occlusion",
     "Occlusion size",
-    "Restore defaults", "Xbox controllers work as they are. Choose the keyboard keys here.", "Key? Esc cancels",
-    "Restore keys", "PC KEYS", "Full screen on and off", "Modern effects on and off", "Menus: move, select, back",
+    "Game keys", "Xbox controllers work as they are. Choose the keyboard keys here.", "Key? Esc cancels",
+    "Restore keys", "PC keys", "Full screen on and off", "Modern effects on and off", "Menus: move, select, back",
     "PlayStation and other pads: through Steam Input or DS4Windows, which present them as Xbox controllers.",
     "Unofficial native Windows port. No game files included: you need your own copy.", "Looking for updates...",
     "This is the latest version", "Version %s is available", "Opens the release page; nothing downloads by itself",
@@ -113,7 +120,7 @@ const Texts kEnglish = {
     "Update", "Downloads and checks the installer, then shows it to you to start", "Downloading the update...",
     "The update could not be downloaded or checked",
     "WELCOME", "You need your own copy: a disc image (ISO) of the European Xbox Midnight Club 3: DUB Edition Remix.",
-    "NEXT", "QUALITY", "You can change it any time in the settings.", "ALL SET",
+    "NEXT", "STYLE", "Original is the game as it was on the Xbox, Enhanced the best this port can show. You can change it any time in the settings.", "ALL SET",
     "Disc verified. Connect a controller or use the keyboard.",
     "Disc", "Xbox \xC2\xB7 Europe", "none", "Controller", "connected", "not connected", "Version", "Select", "Back",
     "RESUME", "BACK TO GAME", "PAUSED", "The game is paused. F1 or Esc takes you back.", "EXIT GAME",
@@ -122,16 +129,21 @@ const Texts kEnglish = {
     "Opens the menu when you switch windows", "Resume", "Tabs", "Play",
     "D-pad \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: move, select, back, tabs, play", "Motion blur", "Pages", "Move", "D-pad",
     "Move \xC2\xB7 right: into the page",
-    "Effects style", "Original: as on the Xbox. Enhanced: modern picture, no blur or streaks", "Enhanced", "Original",
-    "Light streaks", "Custom",
+    "Light streaks",
     "Skip the opening films", "The Rockstar logos and the intro, straight to the title screen",
     "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
     "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
-    "Sharp HUD pictures", "The radar's map, icons and letters enlarged with clean edges",
+    "Sharp pictures", "The radar's map, icons, letters and car stickers enlarged with clean edges",
     "CHEATS", "With a career loaded: money, and the game's own codes to type in its Options > Cheat Codes.",
     "Money", "Added to the career: it stays once the game saves", "+ $10,000", "The game's codes",
     "Type them in the game's menu, Options > Cheat Codes (as found in the game's own check).",
-    "Loading screens", "At least this long, to read them as on the Xbox (from the disc image loading is instant)",
+    "Loading screens", "At least this long, to read them as on the Xbox",
+    "The game crashed last time", "mc3port-crash-report.zip is ready to attach to a report", "Report", "Report the crash",
+    "RivaTuner (RTSS) can slow the game down a lot", "If it stutters: set mc3.exe to detection level None in RTSS, or close RTSS",
+    "Save folder", "Your profiles. For a backup, copy the whole xbox_hdd folder",
+    "You have files from an earlier version", "Move your saves and settings to Documents\\mc3port",
+    "Could not move them: close what uses them, then try again", "Move",
+    "Move your files", "Your saves and settings from an earlier version are in a hidden folder. Move them to Documents\\mc3port, where they are easy to find and copy. Until you do, the game keeps using them where they are.", "Move now", "Later",
 };
 
 const Texts kItalian = {
@@ -139,20 +151,20 @@ const Texts kItalian = {
     "PRONTO A CORRERE", "Le strade di San Diego, Atlanta, Detroit e Tokyo ti aspettano.", "Disco verificato",
     "Nessun disco scelto", "Scegli l'immagine del disco (ISO) della tua copia Xbox europea.", "Cambia", "Scegli l'ISO",
     "Controller collegato", "Controller Xbox e compatibili", "Nessun controller", "Anche la tastiera funziona", "Modifica",
-    "Gioco", "Schermo", "Grafica", "Effetti",
+    "Immagine", "Effetti", "Gioco", "Audio",
     "Lingua del gioco", "Testi e voci del gioco", "Come Windows", "Fotogrammi al secondo",
     "60 \xC3\xA8 pi\xC3\xB9 fluido; 30 come l'Xbox", "Volume del gioco", "Musica del launcher",
     "La musica di sottofondo di questa schermata; 0 la spegne",
     "Formato", "16:9 usa la modalit\xC3\xA0 panoramica del gioco", "Modalit\xC3\xA0 finestra",
     "Alt+Invio o F11 durante il gioco", "Finestra", "Schermo intero",
-    "Qualit\xC3\xA0", "Imposta insieme filtri ed effetti", "Originale", "Bilanciata", "Alta",
-    "Personalizzata", "Risoluzione interna", "Bordi pi\xC3\xB9 lisci, pi\xC3\xB9 lavoro per la scheda video",
-    "Filtro anisotropico", "Vertici sulla scheda video", "Pi\xC3\xB9 veloce; da spegnere solo in caso di problemi",
+    "Stile", "Come sull'Xbox: 30 fps, 4:3, 480p, senza effetti moderni", "60 fps, 16:9, risoluzione dello schermo, effetti moderni", "Le tue scelte",
+    "Originale", "Migliorata", "Personalizzata", "Risoluzione interna", "Bordi pi\xC3\xB9 lisci, pi\xC3\xB9 lavoro per la scheda video",
+    "Filtro delle texture", "Vertici sulla scheda video", "Pi\xC3\xB9 veloce; da spegnere solo in caso di problemi",
     "Effetti moderni", "Bagliore, nitidezza, colori e ombreggiatura (F10 durante il gioco)", "S\xC3\xAC", "No",
     "Nitidezza", "Bagliore delle luci", "Soglia del bagliore", "Saturazione", "Contrasto", "Vignettatura",
     "Ombreggiatura ambientale", "Ampiezza dell'ombreggiatura",
-    "Valori predefiniti", "I controller Xbox funzionano cos\xC3\xAC come sono. Qui scegli i tasti della tastiera.",
-    "Tasto? Esc annulla", "Tasti predefiniti", "TASTI DEL PC", "Schermo intero s\xC3\xAC/no", "Effetti moderni s\xC3\xAC/no",
+    "Tasti di gioco", "I controller Xbox funzionano cos\xC3\xAC come sono. Qui scegli i tasti della tastiera.",
+    "Tasto? Esc annulla", "Tasti predefiniti", "Tasti del PC", "Schermo intero s\xC3\xAC/no", "Effetti moderni s\xC3\xAC/no",
     "Menu: muoversi, scegliere, tornare",
     "Controller PlayStation e altri: tramite Steam Input o DS4Windows, che li presentano come controller Xbox.",
     "Port nativo non ufficiale per Windows. Nessun file del gioco incluso: serve la tua copia.",
@@ -166,7 +178,7 @@ const Texts kItalian = {
     "Non \xC3\xA8 stato possibile scaricare o verificare l'aggiornamento",
     "BENVENUTO",
     "Per giocare serve la tua copia: l'immagine ISO del disco Xbox europeo di Midnight Club 3: DUB Edition Remix.",
-    "AVANTI", "QUALIT\xC3\x80", "Potrai cambiarla quando vuoi nelle impostazioni.", "TUTTO PRONTO",
+    "AVANTI", "STILE", "Originale \xC3\xA8 il gioco com'era sull'Xbox, Migliorata il meglio che questo port sa mostrare. Potrai cambiarlo quando vuoi nelle impostazioni.", "TUTTO PRONTO",
     "Disco verificato. Collega un controller o usa la tastiera.",
     "Disco", "Xbox \xC2\xB7 Europa", "nessuno", "Controller", "collegato", "non collegato", "Versione", "Seleziona",
     "Indietro",
@@ -176,16 +188,21 @@ const Texts kItalian = {
     "Apre il menu se cambi finestra", "Riprendi", "Schede", "Gioca",
     "Croce \xC2\xB7 A \xC2\xB7 B \xC2\xB7 LB RB \xC2\xB7 Start", "Controller: muoversi, scegliere, tornare, schede, gioca", "Sfocatura in velocit\xC3\xA0", "Pagine", "Muovi",
     "Croce", "Muovi \xC2\xB7 destra: nella pagina",
-    "Stile degli effetti", "Originale: come sull'Xbox. Migliorato: immagine moderna, senza sfocatura n\xC3\xA9 scie",
-    "Migliorato", "Originale", "Scie delle luci", "Personalizzato",
+    "Scie delle luci",
     "Salta i video iniziali", "I loghi Rockstar e l'introduzione, dritto alla schermata del titolo",
     "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
     "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
-    "Immagini dell'HUD nitide", "Mappa del radar, icone e lettere ingrandite con bordi puliti",
+    "Immagini nitide", "Mappa del radar, icone, lettere e adesivi delle auto ingranditi con bordi puliti",
     "CHEAT", "Con una carriera caricata: soldi, e i codici del gioco da scrivere in Opzioni > Codici.",
     "Soldi", "Si aggiungono alla carriera: restano quando il gioco salva", "+ 10.000 $", "Codici del gioco",
     "Da scrivere nel menu del gioco, Opzioni > Codici (come li controlla il gioco stesso).",
-    "Schermate di caricamento", "Almeno questa durata, per leggerle come sull'Xbox (dall'immagine del disco si carica subito)",
+    "Schermate di caricamento", "Almeno questa durata, per leggerle come sull'Xbox",
+    "L'ultima volta il gioco si \xC3\xA8 chiuso per un errore", "mc3port-crash-report.zip \xC3\xA8 pronto da allegare alla segnalazione", "Segnala", "Segnala il crash",
+    "RivaTuner (RTSS) pu\xC3\xB2 rallentare molto il gioco", "Se scatta: in RTSS metti mc3.exe su detection level None, o chiudi RTSS",
+    "Cartella dei salvataggi", "I tuoi profili. Per un backup copia tutta la cartella xbox_hdd",
+    "Hai file di una versione precedente", "Sposta salvataggi e impostazioni in Documenti\\mc3port",
+    "Spostamento non riuscito: chiudi ci\xC3\xB2 che li usa e riprova", "Sposta",
+    "Sposta i tuoi file", "I salvataggi e le impostazioni di una versione precedente sono in una cartella nascosta. Spostali in Documenti\\mc3port, dove sono facili da trovare e copiare. Finch\xC3\xA9 non lo fai, il gioco continua a usarli dove sono.", "Sposta ora", "Pi\xC3\xB9 tardi",
 };
 
 const Texts& T() {
@@ -479,6 +496,18 @@ Output vs(uint id : SV_VertexID) {
     o.uv = t;
     return o;
 }
+// The artwork is small: its blocks would show on a big screen, so each point is a little of its neighbours.
+float3 soft(Texture2D picture, float2 uv) {
+    float width, height;
+    picture.GetDimensions(width, height);
+    const float2 d = 1.25 / float2(width, height);
+    float3 c = picture.Sample(linear_clamp, uv).rgb * 0.25;
+    c += (picture.Sample(linear_clamp, uv + float2(d.x, 0)).rgb + picture.Sample(linear_clamp, uv - float2(d.x, 0)).rgb +
+          picture.Sample(linear_clamp, uv + float2(0, d.y)).rgb + picture.Sample(linear_clamp, uv - float2(0, d.y)).rgb) * 0.125;
+    c += (picture.Sample(linear_clamp, uv + d).rgb + picture.Sample(linear_clamp, uv - d).rgb +
+          picture.Sample(linear_clamp, uv + float2(d.x, -d.y)).rgb + picture.Sample(linear_clamp, uv - float2(d.x, -d.y)).rgb) * 0.0625;
+    return c;
+}
 float3 grade(float3 c) {
     const float luma = dot(c, float3(0.299, 0.587, 0.114));
     c = lerp(luma.xxx, c, 0.45);
@@ -488,8 +517,8 @@ float4 ps(Output i) : SV_Target {
     const float2 uv = i.uv;
     float3 c;
     if (params.y > 0.5) {
-        const float3 a = grade(picture_a.Sample(linear_clamp, a_rect.xy + uv * a_rect.zw).rgb);
-        const float3 b = grade(picture_b.Sample(linear_clamp, b_rect.xy + uv * b_rect.zw).rgb);
+        const float3 a = grade(soft(picture_a, a_rect.xy + uv * a_rect.zw));
+        const float3 b = grade(soft(picture_b, b_rect.xy + uv * b_rect.zw));
         c = lerp(a, b, params.x);
     } else {
         c = lerp(float3(0.03, 0.03, 0.035), float3(0.085, 0.08, 0.08), uv.y);
@@ -550,6 +579,7 @@ private:
     void claim_focus() {
         if (!focus_panel_) return;
         ImGui::SetKeyboardFocusHere();
+        ImGui::SetNavCursorVisible(true);  // without it A does nothing until a direction is pressed
         focus_panel_ = false;
     }
     // Keyboard and controller: the menu on the left (handled by side_menu) or the page (ImGui's navigation).
@@ -570,6 +600,14 @@ private:
     void stop_rumble();
     void poll_gamepads(float now);  // every XInput port into ImGui's keys, the left stick as a d-pad
     void focus_ring();              // the launcher's focus look on a standard ImGui widget
+    // The selection of keys and controller: one lit row with a leaning mark, drawn under the page's widgets.
+    bool nav_selected() const;
+    void focus_frame(ImVec2 a, ImVec2 b);
+    int value_step();  // left or right on the selected row: -1 or 1; 0 for nothing
+    bool step_slider(float* value, float minimum, float maximum);  // the same on a slider, by a twentieth
+    bool row_marked_ = false, status_keeps_focus_ = false;
+    ImVec2 row_a_{}, row_b_{};
+    int value_moved_frame_ = -1;  // left changed a value in this frame: it does not leave the page
     float pad_icon(ImDrawList* list, const char* name, ImVec2 at, float h, bool draw = true);
     void resize_if_needed();
     void upload_art();
@@ -609,6 +647,8 @@ private:
     void page_cheats();
     void page_about();
     void update_row(bool always);
+    void move_data_row();
+    void page_move_data();
     bool update_available();
     void page_wizard();
     void page_paused();
@@ -618,8 +658,10 @@ private:
     void choose_disc() { choose_disc_requested_ = true; }
     void run_disc_dialog();
     void set_setting(const char* key, float value) { setting_save(key, value); }
-    int quality_preset() const;
-    void apply_quality(int preset);
+    int style() const;
+    void apply_style(int style);
+    void style_row();
+    void style_summary();
 
     HWND window_;
     std::filesystem::path exe_directory_;
@@ -673,7 +715,7 @@ private:
 
     Page page_ = Page::kPlay;
     float page_since_ = 0;
-    int settings_tab_ = 0;
+    int settings_tab_ = 0, controls_tab_ = 0, entered_page_frame_ = -1;
     bool show_codes_ = false;  // the Cheats page lists the game's codes
     float tab_since_ = 0;                 // the settings tab's content fades in from here
     int hover_item_ = -1;                 // side menu: the item the mouse rests on, selected after a short dwell
@@ -681,6 +723,7 @@ private:
     bool hover_armed_ = false;
     int cancel_frame_ = -1;               // the frame a rebinding was cancelled on: B does nothing else then
     bool wizard_ = false;
+    bool move_prompt_ = false;  // the page offering to move an earlier version's files, before all else
     int wizard_step_ = 0;
     int rebinding_ = -1;
     float rebinding_since_ = 0;
@@ -883,6 +926,40 @@ ComPtr<ID3D11ShaderResourceView> dxt_texture(ID3D11Device* device, const DxtImag
     return view;
 }
 
+// The player's own version of the game's logo, the same file the game draws in its menus (textures_replace, by the
+// texture's hash). Shown a level down from a large picture: ImGui's sampler reads one level only, and would alias it.
+ComPtr<ID3D11ShaderResourceView> replaced_logo(ID3D11Device* device, ID3D11DeviceContext* context) {
+    const std::filesystem::path file = data_directory() / "textures_replace" / "4B08E442017FBC3F.png";
+    std::error_code error;
+    std::vector<uint8_t> bgra;
+    UINT width = 0, height = 0;
+    if (!std::filesystem::exists(file, error) || !renderer_load_picture(file, bgra, width, height)) return nullptr;
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11ShaderResourceView> all_levels, view;
+    if (FAILED(device->CreateTexture2D(&desc, nullptr, &texture)) ||
+        FAILED(device->CreateShaderResourceView(texture.Get(), nullptr, &all_levels))) {
+        return nullptr;
+    }
+    context->UpdateSubresource(texture.Get(), 0, nullptr, bgra.data(), width * 4, 0);
+    context->GenerateMips(all_levels.Get());
+    D3D11_SHADER_RESOURCE_VIEW_DESC level{};
+    level.Format = desc.Format;
+    level.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    level.Texture2D.MostDetailedMip = width >= 1024 && height >= 2 ? 1 : 0;
+    level.Texture2D.MipLevels = 1;
+    if (FAILED(device->CreateShaderResourceView(texture.Get(), &level, &view))) return nullptr;
+    log_line("launcher: logo from %s", file.filename().string().c_str());
+    return view;
+}
+
 void Launcher::start_art_loader(const std::filesystem::path& disc_path) {
     if (art_thread_.joinable()) art_thread_.join();
     art_thread_ = std::thread([this, disc_path] {
@@ -902,7 +979,8 @@ void Launcher::upload_art() {
         art.swap(loaded_art_);
     }
     if (!art) return;
-    logo_ = dxt_texture(device_.Get(), art->logo);
+    logo_ = replaced_logo(device_.Get(), context_.Get());
+    if (!logo_) logo_ = dxt_texture(device_.Get(), art->logo);
     artwork_.clear();
     if (in_game_) return;  // the game is the background
     for (const DxtImage& picture : art->artwork) {
@@ -1024,11 +1102,14 @@ bool Launcher::small_button(const char* label, ImVec2 at, const char* id, ImVec2
     ImGui::SetCursorScreenPos(at);
     claim_focus();
     const bool pressed = ImGui::InvisibleButton(id, box, kNavigable);
-    const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
+    const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride) || nav_selected());
     if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    list_->AddRectFilled(at, ImVec2(at.x + box.x, at.y + box.y), fade(kRed, hot * 0.25f));
+    const bool selected = nav_selected();
+    list_->AddRectFilled(at, ImVec2(at.x + box.x, at.y + box.y), selected ? fade(kRed) : fade(kRed, hot * 0.25f));
     list_->AddRect(at, ImVec2(at.x + box.x, at.y + box.y), fade(mix(IM_COL32(255, 255, 255, 60), kRed, hot)), 0, 0, px(1.5f));
-    text(body_bold_, px(18), ImVec2(at.x + px(14), at.y + px(6)), mix(kInk, IM_COL32(255, 120, 125, 255), hot), label);
+    focus_frame(ImVec2(origin_.x - px(24), at.y - px(7)), ImVec2(origin_.x + panel_width_ + px(14), at.y + box.y + px(7)));
+    text(body_bold_, px(18), ImVec2(at.x + px(14), at.y + px(6)),
+         selected ? IM_COL32_WHITE : mix(kInk, IM_COL32(255, 120, 125, 255), hot), label);
     if (size_out) *size_out = box;
     return pressed;
 }
@@ -1039,7 +1120,6 @@ bool Launcher::status(bool good, const char* heading, const char* detail, const 
     const ImVec2 a(origin_.x, origin_.y + cursor_), b(origin_.x + panel_width_, a.y + height);
     const ImU32 accent = good ? kGreen : kAmber;
     list_->AddRectFilled(a, b, fade(pulse ? IM_COL32(255, 178, 30, 22) : IM_COL32(255, 255, 255, 10)));
-    list_->AddRectFilled(a, ImVec2(a.x + px(4), b.y), fade(accent));
     const ImVec2 dot(a.x + px(26), a.y + height / 2);
     list_->AddCircleFilled(dot, px(6), fade(accent));
     list_->AddCircleFilled(dot, px(12), fade(accent, 0.18f));
@@ -1052,7 +1132,11 @@ bool Launcher::status(bool good, const char* heading, const char* detail, const 
     text(body_bold_, px(21), ImVec2(a.x + px(46), a.y + px(9)), kInk, heading);
     text(body_, px(17), ImVec2(a.x + px(46), a.y + px(35)), kDim, detail);
     list_->PopClipRect();
+    const bool keep_focus_request = focus_panel_ && status_keeps_focus_;
+    if (keep_focus_request) focus_panel_ = false;
     const bool pressed = button_label && small_button(button_label, ImVec2(button_x, a.y + px(14)), id);
+    if (button_label) focus_frame(ImVec2(a.x - px(24), a.y), ImVec2(b.x + px(14), b.y));
+    if (keep_focus_request) focus_panel_ = true;
     cursor_ += height + px(10);
     return pressed;
 }
@@ -1063,8 +1147,9 @@ bool Launcher::big_button(const char* label, const char* id, bool pulse) {
     ImGui::SetCursorScreenPos(a);
     claim_focus();
     const bool pressed = ImGui::InvisibleButton(id, ImVec2(b.x - a.x + px(14), b.y - a.y), kNavigable);
-    const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
+    const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride) || nav_selected());
     if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    focus_frame(ImVec2(origin_.x - px(24), a.y - px(8)), ImVec2(origin_.x + panel_width_ + px(14), b.y + px(8)));
     if (pulse) {
         const float p = std::fmod(static_cast<float>(ImGui::GetTime()), 2.2f) / 2.2f / 0.7f;
         if (p < 1) {
@@ -1086,13 +1171,14 @@ bool Launcher::tabs(const char* const* labels, int count, int* current) {
         const ImVec2 size = measure(heading_, px(22), labels[i]);
         ImGui::SetCursorScreenPos(ImVec2(x, origin_.y + cursor_));
         ImGui::PushID(i);
-        if (i == 0) claim_focus();
+        if (i == *current) claim_focus();
         if (ImGui::InvisibleButton("##tab", ImVec2(size.x, size.y + px(10)), kNavigable)) {
             *current = i;
             changed = true;
         }
-        const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
+        const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride) || nav_selected());
         if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        focus_frame(ImVec2(ImGui::GetItemRectMin().x - px(16), ImGui::GetItemRectMin().y - px(4)), ImGui::GetItemRectMax());
         ImGui::PopID();
         const bool on = *current == i;
         text(heading_, px(22), ImVec2(x, origin_.y + cursor_), on ? kInk : mix(kDim, kInk, hot), labels[i]);
@@ -1110,8 +1196,8 @@ void Launcher::row(const char* heading, const char* detail, bool restart, float 
     if (!detail) return;
     // Left of the control (`control` wide): a longer detail wraps, and the row grows by the extra lines.
     const float wrap = panel_width_ - px(control + 20);
-    text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_ + px(29)), next_start ? kAmber : kDim, detail, wrap);
-    row_extra_ = std::max(0.0f, measure(body_, px(16), detail, wrap).y - px(20));
+    text(body_, px(17), ImVec2(origin_.x, origin_.y + cursor_ + px(29)), next_start ? kAmber : kDim, detail, wrap);
+    row_extra_ = std::max(0.0f, measure(body_, px(17), detail, wrap).y - px(22));
 }
 
 bool Launcher::segmented(const char* id, const char* const* labels, int count, int* current, const char* const* details,
@@ -1122,18 +1208,28 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
     const float cell = width / static_cast<float>(count);
     bool changed = false;
     ImGui::PushID(id);
+    const float row_top = origin_.y + cursor_;
+    ImGui::SetCursorScreenPos(a);
+    claim_focus();
+    const bool pressed = ImGui::InvisibleButton("##value", ImVec2(width, height), kNavigable);
+    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride);  // the mouse, not the selection
+    if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    const int hovered_cell =
+        hovered ? std::clamp(static_cast<int>((ImGui::GetIO().MousePos.x - a.x) / cell), 0, count - 1) : -1;
+    int next = *current;
+    if (pressed) next = nav_selected() ? (*current + 1) % count : (hovered_cell >= 0 ? hovered_cell : *current);  // A: the next one
+    next = std::clamp(next + value_step(), 0, count - 1);
+    if (next != *current) {
+        *current = next;
+        changed = true;
+        value_moved_frame_ = ImGui::GetFrameCount();
+    }
+    focus_frame(ImVec2(origin_.x - px(24), row_top), ImVec2(origin_.x + panel_width_ + px(14), row_top + px(details ? 66 : 52) + row_extra_));
     for (int i = 0; i < count; ++i) {
         const ImVec2 c(a.x + cell * static_cast<float>(i), a.y);
-        ImGui::SetCursorScreenPos(c);
         ImGui::PushID(i);
-        if (i == *current) claim_focus();
-        if (ImGui::InvisibleButton("##segment", ImVec2(cell, height), kNavigable) && *current != i) {
-            *current = i;
-            changed = true;
-        }
-        const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
-        if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        const float on = anim(ImGui::GetItemID() + 1, *current == i, 16);
+        const float hot = anim(ImGui::GetID("##hot"), hovered_cell == i);
+        const float on = anim(ImGui::GetID("##on"), *current == i, 16);
         ImGui::PopID();
         if (on > 0.01f || hot > 0.01f) {
             skewed_rect(list_, c, ImVec2(c.x + cell, c.y + height), fade(mix(IM_COL32(255, 255, 255, 30), kRed, on), std::max(on, hot)),
@@ -1161,14 +1257,16 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
 // It leaves cursor_ alone; the caller lays the columns out.
 bool Launcher::compact_slider(const char* label, const char* id, float* value, float minimum, float maximum, ImVec2 at,
                               float width) {
-    text(body_, px(15), at, fade(kDim), label);
-    ImGui::SetCursorScreenPos(ImVec2(at.x, at.y + px(20)));
+    text(body_, px(17), at, fade(kDim), label);
+    ImGui::SetCursorScreenPos(ImVec2(at.x, at.y + px(22)));
     ImGui::PushItemWidth(width);
     ImGui::PushFont(body_bold_, px(16));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(3)));
     claim_focus();
-    const bool changed = ImGui::SliderFloat(id, value, minimum, maximum, "%.2f");
+    bool changed = ImGui::SliderFloat(id, value, minimum, maximum, "%.2f");
     focus_ring();
+    focus_frame(ImVec2(at.x - px(14), at.y - px(3)), ImVec2(at.x + width + px(8), at.y + px(50)));
+    changed |= step_slider(value, minimum, maximum);
     ImGui::PopStyleVar();
     ImGui::PopFont();
     ImGui::PopItemWidth();
@@ -1182,8 +1280,10 @@ bool Launcher::slider(const char* id, float* value, float minimum, float maximum
     ImGui::PushFont(body_bold_, px(18));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
     claim_focus();
-    const bool changed = ImGui::SliderFloat(id, value, minimum, maximum, format);
+    bool changed = ImGui::SliderFloat(id, value, minimum, maximum, format);
     focus_ring();
+    changed |= step_slider(value, minimum, maximum);
+    focus_frame(ImVec2(origin_.x - px(24), origin_.y + cursor_), ImVec2(origin_.x + panel_width_ + px(14), origin_.y + cursor_ + px(46) + row_extra_));
     ImGui::PopStyleVar();
     ImGui::PopFont();
     ImGui::PopItemWidth();
@@ -1212,7 +1312,8 @@ struct Resolution {
     const char *name, *lines;
 };
 constexpr Resolution kResolutions[] = {{0, "Auto", nullptr},        {1, "SD", "480p"},  {1.5f, "HD", "720p"},
-                                       {2.25f, "Full HD", "1080p"}, {3, "2K", "1440p"}, {4.5f, "4K", "2160p"}};
+                                       {2.25f, "Full HD", "1080p"}, {3, "2K", "1440p"}, {4.5f, "4K", "2160p"},
+                                       {6, "5K", "2880p"}};
 constexpr int kResolutionCount = static_cast<int>(std::size(kResolutions));
 
 // The choice for a render_scale; an earlier version's 2 or 4 shows as the nearest one.
@@ -1225,28 +1326,42 @@ int resolution_index(float scale) {
     return best;
 }
 
-// The quality presets leave the resolution alone (its own row): choosing one never undoes the other.
-struct Quality {
-    float anisotropy, effects, ambient_occlusion;
-};
-constexpr Quality kQualities[3] = {{1, 0, 0}, {8, 1, 0}, {16, 1, 0.6f}};  // High: the defaults
+int Launcher::style() const { return style_of([](const char* key) { return setting(key); }, setting("effects_advanced") != 0); }
 
-int Launcher::quality_preset() const {
-    for (int i = 0; i < 3; ++i) {
-        const Quality& q = kQualities[i];
-        if (setting("anisotropy") == q.anisotropy && (setting("effects") != 0) == (q.effects != 0) &&
-            setting("ambient_occlusion") == q.ambient_occlusion) {
-            return i;
-        }
+// Leaving Custom keeps its values, and coming back to it restores them.
+void Launcher::apply_style(int next) {
+    const auto get = [](const char* key) { return setting(key); };
+    if (style() == kStyleCustom && next != kStyleCustom) setting_save_text("custom_style", style_snapshot(get));
+    if (next == kStyleCustom) {
+        style_restore(setting_text("custom_style"), [this](const char* key, float value) { set_setting(key, value); });
+    } else {
+        for (const StyleValue& v : kStyleValues) set_setting(v.key, next == kStyleOriginal ? v.original : v.enhanced);
     }
-    return -1;
+    set_setting("effects_advanced", next == kStyleCustom ? 1.0f : 0.0f);
+    renderer_set_effects(setting("effects") != 0);
 }
 
-void Launcher::apply_quality(int preset) {
-    const Quality& q = kQualities[preset];
-    set_setting("anisotropy", q.anisotropy);
-    set_setting("effects", q.effects);
-    set_setting("ambient_occlusion", q.ambient_occlusion);
+void Launcher::style_row() {
+    const Texts& t = T();
+    int current = style();
+    row(t.style, current == kStyleOriginal ? t.original_sub : current == kStyleEnhanced ? t.enhanced_sub : t.custom_sub, false, 330);
+    const char* styles[] = {t.original, t.enhanced, t.custom};
+    if (segmented("##style", styles, 3, &current, nullptr, 330)) apply_style(current);
+}
+
+// On the first page and the pause page: what is on, and the way to the settings.
+void Launcher::style_summary() {
+    const Texts& t = T();
+    const int current = style();
+    char summary[160];
+    std::snprintf(summary, sizeof(summary), "%s: %s", t.style, current == kStyleOriginal ? t.original : current == kStyleEnhanced ? t.enhanced : t.custom);
+    char detail[160];
+    std::snprintf(detail, sizeof(detail), "%s \xC2\xB7 %.0f fps%s%s", setting("widescreen") != 0 ? "16:9" : "4:3",
+                  setting("frame_rate") >= 60 ? 60.0f : 30.0f, setting("effects") != 0 ? " \xC2\xB7 " : "", setting("effects") != 0 ? t.effects : "");
+    if (status(true, summary, detail, t.edit, "##edit")) {
+        page_ = Page::kSettings;
+        page_since_ = static_cast<float>(ImGui::GetTime());
+    }
 }
 
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
@@ -1260,6 +1375,25 @@ bool restart_pending() {
 
 // A new mc3.exe, with the same command line, straight into the game (MC3_SKIP_LAUNCHER); it waits for this one to
 // end (MC3_RESTART_FROM, runtime.cpp) before it opens the log, the settings and the saves.
+// A new mc3.exe that moves the old data folder before it opens anything there, back in the launcher.
+void restart_to_move_old_data() {
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring command = GetCommandLineW();
+    SetEnvironmentVariableW(L"MC3_MOVE_OLD_DATA", L"1");
+    SetEnvironmentVariableW(L"MC3_RESTART_FROM", std::to_wstring(GetCurrentProcessId()).c_str());
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(exe, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+        log_line("launcher: restart to move the old data failed (error %lu)", GetLastError());
+        return;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    log_line("launcher: restart to move the old data");
+    end_process(0);
+}
+
 void restart_game() {
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -1303,26 +1437,47 @@ void Launcher::run_disc_dialog() {
 
 // --- pages ---
 
+void report_problem();
+
+// Earlier versions kept the player's files in a hidden folder: moved only when the player says so.
+void Launcher::move_data_row() {
+    if (!old_data_in_use()) return;
+    const Texts& t = T();
+    if (status(false, t.move_heading, old_data_move_failed() ? t.move_failed : t.move_sub, t.move_button, "##move_data", true)) {
+        restart_to_move_old_data();
+    }
+}
+
+// Shown first at every start until the files have moved: a row among others is easy to miss.
+void Launcher::page_move_data() {
+    const Texts& t = T();
+    title(t.move_title);
+    lead(old_data_move_failed() ? t.move_failed : t.move_lead);
+    if (big_button(t.move_now, "##move_now", true)) restart_to_move_old_data();
+    if (small_button(t.move_later, ImVec2(origin_.x, origin_.y + cursor_), "##move_later")) {
+        move_prompt_ = false;
+        wizard_ = !disc_;
+        page_since_ = static_cast<float>(ImGui::GetTime());
+    }
+    cursor_ += px(52);
+}
+
 void Launcher::page_play() {
     const Texts& t = T();
     title(t.ready);
     lead(t.ready_lead);
     update_row(false);
+    move_data_row();
+    if (crash_report_ready() && status(false, t.crash_heading, t.crash_sub, t.crash_button, "##crash_report")) report_problem();
+    // It hooks the presents of the thread that also runs the emulated GPU (the log says so too, see profile.cpp).
+    if (GetModuleHandleW(L"RTSSHooks.dll")) status(false, t.rtss_heading, t.rtss_sub, nullptr, nullptr);
     if (disc_) {
         if (status(true, t.disc_ok, "Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 PAL", t.change, "##disc")) choose_disc();
     } else if (status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), t.choose_iso, "##disc")) {
         choose_disc();
     }
     status(pad_connected_, pad_connected_ ? t.pad_on : t.pad_off, pad_connected_ ? t.pad_on_sub : t.pad_off_sub, nullptr, nullptr);
-    char summary[160];
-    const int preset = quality_preset();
-    const char* quality = preset == 0 ? t.original : preset == 1 ? t.balanced : preset == 2 ? t.high : t.custom;
-    std::snprintf(summary, sizeof(summary), "%s \xC2\xB7 %.0f fps \xC2\xB7 %s %s", setting("widescreen") != 0 ? "16:9" : "4:3",
-                  setting("frame_rate") >= 60 ? 60.0f : 30.0f, t.quality, quality);
-    if (status(true, summary, setting("effects") != 0 ? t.effects_sub : t.effects, t.edit, "##edit")) {
-        page_ = Page::kSettings;
-        page_since_ = static_cast<float>(ImGui::GetTime());
-    }
+    style_summary();
     ImGui::SetCursorScreenPos(ImVec2(origin_.x, origin_.y + cursor_));
     if (big_button(t.play, "##play", disc_.has_value())) {
         if (disc_) {
@@ -1338,7 +1493,6 @@ void Launcher::page_settings() {
     const float now = static_cast<float>(ImGui::GetTime());
     const int tab_before = settings_tab_;
     title(t.settings);
-    const char* tab_labels[] = {t.tab_game, t.tab_display, t.tab_graphics, t.tab_effects};
     // LB and RB (L1 and R1), Q and E: the previous and next tab.
     if (rebinding_ < 0 && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
         const int step = key_pressed({ImGuiKey_GamepadL1, ImGuiKey_Q, ImGuiKey_PageUp})     ? 3
@@ -1349,6 +1503,12 @@ void Launcher::page_settings() {
             if (!menu_has_focus_) focus_panel_ = true;
         }
     }
+    // After LB or RB the selection goes to the tabs, not to the first row above them.
+    const bool to_tabs = focus_panel_ && settings_tab_ != tab_before;
+    if (to_tabs) focus_panel_ = false;
+    style_row();
+    if (to_tabs) focus_panel_ = true;
+    const char* tab_labels[] = {t.tab_picture, t.tab_effects, t.tab_game, t.tab_audio};
     tabs(tab_labels, 4, &settings_tab_);
     if (settings_tab_ != tab_before) tab_since_ = now;
     // The tab's content comes in like a page: fading, from a little to the right.
@@ -1357,52 +1517,8 @@ void Launcher::page_settings() {
     g_alpha *= tab_enter;
     origin_.x += px(24) * (1 - tab_enter);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_alpha);
+    const char* toggle[] = {t.off, t.on};
     if (settings_tab_ == 0) {
-        row(t.game_language, t.game_language_sub, true);
-        static const int kLanguages[] = {0, 1, 4, 3, 5, 6};
-        const char* names[] = {t.like_windows, "English", "Fran\xC3\xA7" "ais", "Deutsch", "Espa\xC3\xB1ol", "Italiano"};
-        int index = 0;
-        for (int i = 0; i < 6; ++i) {
-            if (static_cast<int>(setting("game_language")) == kLanguages[i]) index = i;
-        }
-        ImGui::SetCursorScreenPos(ImVec2(origin_.x + panel_width_ - px(270), origin_.y + cursor_ + px(8)));
-        ImGui::PushItemWidth(px(270));
-        ImGui::PushFont(body_bold_, px(18));
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
-        claim_focus();
-        if (ImGui::Combo("##language", &index, names, 6)) set_setting("game_language", static_cast<float>(kLanguages[index]));
-        focus_ring();
-        ImGui::PopStyleVar();
-        ImGui::PopFont();
-        ImGui::PopItemWidth();
-        cursor_ += px(58) + row_extra_;
-        row_extra_ = 0;
-        row(t.fps, t.fps_sub, true);
-        const char* rates[] = {"30", "60"};
-        int rate = setting("frame_rate") >= 60 ? 1 : 0;
-        if (segmented("##fps", rates, 2, &rate)) set_setting("frame_rate", rate ? 60.0f : 30.0f);
-        row(t.volume, nullptr);
-        float volume = setting("volume");
-        if (slider("##volume", &volume, 0, 100, "%.0f")) set_setting("volume", std::round(volume));
-        if (!in_game_) {  // no launcher music in the game
-            row(t.music_volume, t.music_volume_sub);
-            float music = setting("launcher_music");
-            if (slider("##launcher_music", &music, 0, 100, "%.0f")) set_setting("launcher_music", std::round(music));
-        }
-        row(t.background_pause, t.background_pause_sub);
-        const char* toggle[] = {t.off, t.on};
-        int pause = setting("pause_in_background") != 0 ? 1 : 0;
-        if (segmented("##background_pause", toggle, 2, &pause)) set_setting("pause_in_background", static_cast<float>(pause));
-        if (!in_game_) {  // the films are already over
-            row(t.skip_intro, t.skip_intro_sub);
-            int skip = setting("skip_intro") != 0 ? 1 : 0;
-            if (segmented("##skip_intro", toggle, 2, &skip)) set_setting("skip_intro", static_cast<float>(skip));
-        }
-        row(t.loading_screens, t.loading_screens_sub);
-        const char* durations[] = {t.off, "2 s", "4 s", "6 s"};
-        int duration = std::clamp(static_cast<int>(setting("loading_screen_seconds")) / 2, 0, 3);
-        if (segmented("##loading_screens", durations, 4, &duration)) set_setting("loading_screen_seconds", duration * 2.0f);
-    } else if (settings_tab_ == 1) {
         row(t.aspect, t.aspect_sub, true);
         const char* aspects[] = {"4:3", "16:9"};
         int aspect = setting("widescreen") != 0 ? 1 : 0;
@@ -1414,10 +1530,6 @@ void Launcher::page_settings() {
             set_setting("fullscreen", static_cast<float>(mode));
             nv2a_set_full_screen(mode != 0);
         }
-        row(t.quality, t.quality_sub, true);
-        const char* qualities[] = {t.original, t.balanced, t.high};
-        int preset = quality_preset();
-        if (segmented("##quality", qualities, 3, &preset)) apply_quality(preset);
         row(t.scale, t.scale_sub, true, 380);
         MONITORINFO monitor{sizeof(MONITORINFO)};
         GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTOPRIMARY), &monitor);
@@ -1434,21 +1546,10 @@ void Launcher::page_settings() {
         if (segmented("##scale", names, kResolutionCount, &resolution, lines, 380)) {
             set_setting("render_scale", kResolutions[resolution].scale);
         }
-        row(t.fps_counter, t.fps_counter_sub);
-        const char* toggle[] = {t.off, t.on};
-        int counter = setting("fps_counter") != 0 ? 1 : 0;
-        if (segmented("##fps_counter", toggle, 2, &counter)) set_setting("fps_counter", static_cast<float>(counter));
-        row(t.hud, t.hud_sub, true);
-        const char* huds[] = {t.hud_game, "mc3port"};
-        int hud = setting("hud_style") != 0 ? 1 : 0;
-        if (segmented("##hud", huds, 2, &hud)) set_setting("hud_style", static_cast<float>(hud));
-        if (hud) {
-            row(t.speed_unit, nullptr);
-            const char* units[] = {"mph", "km/h"};
-            int unit = setting("hud_units") != 0 ? 1 : 0;
-            if (segmented("##hud_units", units, 2, &unit)) set_setting("hud_units", static_cast<float>(unit));
-        }
-    } else if (settings_tab_ == 2) {
+        row(t.fps, t.fps_sub, true);
+        const char* rates[] = {"30", "60"};
+        int rate = setting("frame_rate") >= 60 ? 1 : 0;
+        if (segmented("##fps", rates, 2, &rate)) set_setting("frame_rate", rate ? 60.0f : 30.0f);
         row(t.anisotropy, nullptr, true);
         const char* levels[] = {"1x", "4x", "8x", "16x"};
         static const float kLevels[] = {1, 4, 8, 16};
@@ -1457,35 +1558,19 @@ void Launcher::page_settings() {
             if (setting("anisotropy") >= kLevels[i]) level = i;
         }
         if (segmented("##anisotropy", levels, 4, &level)) set_setting("anisotropy", kLevels[level]);
-        row(t.gpu_vertices, t.gpu_vertices_sub);
-        const char* toggle[] = {t.off, t.on};
-        int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
-        if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));
         row(t.sharp_2d, t.sharp_2d_sub, true);
         int sharp = setting("sharp_2d") != 0 ? 1 : 0;
         if (segmented("##sharp_2d", toggle, 2, &sharp)) set_setting("sharp_2d", static_cast<float>(sharp));
-    } else {
-        // Two ready-made looks and a custom one. Original: the Xbox's picture, speed blur and light streaks included.
-        // Enhanced: the modern effects, without the blur and the streaks. Custom (setting effects_advanced): every
-        // value by itself, in two columns so that the page stays on screen.
-        row(t.effects_style, t.effects_style_sub, false, 330);
-        const char* styles[] = {t.original_effects, t.enhanced, t.custom_effects};
-        const bool modern = setting("effects") != 0;
-        const float blur = setting("motion_blur"), streaks = setting("light_streaks");
-        int style = setting("effects_advanced") != 0             ? 2
-                    : !modern && blur == 1 && streaks == 1 ? 0
-                    : modern && blur == 0 && streaks == 0  ? 1
-                                                           : 2;
-        if (segmented("##effects_style", styles, 3, &style, nullptr, 330)) {
-            set_setting("effects_advanced", style == 2 ? 1.0f : 0.0f);
-            if (style != 2) {
-                set_setting("effects", style == 1 ? 1.0f : 0.0f);
-                set_setting("motion_blur", style == 1 ? 0.0f : 1.0f);
-                set_setting("light_streaks", style == 1 ? 0.0f : 1.0f);
-                renderer_set_effects(style == 1);
-            }
+        row(t.gpu_vertices, t.gpu_vertices_sub);
+        int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
+        if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));
+    } else if (settings_tab_ == 1) {
+        row(t.effects, t.effects_sub);
+        int modern = setting("effects") != 0 ? 1 : 0;
+        if (segmented("##effects", toggle, 2, &modern)) {
+            set_setting("effects", static_cast<float>(modern));
+            renderer_set_effects(modern != 0);
         }
-        const bool advanced = style == 2;
         struct Slider {
             const char* label;
             const char* key;
@@ -1498,11 +1583,10 @@ void Launcher::page_settings() {
             {t.motion_blur, "motion_blur", 0, 1},   {t.light_streaks, "light_streaks", 0, 1},
             {t.occlusion, "ambient_occlusion", 0, 1}, {t.occlusion_radius, "ambient_occlusion_radius", 0.5f, 2},
         };
-        const size_t shown = advanced ? std::size(sliders) : 0;
         const float gap = px(28), column = (panel_width_ - gap) / 2;
-        for (size_t i = 0; i < shown; ++i) {
+        for (size_t i = 0; i < std::size(sliders); ++i) {
             const Slider& s = sliders[i];
-            if (i > 0 && i % 2 == 0) cursor_ += px(54);
+            if (i > 0 && i % 2 == 0) cursor_ += px(58);
             const ImVec2 at(origin_.x + static_cast<float>(i % 2) * (column + gap), origin_.y + cursor_ + px(2));
             float value = setting(s.key);
             char id[48];
@@ -1511,26 +1595,69 @@ void Launcher::page_settings() {
                 set_setting(s.key, std::round(value * 100) / 100);
             }
         }
-        if (shown) cursor_ += px(58);
-    }
-    cursor_ += px(8);
-    ImVec2 defaults_size;
-    if (small_button(t.defaults, ImVec2(origin_.x, origin_.y + cursor_), "##defaults", &defaults_size)) {
-        for (const char* key : {"game_language", "frame_rate", "volume", "launcher_music", "pause_in_background",
-                                "skip_intro", "loading_screen_seconds", "widescreen", "fullscreen", "fps_counter", "render_scale", "hud_style",
-                                "hud_units", "anisotropy", "gpu_vertices", "sharp_2d", "effects", "sharpen", "bloom",
-                                "bloom_threshold", "saturation", "contrast", "vignette", "motion_blur", "light_streaks",
-                                "effects_advanced", "ambient_occlusion", "ambient_occlusion_radius"}) {
-            set_setting(key, setting_default(key));
+        cursor_ += px(62);
+    } else if (settings_tab_ == 2) {
+        row(t.game_language, t.game_language_sub, true);
+        static const int kLanguages[] = {0, 1, 4, 3, 5, 6};
+        const char* names[] = {t.like_windows, "English", "Fran\xC3\xA7" "ais", "Deutsch", "Espa\xC3\xB1ol", "Italiano"};
+        int index = 0;
+        for (int i = 0; i < 6; ++i) {
+            if (static_cast<int>(setting("game_language")) == kLanguages[i]) index = i;
         }
-        nv2a_set_full_screen(setting("fullscreen") != 0);
-        renderer_set_effects(setting("effects") != 0);
+        ImGui::SetCursorScreenPos(ImVec2(origin_.x + panel_width_ - px(270), origin_.y + cursor_ + px(8)));
+        ImGui::PushItemWidth(px(270));
+        ImGui::PushFont(body_bold_, px(18));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
+        claim_focus();
+        if (ImGui::Combo("##language", &index, names, 6)) set_setting("game_language", static_cast<float>(kLanguages[index]));
+        focus_ring();
+        focus_frame(ImVec2(origin_.x - px(24), origin_.y + cursor_), ImVec2(origin_.x + panel_width_ + px(14), origin_.y + cursor_ + px(52) + row_extra_));
+        ImGui::PopStyleVar();
+        ImGui::PopFont();
+        ImGui::PopItemWidth();
+        cursor_ += px(58) + row_extra_;
+        row_extra_ = 0;
+        row(t.hud, t.hud_sub, true);
+        const char* huds[] = {t.hud_game, "mc3port"};
+        int hud = setting("hud_style") != 0 ? 1 : 0;
+        if (segmented("##hud", huds, 2, &hud)) set_setting("hud_style", static_cast<float>(hud));
+        if (hud) {
+            row(t.speed_unit, nullptr);
+            const char* units[] = {"mph", "km/h"};
+            int unit = setting("hud_units") != 0 ? 1 : 0;
+            if (segmented("##hud_units", units, 2, &unit)) set_setting("hud_units", static_cast<float>(unit));
+        }
+        row(t.fps_counter, t.fps_counter_sub);
+        int counter = setting("fps_counter") != 0 ? 1 : 0;
+        if (segmented("##fps_counter", toggle, 2, &counter)) set_setting("fps_counter", static_cast<float>(counter));
+        row(t.loading_screens, t.loading_screens_sub);
+        const char* durations[] = {t.off, "4 s", "8 s", "12 s"};
+        // Another value from the ini file shows as the nearest choice, and stays until one is picked.
+        int duration = std::clamp(static_cast<int>(std::lround(setting("loading_screen_seconds") / 4.0f)), 0, 3);
+        if (segmented("##loading_screens", durations, 4, &duration)) set_setting("loading_screen_seconds", duration * 4.0f);
+        if (!in_game_) {  // the films are already over
+            row(t.skip_intro, t.skip_intro_sub);
+            int skip = setting("skip_intro") != 0 ? 1 : 0;
+            if (segmented("##skip_intro", toggle, 2, &skip)) set_setting("skip_intro", static_cast<float>(skip));
+        }
+        row(t.background_pause, t.background_pause_sub);
+        int pause = setting("pause_in_background") != 0 ? 1 : 0;
+        if (segmented("##background_pause", toggle, 2, &pause)) set_setting("pause_in_background", static_cast<float>(pause));
+    } else {
+        row(t.volume, nullptr);
+        float volume = setting("volume");
+        if (slider("##volume", &volume, 0, 100, "%.0f")) set_setting("volume", std::round(volume));
+        if (!in_game_) {  // no launcher music in the game
+            row(t.music_volume, t.music_volume_sub);
+            float music = setting("launcher_music");
+            if (slider("##launcher_music", &music, 0, 100, "%.0f")) set_setting("launcher_music", std::round(music));
+        }
     }
     if (in_game_ && restart_pending()) {
-        const ImVec2 at(origin_.x + defaults_size.x + px(14), origin_.y + cursor_);
-        if (small_button(t.restart_now, at, "##restart")) restart_game();
+        cursor_ += px(8);
+        if (small_button(t.restart_now, ImVec2(origin_.x, origin_.y + cursor_), "##restart")) restart_game();
+        cursor_ += px(48);
     }
-    cursor_ += px(48);
     ImGui::PopStyleVar();
     g_alpha = panel_alpha;
     origin_.x = origin_x;
@@ -1607,7 +1734,43 @@ void Launcher::page_controls() {
         g_capturing = false;
         rebinding_ = -1;
     }
-    const float row_height = px(33), column = panel_width_ / 2 + px(10);
+    const int tab_before = controls_tab_;
+    if (rebinding_ < 0 && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+        key_pressed({ImGuiKey_GamepadL1, ImGuiKey_GamepadR1, ImGuiKey_Q, ImGuiKey_E, ImGuiKey_PageUp, ImGuiKey_PageDown})) {
+        controls_tab_ = 1 - controls_tab_;
+        if (!menu_has_focus_) focus_panel_ = true;
+    }
+    const char* tab_labels[] = {t.tab_keys, t.system_keys};
+    tabs(tab_labels, 2, &controls_tab_);
+    if (controls_tab_ != tab_before) {
+        rebinding_ = -1;
+        g_capturing = false;
+    }
+    if (controls_tab_ == 1) {
+        // The port's own keys, not rebindable.
+        const char* enter = italian() ? "Invio" : "Enter";
+        char alt_enter[32];
+        std::snprintf(alt_enter, sizeof(alt_enter), "F11 \xC2\xB7 Alt+%s", enter);
+        char navigation[48];
+        std::snprintf(navigation, sizeof(navigation), "%s \xC2\xB7 %s \xC2\xB7 Esc \xC2\xB7 Q E", italian() ? "Frecce" : "Arrows", enter);
+        const char* system[][2] = {{"F1 \xC2\xB7 Back+Start", t.menu_key}, {alt_enter, t.full_screen_key}, {"F10", t.effects_key},
+                                   {navigation, t.launcher_keys}, {t.pad_keys, t.pad_menu_keys}};
+        const float line = px(44);
+        for (const auto& [keys, action] : system) {
+            const ImVec2 size = measure(body_bold_, px(18), keys);
+            const ImVec2 a(origin_.x, origin_.y + cursor_ + px(3));
+            list_->AddRectFilled(a, ImVec2(a.x + size.x + px(18), a.y + line - px(8)), fade(IM_COL32(255, 255, 255, 14)));
+            text(body_bold_, px(18), ImVec2(a.x + px(9), a.y + (line - px(8) - size.y) / 2), kInk, keys);
+            text(body_, px(19), ImVec2(a.x + size.x + px(32), a.y + (line - px(8) - measure(body_, px(19), action).y) / 2), kInk, action);
+            cursor_ += line;
+        }
+        cursor_ += px(14);
+        const ImVec2 note = measure(body_, px(18), t.pads_note, panel_width_);
+        text(body_, px(18), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.pads_note, panel_width_);
+        cursor_ += note.y + px(8);
+        return;
+    }
+    const float row_height = px(36), column = panel_width_ / 2 + px(10);
     for (int i = 0; i < kPadInputs; ++i) {
         const KeyBinding& binding = key_binding(static_cast<PadInput>(i));
         const float x = origin_.x + (i % 2 ? column : 0.0f), y = origin_.y + cursor_ + row_height * static_cast<float>(i / 2);
@@ -1619,7 +1782,7 @@ void Launcher::page_controls() {
         const ImVec2 key_size = measure(body_bold_, px(16), key.c_str());
         const ImVec2 box_a(x + cell - std::max(px(60), key_size.x + px(18)), y + px(3)), box_b(x + cell, y + row_height - px(3));
         list_->PushClipRect(ImVec2(x + px(80), y), ImVec2(box_a.x - px(6), y + row_height), true);  // never under the key box
-        text(body_, px(15), ImVec2(x + px(80), y + px(8)), kInk, italian() ? binding.italian : binding.english);
+        text(body_, px(17), ImVec2(x + px(80), y + (row_height - measure(body_, px(17), "A").y) / 2), kInk, italian() ? binding.italian : binding.english);
         list_->PopClipRect();
         ImGui::SetCursorScreenPos(box_a);
         ImGui::PushID(i);
@@ -1630,8 +1793,9 @@ void Launcher::page_controls() {
             g_captured_key = 0;
             g_capturing = true;
         }
-        const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused() || waiting);
+        const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride) || nav_selected() || waiting);
         if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        focus_frame(box_a, box_b);
         ImGui::PopID();
         list_->AddRectFilled(box_a, box_b, fade(mix(IM_COL32(255, 255, 255, 14), kRed, hot * (waiting ? 0.8f : 0.35f))));
         text(body_bold_, px(16), ImVec2(box_b.x - key_size.x - px(9), y + (row_height - key_size.y) / 2), kInk, key.c_str());
@@ -1639,29 +1803,6 @@ void Launcher::page_controls() {
     cursor_ += row_height * static_cast<float>((kPadInputs + 1) / 2) + px(12);
     if (small_button(t.reset_keys, ImVec2(origin_.x, origin_.y + cursor_), "##reset_keys")) reset_key_bindings();
     cursor_ += px(52);
-
-    // The port's own keys, not rebindable.
-    text(heading_, px(20), ImVec2(origin_.x, origin_.y + cursor_), kInk, t.system_keys);
-    cursor_ += px(32);
-    const char* enter = italian() ? "Invio" : "Enter";
-    char alt_enter[32];
-    std::snprintf(alt_enter, sizeof(alt_enter), "F11 \xC2\xB7 Alt+%s", enter);
-    char navigation[48];
-    std::snprintf(navigation, sizeof(navigation), "%s \xC2\xB7 %s \xC2\xB7 Esc \xC2\xB7 Q E", italian() ? "Frecce" : "Arrows", enter);
-    const char* system[][2] = {{"F1 \xC2\xB7 Back+Start", t.menu_key}, {alt_enter, t.full_screen_key}, {"F10", t.effects_key},
-                               {navigation, t.launcher_keys}, {t.pad_keys, t.pad_menu_keys}};
-    for (const auto& [keys, action] : system) {
-        const ImVec2 size = measure(body_bold_, px(16), keys);
-        const ImVec2 a(origin_.x, origin_.y + cursor_ + px(3));
-        list_->AddRectFilled(a, ImVec2(a.x + size.x + px(18), a.y + row_height - px(6)), fade(IM_COL32(255, 255, 255, 14)));
-        text(body_bold_, px(16), ImVec2(a.x + px(9), a.y + (row_height - px(6) - size.y) / 2), kInk, keys);
-        text(body_, px(17), ImVec2(a.x + size.x + px(32), origin_.y + cursor_ + px(7)), kInk, action);
-        cursor_ += row_height;
-    }
-    cursor_ += px(10);
-    const ImVec2 note = measure(body_, px(16), t.pads_note, panel_width_);
-    text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.pads_note, panel_width_);
-    cursor_ += note.y + px(8);
 }
 
 // The update notice: on the first page only when there is a newer version, on About always. An installed copy
@@ -1711,9 +1852,20 @@ bool Launcher::update_available() {
     return updates_.state == 2 && updates_.download != 2;
 }
 
-// mc3port.log selected in Explorer.
+// Where the game keeps its profiles, as on the Xbox's hard disk (54540079 is the game's title ID). Before the first save
+// only the disk's folder exists.
+void show_saves() {
+    const std::filesystem::path disk = data_directory() / "xbox_hdd", saves = disk / "Partition1" / "UDATA" / "54540079";
+    std::error_code ignored;
+    std::filesystem::create_directories(disk, ignored);
+    const std::filesystem::path folder = std::filesystem::exists(saves, ignored) ? saves : disk;
+    ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+// mc3port.log selected in Explorer, or the report of a crash when there is a new one.
 void show_log() {
-    const std::wstring argument = L"/select,\"" + (data_directory() / "mc3port.log").wstring() + L"\"";
+    const std::filesystem::path file = crash_report_ready() ? crash_report_path() : log_directory() / "mc3port.log";
+    const std::wstring argument = L"/select,\"" + file.wstring() + L"\"";
     ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
 }
 
@@ -1722,7 +1874,7 @@ void show_log() {
 // in on GitHub.
 void report_problem() {
     std::string system;
-    if (std::FILE* file = _wfopen((data_directory() / "mc3port.log").c_str(), L"r")) {
+    if (std::FILE* file = _wfopen((log_directory() / "mc3port.log").c_str(), L"r")) {
         char line[512];
         for (int i = 0; i < 80 && std::fgets(line, sizeof(line), file); ++i) {
             line[std::strcspn(line, "\r\n")] = 0;
@@ -1758,6 +1910,7 @@ void Launcher::page_about() {
     if (status(true, heading, t.credits, "GitHub", "##github")) {
         ShellExecuteA(nullptr, "open", (std::string("https://github.com/") + kRepository).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     }
+    if (status(true, t.saves, t.saves_sub, t.open, "##saves")) show_saves();
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
     if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
     cursor_ += px(8);
@@ -1767,43 +1920,38 @@ void Launcher::page_about() {
 }
 
 void Launcher::page_wizard() {
+    if (move_prompt_) {
+        page_move_data();
+        return;
+    }
     const Texts& t = T();
     steps(wizard_step_, 3);
     if (wizard_step_ == 0) {
         title(t.welcome);
         lead(t.welcome_lead);
         update_row(false);
+        move_data_row();
         if (disc_) {
             if (status(true, t.disc_ok, "Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 PAL", t.change, "##disc")) choose_disc();
-        } else if (status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), t.choose_iso,
-                          "##disc")) {
-            choose_disc();
+        } else {
+            status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), nullptr, nullptr);
         }
         if (big_button(disc_ ? t.next : t.choose_iso, "##next", disc_.has_value())) {
             if (disc_) {
                 wizard_step_ = 1;
+                focus_panel_ = true;
                 page_since_ = static_cast<float>(ImGui::GetTime());
             } else {
                 choose_disc();
             }
         }
     } else if (wizard_step_ == 1) {
-        title(t.quality_title);
-        lead(t.quality_lead);
-        row(t.quality, t.quality_sub);
-        const char* qualities[] = {t.original, t.balanced, t.high};
-        int preset = quality_preset();
-        if (segmented("##quality", qualities, 3, &preset)) apply_quality(preset);
-        row(t.aspect, t.aspect_sub);
-        const char* aspects[] = {"4:3", "16:9"};
-        int aspect = setting("widescreen") != 0 ? 1 : 0;
-        if (segmented("##aspect", aspects, 2, &aspect)) set_setting("widescreen", static_cast<float>(aspect));
-        row(t.fps, t.fps_sub, true);
-        const char* rates[] = {"30", "60"};
-        int rate = setting("frame_rate") >= 60 ? 1 : 0;
-        if (segmented("##fps", rates, 2, &rate)) set_setting("frame_rate", rate ? 60.0f : 30.0f);
+        title(t.style_title);
+        lead(t.style_lead);
+        style_row();
         if (big_button(t.next, "##next", false)) {
             wizard_step_ = 2;
+            focus_panel_ = true;
             page_since_ = static_cast<float>(ImGui::GetTime());
         }
     } else {
@@ -1909,6 +2057,9 @@ void Launcher::panel(float now, float since) {
     origin_ = ImVec2(panel_x + px(28), px(64) + px(26));
     cursor_ = 0;
     list_->ChannelsSplit(2);
+    row_marked_ = false;
+    // A page with a big button: that one is selected first, not the small ones above it.
+    status_keeps_focus_ = wizard_ ? !move_prompt_ && wizard_step_ == 0 : page_ == Page::kPlay;
     list_->ChannelsSetCurrent(1);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_alpha);
     if (wizard_) {
@@ -1932,6 +2083,10 @@ void Launcher::panel(float now, float since) {
     const ImVec2 shape[] = {pa, ImVec2(pb.x, pa.y), ImVec2(pb.x, pb.y - corner), ImVec2(pb.x - corner, pb.y), ImVec2(pa.x, pb.y)};
     list_->AddConvexPolyFilled(shape, 5, fade(IM_COL32(12, 12, 14, 214)));
     list_->AddRectFilled(pa, ImVec2(pb.x, pa.y + px(3)), fade(kRed));
+    if (row_marked_) {
+        list_->AddRectFilled(row_a_, row_b_, fade(IM_COL32(255, 255, 255, 28)));
+        skewed_rect(list_, row_a_, ImVec2(row_a_.x + px(7), row_b_.y), fade(IM_COL32_WHITE), fade(IM_COL32_WHITE));
+    }
     list_->ChannelsMerge();
 }
 
@@ -1978,7 +2133,7 @@ void Launcher::leave_page_on_left() {
     if (left_pending_ && nav_id == left_from_) back_to_menu();
     left_pending_ = false;
     if (!menu_has_focus_ && !wizard_ && rebinding_ < 0 && !ImGui::IsAnyItemActive() &&
-        !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+        value_moved_frame_ != ImGui::GetFrameCount() && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
         key_pressed({ImGuiKey_LeftArrow, ImGuiKey_GamepadDpadLeft})) {
         left_pending_ = true;
         left_from_ = nav_id;
@@ -2024,10 +2179,11 @@ void Launcher::side_menu(float now, float since, const char* const* labels, cons
         } else if (key_pressed({ImGuiKey_RightArrow, ImGuiKey_GamepadDpadRight}) && !action_only(menu_cursor_)) {
             menu_has_focus_ = false;
             focus_panel_ = true;
+            entered_page_frame_ = ImGui::GetFrameCount();
         }
     }
-    // LB and RB (L1 and R1), Q and E: the previous and next page, from anywhere; on Settings they change its tab.
-    if (rebinding_ < 0 && page_ != Page::kSettings && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+    // LB and RB (L1 and R1), Q and E: the previous and next page, from anywhere; on Settings and Controls they change their tab.
+    if (rebinding_ < 0 && page_ != Page::kSettings && page_ != Page::kControls && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
         const bool previous = key_pressed({ImGuiKey_GamepadL1, ImGuiKey_Q, ImGuiKey_PageUp});
         const bool next = key_pressed({ImGuiKey_GamepadR1, ImGuiKey_E, ImGuiKey_PageDown});
         if (previous || next) {
@@ -2073,9 +2229,10 @@ void Launcher::side_menu(float now, float since, const char* const* labels, cons
         if (on > 0.01f) {
             // Brighter while the keys move through the menu; darker once they work on the page.
             const float lit = anim(ImGui::GetID(labels[i]) + 1, menu_has_focus_ || wizard_);
-            skewed_rect(list_, ImVec2(a.x + shift, a.y), b, mix(kRedDark, kRed, 0.5f + 0.5f * lit), kRedDark);
-            skewed_rect(list_, ImVec2(a.x - px(14) + shift, a.y), ImVec2(a.x - px(8) + shift, b.y),
-                        fade(kChrome, on * (0.4f + 0.6f * lit)), fade(kChrome, on * (0.4f + 0.6f * lit)));
+            skewed_rect(list_, ImVec2(a.x + shift, a.y), b, mix(IM_COL32(70, 12, 16, 255), kRed, lit), mix(IM_COL32(50, 8, 12, 255), kRedDark, lit));
+            skewed_rect(list_, ImVec2(a.x - px(14) + shift, a.y), ImVec2(a.x - px(6) + shift, b.y),
+                        fade(IM_COL32_WHITE, on * (0.25f + 0.75f * lit)), fade(IM_COL32_WHITE, on * (0.25f + 0.75f * lit)));
+            if (lit > 0.01f) list_->AddRectFilled(ImVec2(a.x + shift, b.y + px(3)), ImVec2(b.x, b.y + px(6)), fade(IM_COL32_WHITE, lit));
         }
         text(black_, px(36), ImVec2(a.x + px(22) + shift, a.y + px(7)), mix(hovered ? kInk : kDim, IM_COL32_WHITE, on), labels[i]);
         if (targets[i] == Page::kAbout && update_available()) {  // a newer version: a dot after the label
@@ -2130,7 +2287,7 @@ void Launcher::bottom_bar(float since) {
             page_since_ = static_cast<float>(ImGui::GetTime());
         }
     }
-    if (link(t.report, kInk)) report_problem();
+    if (crash_report_ready() && link(t.crash_link, kAmber)) report_problem();
     float right = screen.x - px(86);
     const bool pad = pad_connected_;
     const auto hint = [&](const char* key, ImU32 colour, const char* label) {
@@ -2154,10 +2311,10 @@ void Launcher::bottom_bar(float since) {
     // right). The controller's buttons when one is connected, else the keyboard's.
     if (in_game_) {
         hint(pad ? "Start" : "F1", kChrome, t.resume_hint);
-    } else if (!wizard_ && disc_) {
-        hint(pad ? "Start" : (italian() ? "Invio" : "Enter"), kChrome, t.play_hint);
+    } else if (!wizard_ && disc_ && pad) {  // on the keyboard Enter is already there, to select
+        hint("Start", kChrome, t.play_hint);
     }
-    if (!wizard_) hint(pad ? "LB RB" : "Q E", kChrome, page_ == Page::kSettings ? t.tabs_hint : t.pages_hint);
+    if (!wizard_) hint(pad ? "LB RB" : "Q E", kChrome, page_ == Page::kSettings || page_ == Page::kControls ? t.tabs_hint : t.pages_hint);
     hint(pad ? "B" : "Esc", IM_COL32(255, 90, 90, 255), t.back);
     hint(pad ? "A" : (italian() ? "Invio" : "Enter"), kGreen, t.select);
     hint(pad ? t.dpad : "\xE2\x86\x91\xE2\x86\x93\xE2\x86\x90\xE2\x86\x92", kChrome,
@@ -2273,14 +2430,55 @@ void Launcher::poll_gamepads(float now) {
     analog(ImGuiKey_GamepadRStickDown, pad.sThumbRY, -kDead, -32768);
 }
 
-// A thin red frame around the last ImGui widget while it is hovered or focused, like the launcher's own buttons;
-// ImGui's own navigation rectangle is off.
+// Only while keys or a controller move through the page: ImGui keeps the focus while the menu on the left has them, and
+// after a click, and two selections at once say neither.
+bool Launcher::nav_selected() const {
+    return ImGui::IsItemFocused() && (!menu_has_focus_ || wizard_) && ImGui::GetCurrentContext()->NavCursorVisible;
+}
+
+void Launcher::focus_frame(ImVec2 a, ImVec2 b) {
+    if (!nav_selected()) return;
+    row_marked_ = true;
+    row_a_ = a;
+    row_b_ = b;
+}
+
+int Launcher::value_step() {
+    if (!nav_selected() || rebinding_ >= 0 || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) return 0;
+    if (ImGui::GetFrameCount() == entered_page_frame_) return 0;  // the Right that came into the page, not a change
+    const auto held = [](ImGuiKey key) { return ImGui::IsKeyDown(key); };
+    const bool left = held(ImGuiKey_LeftArrow) || held(ImGuiKey_GamepadDpadLeft);
+    if (!left && !held(ImGuiKey_RightArrow) && !held(ImGuiKey_GamepadDpadRight)) return 0;
+    ImGui::NavMoveRequestCancel();  // the arrows belong to the value, not to the next widget
+    // Held at the far end, left stays on the row: only a new press leaves the page.
+    if (left && !ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false) && !ImGui::IsKeyPressed(ImGuiKey_GamepadDpadLeft, false)) {
+        value_moved_frame_ = ImGui::GetFrameCount();
+    }
+    if (menu_key_pressed({ImGuiKey_LeftArrow, ImGuiKey_GamepadDpadLeft})) return -1;
+    if (menu_key_pressed({ImGuiKey_RightArrow, ImGuiKey_GamepadDpadRight})) return 1;
+    return 0;
+}
+
+bool Launcher::step_slider(float* value, float minimum, float maximum) {
+    if (ImGui::IsItemActive()) return false;  // A took it: ImGui's own keys move it
+    const int step = value_step();
+    if (!step) return false;
+    const float next = std::clamp(*value + static_cast<float>(step) * (maximum - minimum) / 20.0f, minimum, maximum);
+    if (next == *value) return false;
+    *value = next;
+    value_moved_frame_ = ImGui::GetFrameCount();
+    return true;
+}
+
+// A thin red frame around the last ImGui widget while it is hovered, like the launcher's own buttons, and the row's mark
+// while it is selected; ImGui's own navigation rectangle is off.
 void Launcher::focus_ring() {
-    const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
-    if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    if (hot < 0.01f) return;
+    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride);  // the mouse, not the selection
+    const float hot = anim(ImGui::GetItemID(), hovered);
+    if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
-    list_->AddRect(ImVec2(a.x - px(2), a.y - px(2)), ImVec2(b.x + px(2), b.y + px(2)), fade(kRed, hot), 0, 0, px(1.5f));
+    if (hot >= 0.01f) list_->AddRect(ImVec2(a.x - px(2), a.y - px(2)), ImVec2(b.x + px(2), b.y + px(2)), fade(kRed, hot), 0, 0, px(1.5f));
+    focus_frame(a, b);
 }
 
 // Xbox-style glyphs for the controller's buttons, drawn with circles and rounded boxes (no textures): the face
@@ -2420,16 +2618,9 @@ void Launcher::page_paused() {
     const Texts& t = T();
     title(t.paused);
     lead(t.paused_lead);
+    if (GetModuleHandleW(L"RTSSHooks.dll")) status(false, t.rtss_heading, t.rtss_sub, nullptr, nullptr);
     status(pad_connected_, pad_connected_ ? t.pad_on : t.pad_off, pad_connected_ ? t.pad_on_sub : t.pad_off_sub, nullptr, nullptr);
-    char summary[160];
-    const int preset = quality_preset();
-    const char* quality = preset == 0 ? t.original : preset == 1 ? t.balanced : preset == 2 ? t.high : t.custom;
-    std::snprintf(summary, sizeof(summary), "%s \xC2\xB7 %.0f fps \xC2\xB7 %s %s", setting("widescreen") != 0 ? "16:9" : "4:3",
-                  setting("frame_rate") >= 60 ? 60.0f : 30.0f, t.quality, quality);
-    if (status(true, summary, setting("effects") != 0 ? t.effects_sub : t.effects, t.edit, "##edit")) {
-        page_ = Page::kSettings;
-        page_since_ = now_;
-    }
+    style_summary();
     if (restart_pending() && status(false, t.restart_needed, t.restart_lead, t.restart_now, "##restart", true)) {
         restart_game();
     }
@@ -2636,7 +2827,9 @@ std::optional<GameDisc> Launcher::run() {
     }
     nv2a_set_window_hook(window_hook);
     disc_ = find_game_disc(exe_directory_, disc_problem_);
-    wizard_ = !disc_;
+    move_prompt_ = old_data_in_use();
+    wizard_ = !disc_ || move_prompt_;
+    focus_panel_ = wizard_;  // the guide's button already selected: one press of A
     if (disc_) start_art_loader(disc_->path);
     if (setting("check_updates") != 0) update_thread_ = std::thread(check_for_updates, &updates_);
     char page[16] = {};  // MC3_LAUNCHER_PAGE=settings|controls|cheats|about: test screenshots

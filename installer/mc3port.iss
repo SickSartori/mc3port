@@ -1,7 +1,7 @@
 ﻿; Inno Setup 6.6+ script for mc3port. Built by tools/package.ps1:
 ;   ISCC /DAppVersion=<x.y.z> /DSourceDir=<staged files> /DOutputDir=dist installer\mc3port.iss
 ; Installs for the current user (no administrator rights), so the launcher's updates run without a prompt.
-; Settings, saves, log and shader cache live in %LOCALAPPDATA%\mc3port and survive uninstalling.
+; Settings, saves, logs and shader cache live in Documents\mc3port and survive uninstalling.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -68,15 +68,23 @@ italian.StartNow=Avvia mc3port
 [Tasks]
 Name: "desktopicon"; Description: "{cm:DesktopShortcut}"
 
+[InstallDelete]
+; Up to 0.3.0 the documents were next to mc3.exe; they are in docs now.
+Type: files; Name: "{app}\README.md"
+Type: files; Name: "{app}\CHANGELOG.md"
+Type: files; Name: "{app}\LICENSE"
+Type: files; Name: "{app}\THIRD_PARTY.md"
+Type: filesandordirs; Name: "{app}\licenses"
+
 [Files]
 Source: "{#SourceDir}\mc3.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\mc3runtime.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
-Source: "{#SourceDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\THIRD_PARTY.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourceDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "{#SourceDir}\docs\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#SourceDir}\docs\CHANGELOG.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#SourceDir}\docs\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#SourceDir}\docs\THIRD_PARTY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#SourceDir}\docs\licenses\*"; DestDir: "{app}\docs\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{cm:ShortcutName}"; Filename: "{app}\mc3.exe"

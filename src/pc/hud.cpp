@@ -33,6 +33,8 @@ struct Player {
     Dial speed, rpm;
     int gear = 0;  // 1-6; 0 none seen, -1 reverse, -2 neutral, -3 a cell not known yet
     float special = -1;  // the special ability's charge, 0 to 1; -1 none seen
+    float nitro = -1;    // what is left of the nitrous, 0 to 1; -1 none seen (a car without it)
+    float nitro_colour[3] = {};
 };
 struct Reading {
     std::vector<Dial> faces;  // in draw order, with their textures
@@ -50,6 +52,11 @@ struct Reading {
         float x, y;
     };
     std::vector<Segment> segments;
+    struct Nitro {
+        float left, right, bottom, height;
+        float colour[3];
+    };
+    std::vector<Nitro> nitros;
     std::vector<std::pair<uint32_t, float>> early_needles;  // (texture, angle): drawn before their face
 };
 Reading g_reading;
@@ -96,6 +103,12 @@ int gear_of_cell(float u, float v) {
     return -3;
 }
 
+// The nitrous gauge: one quad up and to the right of the speedometer (77,-47 and 80 x 40 on a face of 108), whose top
+// comes down as the nitrous burns, to a height of 0, still drawn. Only a car with nitrous has it.
+constexpr float kNitroLeft = 77.0f / 108, kNitroBottom = -7.0f / 108, kNitroWidth = 80.0f / 108, kNitroHeight = 40.0f / 108;
+float g_nitro_full = 0;          // the tallest seen since the dials last showed
+uint32_t g_nitro_texture = 0;    // its texture: for the log, other pieces on it
+
 // One frame's reading, complete: its players replace the last ones (a reading without a speedometer and its needle,
 // a frame cut short, changes nothing).
 void publish(Reading& r) {
@@ -134,6 +147,14 @@ void publish(Reading& r) {
             p->special = arc.filled ? std::clamp((arc.fill_bottom - arc.fill_top) / span, 0.0f, 1.0f) : 0;
         }
     }
+    for (const Reading::Nitro& nitro : r.nitros) {
+        if (Player* p = nearest((nitro.left + nitro.right) / 2, nitro.bottom)) {
+            // Relative to the fullest seen on this car: upgrades give it more, and 40 lines are only what was measured.
+            g_nitro_full = std::max(g_nitro_full, nitro.height);
+            p->nitro = g_nitro_full > 0 ? std::clamp(nitro.height / g_nitro_full, 0.0f, 1.0f) : 0;
+            std::copy(nitro.colour, nitro.colour + 3, p->nitro_colour);
+        }
+    }
     // A reading whose largest dial is much smaller than the last speedometer missed the speedometer (its rev
     // counter would pass for one): the last reading stays.
     const bool smaller = !g_players.empty() && largest < g_players.front().speed.size() * 0.8f;
@@ -160,6 +181,9 @@ void publish(Reading& r) {
         }
         g_boxes.insert(g_boxes.end(), r.gear_circles.begin(), r.gear_circles.end());
         for (const Reading::Arc& arc : r.arcs) g_boxes.push_back({arc.left, arc.top, arc.right, arc.bottom});
+        for (const Reading::Nitro& nitro : r.nitros) {
+            g_boxes.push_back({nitro.left, nitro.bottom - largest * kNitroHeight, nitro.right, nitro.bottom});
+        }
         if (!r.segments.empty()) {
             HudBox bar{1e9f, 1e9f, -1e9f, -1e9f};
             for (const Reading::Segment& s : r.segments) {
@@ -230,10 +254,31 @@ bool hud_take_quad(const HudQuad& q) {
             }
         }
         if (starts_next_frame(r, q.texture, left, top)) publish(r);
+        for (const Player& p : g_players) {
+            const float size = p.speed.size();
+            if (std::fabs(left - p.speed.left - kNitroLeft * size) < 0.05f * size &&
+                std::fabs(bottom - p.speed.top - kNitroBottom * size) < 0.05f * size &&
+                std::fabs(width - kNitroWidth * size) < 0.05f * size) {
+                g_nitro_texture = q.texture;
+                r.nitros.push_back({left, right, bottom, height, {q.colour[0], q.colour[1], q.colour[2]}});
+                return hide;
+            }
+        }
         if (height > 3 * width && width >= 20) {
             r.arcs.push_back({q.texture, left, right, top, bottom, bottom, bottom, false});
             g_presents_without = 0;
             return hide;
+        }
+        // shortcut: only the one gauge piece is known, from a car with little nitrous. Upgraded cars may draw others:
+        // they stay where the game puts them, and their first shapes go to the log to be recognised.
+        if (q.texture == g_nitro_texture && !g_players.empty()) {
+            static int reports = 12;
+            if (reports > 0) {
+                --reports;
+                const Dial& speed = g_players.front().speed;
+                log_line("hud: another piece on the nitrous texture: %.0fx%.0f at %.0f,%.0f, colour %.2f %.2f %.2f, uv %.3f,%.3f-%.3f,%.3f",
+                         width, height, left - speed.left, top - speed.top, q.colour[0], q.colour[1], q.colour[2], u0, v0, u1, v1);
+            }
         }
         // The gear: its digit, one cell of an atlas (0.164 x 0.148 of the texture), inside the circle just drawn on
         // the same texture. Without the circle it is a letter of some text, not the gear.
@@ -320,6 +365,7 @@ void hud_frame_shown() {
     if (hud_reading() && ++g_presents_without > 30 && !g_players.empty()) {
         g_players.clear();
         g_boxes.clear();
+        g_nitro_full = 0;  // perhaps another car
         log_line("hud: no dials for 30 presents, the HUD is hidden");
     }
 }
@@ -439,6 +485,12 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
             char digit[4];
             if (!text) std::snprintf(digit, sizeof(digit), "%d", p.gear), text = digit;
             centred_text(list, fonts.numbers, 34 * s, ImVec2(c.x - 1 * s, c.y), colour(17, 17, 17), text);
+        }
+        if (p.nitro >= 0) {  // the nitrous: an arc outside the speedometer, upper right, between rev counter and gear
+            const auto channel = [&](int i) { return static_cast<int>(std::clamp(p.nitro_colour[i], 0.0f, 1.0f) * 255); };
+            const float r = 127 * s;
+            arc(list, speed_centre, r, 18, 50, colour(255, 255, 255, 0.16f), 5 * s);
+            arc(list, speed_centre, r, 18, 18 + 32 * p.nitro, colour(channel(0), channel(1), channel(2)), 5 * s);
         }
         // The game's red bar under the speedometer is not redrawn: it lights only at the rev limiter, which the rev
         // counter's red zone already shows.

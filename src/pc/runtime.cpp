@@ -24,6 +24,7 @@
 
 #include "core/xbe.h"
 #include "core/xdvdfs.h"
+#include "pc/crash_report.h"
 #include "pc/exec_memory.h"
 #include "pc/dsound_hle.h"
 #include "pc/fs_patch.h"
@@ -257,7 +258,7 @@ std::string describe_code_address(uint32_t address) {
 void write_crash_dump(EXCEPTION_POINTERS* info) {
     static volatile long written = 0;
     if (InterlockedExchange(&written, 1)) return;
-    const std::filesystem::path path = data_directory() / "mc3port-crash.dmp";
+    const std::filesystem::path path = log_directory() / "mc3port-crash.dmp";
     HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) return;
     MINIDUMP_EXCEPTION_INFORMATION exception{GetCurrentThreadId(), info, FALSE};
@@ -562,8 +563,25 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
             CloseHandle(old);
         }
     }
-    log_open(data_directory() / "mc3port.log");
+    {  // Older versions kept these in the data folder itself.
+        std::error_code ignored;
+        std::filesystem::create_directories(log_directory(), ignored);
+        for (const char* name : {"mc3port.log", "mc3port-crash.dmp", "mc3port-crash-report.zip"}) {
+            std::filesystem::rename(data_directory() / name, log_directory() / name, ignored);
+        }
+    }
+    const bool crash_report = make_crash_report();  // before this start moves the log away
+    log_open(log_directory() / "mc3port.log");
+    if (crash_report) log_line("crash report made: %ls", crash_report_path().c_str());
+    // Started by RecompLauncher (recomplauncher.json in the release): it installs updates itself, and in its Big
+    // Picture mode the player is on a controller in front of a full screen. Set before the settings read MC3_*.
+    if (GetEnvironmentVariableW(L"RECOMPLAUNCHER", nullptr, 0)) SetEnvironmentVariableW(L"MC3_CHECK_UPDATES", L"0");
+    wchar_t launcher_mode[16] = {};
+    if (GetEnvironmentVariableW(L"RECOMPLAUNCHER_MODE", launcher_mode, 16) && std::wcscmp(launcher_mode, L"bigpicture") == 0) {
+        SetEnvironmentVariableW(L"MC3_FULLSCREEN", L"1");
+    }
     settings_load(data_directory() / "mc3port.ini");
+    if (!data_folder_note().empty()) log_line("files: %s", data_folder_note().c_str());
     log_line("files: program in %s, data in %s%s", reinterpret_cast<const char*>(exe_directory.u8string().c_str()),
              reinterpret_cast<const char*>(data_directory().u8string().c_str()), portable_mode() ? " (portable)" : "");
     log_host();
@@ -586,7 +604,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
         skip_launcher ? open_game_disc(exe_directory) : run_launcher(nv2a_open_window(), exe_directory);
     if (!disc) {
         log_line("no game disc: exiting");
-        ExitProcess(0);
+        ExitProcess(command_line_disc().empty() ? 0 : 2);  // 2: the disc given was refused (recomplauncher.json explains it)
     }
     log_line("disc image: %s", reinterpret_cast<const char*>(disc->path.u8string().c_str()));
     settings_freeze();  // from here on, keys the game reads once change only for the next start

@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "pc/direction_pace.h"
 #include "pc/exec_memory.h"
 #include "pc/keyboard_bindings.h"
 #include "pc/launcher_ui.h"
@@ -36,8 +37,7 @@ constexpr uint32_t kErrorDeviceNotConnected = 1167;
 // Xbox XINPUT_GAMEPAD: digital buttons (same bits as XInput's low byte), then 8 analog buttons.
 enum : uint32_t { kAnalogA, kAnalogB, kAnalogX, kAnalogY, kAnalogBlack, kAnalogWhite, kAnalogLeftTrigger,
                   kAnalogRightTrigger };
-constexpr uint16_t kDpadUp = 0x01, kDpadDown = 0x02, kDpadLeft = 0x04, kDpadRight = 0x08, kStart = 0x10,
-                   kBack = 0x20, kLeftThumb = 0x40;
+constexpr uint16_t kStart = 0x10, kBack = 0x20, kLeftThumb = 0x40;
 
 #pragma pack(push, 1)
 struct XboxGamepad {
@@ -374,6 +374,16 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
     return true;
 }
 
+bool g_in_garage = false;  // pace_directions (direction_pace.h) applies only there
+DirectionPace g_pace[kPorts];
+
+void pace_garage_directions(uint32_t index, XboxGamepad& pad) {
+    uint16_t buttons = pad.buttons;  // packed: no references to its fields
+    int16_t thumb_lx = pad.thumb_lx, thumb_ly = pad.thumb_ly;
+    pace_directions(g_pace[index], GetTickCount64(), buttons, thumb_lx, thumb_ly);
+    pad.buttons = buttons, pad.thumb_lx = thumb_lx, pad.thumb_ly = thumb_ly;
+}
+
 uint32_t host_mask() {
     uint32_t mask = 0;
     for (uint32_t i = 0; i < kPorts; ++i) {
@@ -445,6 +455,7 @@ uint32_t __stdcall XInputGetState(uint32_t handle, XboxInputState* state) {
     Port* port = port_of(handle);
     XboxGamepad pad{};
     if (!port || !read_host(port->index, pad)) return kErrorDeviceNotConnected;
+    if (g_in_garage) pace_garage_directions(port->index, pad);
     if (std::memcmp(&pad, &port->last, sizeof(pad)) != 0) {
         port->last = pad;
         ++port->packet_number;
@@ -504,10 +515,18 @@ const Redirect kRedirects[] = {
 }  // namespace
 
 void input_note_file_opened(const std::string& path) {
-    if (g_events.empty()) return;
     std::string lower = path;
     for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     std::lock_guard<std::mutex> lock(g_mutex);
+    // The game's own screens tell where it is: the garage's menus, until the transition out or a loading screen.
+    if (lower.find("flash\\garage.xbck") != std::string::npos) {
+        if (!g_in_garage) log_line("input: in the garage, one step per press");
+        g_in_garage = true;
+    } else if (g_in_garage && (lower.find("flash\\transition") != std::string::npos ||
+                               lower.find("flash\\loadscreen") != std::string::npos)) {
+        g_in_garage = false;
+        log_line("input: out of the garage");
+    }
     const ULONGLONG now = GetTickCount64() - g_start_ms;
     for (auto& [name, times] : g_events) {
         if (lower.find(name) != std::string::npos) times.push_back(now);

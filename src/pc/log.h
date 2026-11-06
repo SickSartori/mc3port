@@ -5,7 +5,9 @@
 namespace mc3::pc {
 
 // Lines go to stderr and to the log file, flushed immediately: the process may die on the next instruction.
+// The two runs before stay next to it: mc3port.log becomes mc3port.1.log, that one mc3port.2.log.
 void log_open(const std::filesystem::path& path);
+void rotate_log(const std::filesystem::path& path);
 void log_line(const char* format, ...);
 
 // Ends the process at once, every thread with it, like the Xbox's power button. ExitProcess would run the DLLs'

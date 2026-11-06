@@ -6,7 +6,8 @@ namespace mc3::pc {
 
 // Where the time goes, logged every 10 s from the GPU thread. Always: the game's frames per second, how many
 // vertical blanks each one took, and how busy the game's core and the GPU thread were. With MC3_PROFILE=1 also
-// every named thread's CPU time and what it waited for, and the GPU registers the game reached through exceptions.
+// every named thread's CPU time and what it waited for, the GPU registers the game reached through exceptions, and a
+// line for each frame that missed its time, with where the time since the frame before went.
 
 // Time a thread spends outside its own work, measured by the thread itself.
 enum class ProfileTime : uint8_t {
@@ -18,6 +19,9 @@ enum class ProfileTime : uint8_t {
     trap_waits,     // GPU thread: a software method waits for the CPU's interrupt handler
     flip_waits,     // GPU thread: FLIP_STALL waits for the vertical blank
     access_waits,   // GPU thread: PGRAPH's FIFO access is off
+    shader_compile, // D3DCompile, on the thread that needs the shader
+    texture_upload, // decoding a texture and creating it
+    file_reads,     // game threads: blocked reading the disc image
     count
 };
 

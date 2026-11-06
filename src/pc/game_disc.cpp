@@ -20,6 +20,9 @@ namespace {
 // SHA-256 of default.xbe on Midnight Club 3: DUB Edition Remix (Europe) (En,Fr,De,Es,It): the build the port's
 // code patches (hle_patches.cpp, dsound_hle.cpp, input_hle.cpp) are made for.
 constexpr char kSupportedXbe[] = "29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09";
+// SHA-256 of all its sections' raw data, in header order: the same with another header or certificate (region-free or
+// re-signed dumps). The code and data the patches check are what count.
+constexpr char kSupportedCode[] = "7840006b959bf58b2a19f6b3d79e77dcdacf75a92b478ea0d341b235b65f2344";
 constexpr char kSupportedName[] = "Midnight Club 3: DUB Edition Remix, Xbox, Europe (En,Fr,De,Es,It)";
 
 // Dialog texts in English, or in Italian on an Italian Windows.
@@ -52,6 +55,15 @@ std::string sha256(const std::vector<uint8_t>& data) {
     return hex;
 }
 
+std::string code_hash(const Xbe& xbe) {
+    std::vector<uint8_t> code;
+    for (const XbeSection& section : xbe.sections()) {  // Xbe::parse checked that each lies inside the file
+        const auto start = xbe.file().begin() + section.raw_address;
+        code.insert(code.end(), start, start + section.raw_size);
+    }
+    return sha256(code);
+}
+
 }  // namespace
 
 std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::string& problem) {
@@ -73,7 +85,11 @@ std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::
     }
     log_line("disc: %s: '%s', title id %08X, default.xbe SHA-256 %s", utf8(path).c_str(), xbe->title().c_str(),
              xbe->title_id(), hash.c_str());
-    if (hash != kSupportedXbe) {
+    const std::string code = hash == kSupportedXbe ? kSupportedCode : code_hash(*xbe);
+    if (hash != kSupportedXbe) log_line("disc: code SHA-256 %s", code.c_str());
+    if (code == kSupportedCode) {
+        if (hash != kSupportedXbe) log_line("disc: its header differs from the known one, its code is the supported one");
+    } else {
         if (GetEnvironmentVariableW(L"MC3_ANY_VERSION", nullptr, 0)) {
             log_line("disc: not the supported version; MC3_ANY_VERSION is set, trying it anyway");
         } else {

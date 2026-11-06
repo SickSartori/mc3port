@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <iterator>
 #include <cstdio>
@@ -15,6 +16,7 @@
 #include <thread>
 #include <vector>
 
+#include "pc/audio_gains.h"
 #include "pc/game_pause.h"
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
@@ -33,8 +35,8 @@ constexpr uint16_t kFormatPcm = 1;
 constexpr uint16_t kFormatXboxAdpcm = 0x69;
 constexpr uint32_t kAdpcmBlockBytes = 36;  // per channel
 constexpr uint32_t kAdpcmBlockFrames = 64;
-constexpr int32_t kSilence = -10000;
 constexpr uint32_t kPacketFlushed = 0x80004004;
+constexpr float kFullVolumeGain = 0.9f;
 
 std::mutex g_mutex;
 std::vector<Voice*> g_voices;
@@ -48,6 +50,8 @@ struct MixStatistics {
     uint32_t most_voices = 0;
     uint32_t completed_packets = 0;
     uint32_t limited_samples = 0;  // frames the limiter turned down
+    uint32_t underruns = 0;        // times XAudio2 ran out of chunks: a gap in the sound
+    float longest_lock_wait = 0;   // ms mix() waited for the voices' lock held by game code
 };
 MixStatistics g_statistics;
 
@@ -177,42 +181,7 @@ float voice_sample(Voice& voice, const uint8_t* data, uint32_t size, uint32_t fr
     return voice.decoded[(frame % kAdpcmBlockFrames) * channels + channel] / 32768.0f;
 }
 
-float decibels_to_gain(int32_t hundredths) {
-    if (hundredths <= kSilence) return 0;
-    return std::pow(10.0f, static_cast<float>(hundredths) / 2000.0f);
-}
-
-// Left/right gain of each source channel, from the voice volume and its mix bins: the 5.1 speaker bins folded to
-// stereo (front 1, centre and back 0.5 per side; LFE and effect sends, whose effects are not emulated, left out).
-// Bink and XACT send each channel to all six speaker bins at full level; the plain sum was 2.7 times too loud.
-void channel_gains(const Voice& voice, float gains[2][2]) {
-    std::memset(gains, 0, sizeof(float) * 4);
-    const uint32_t channels = std::clamp<uint32_t>(voice.format.channels, 1, 2);
-    if (voice.mix_bin_count == 0) {
-        const float gain = decibels_to_gain(voice.volume);
-        if (channels == 1) {
-            gains[0][0] = gains[0][1] = gain;
-        } else {
-            gains[0][0] = gains[1][1] = gain;
-        }
-        return;
-    }
-    for (int32_t i = 0; i < voice.mix_bin_count; ++i) {
-        const uint32_t bin = voice.mix_bins[i];
-        const uint32_t channel = static_cast<uint32_t>(i) % channels;
-        const float gain = decibels_to_gain(voice.volume + (bin < 32 ? voice.mix_bin_volumes[bin] : 0));
-        switch (bin) {
-            case 0: gains[channel][0] += gain; break;                                      // front left
-            case 1: gains[channel][1] += gain; break;                                      // front right
-            case 2: gains[channel][0] += gain * 0.5f; gains[channel][1] += gain * 0.5f; break;  // centre
-            case 4: gains[channel][0] += gain * 0.5f; break;                               // back left
-            case 5: gains[channel][1] += gain * 0.5f; break;                               // back right
-            default: break;  // 3 LFE, 6+ effect sends
-        }
-    }
-}
-
-double step_for(const Voice& voice) { return std::pow(2.0, voice.pitch / 4096.0); }
+double step_for(const Voice& voice) { return std::pow(2.0, effective_pitch(voice) / 4096.0); }
 
 // One output frame of the voice's DLS2 low-pass (Chamberlin state-variable filter) on one source channel.
 float filtered(Voice& voice, uint32_t channel, float sample) {
@@ -274,6 +243,7 @@ float advance_envelope(Voice& voice, uint32_t frames) {
 
 // The release has faded the voice out: stop it, as the APU does at the end of the envelope.
 void finish_release(Voice& voice) {
+    trace_voice(voice, "released", 0);
     voice.envelope_stage = EnvelopeStage::kOff;
     voice.envelope_level = 1;
     voice.playing = false;
@@ -331,16 +301,25 @@ void mix_buffer_voice(Voice& voice, float* out, uint32_t frames) {
     const double step = step_for(voice);
 
     for (uint32_t n = 0; n < frames; ++n) {
-        // Linear interpolation between this frame and the next one (which wraps to the loop start): picking the
-        // nearest frame aliases badly whenever the pitch is not exactly 1 (engines change it all the time).
+        // Catmull-Rom over four frames (wrapping to the loop start). Effects are mostly 18 kHz loops played at 48 kHz:
+        // linear interpolation left copies of their sound between 9 and 16 kHz (2-4 dB more there, measured at full
+        // throttle). Streams stay linear: they are music at about the output rate.
         const uint32_t frame = static_cast<uint32_t>(voice.position);
         const float fraction = static_cast<float>(voice.position - frame);
         const uint32_t end = voice.looping ? loop_end : region_frames;
-        const uint32_t next = frame + 1 < end ? frame + 1 : (voice.looping ? loop_start : frame);
+        const auto after = [&](uint32_t f) { return f + 1 < end ? f + 1 : (voice.looping ? loop_start : f); };
+        const uint32_t before = voice.looping && frame == loop_start ? loop_end - 1 : (frame > 0 ? frame - 1 : 0);
+        const uint32_t next = after(frame), last = after(next);
         for (uint32_t channel = 0; channel < channels; ++channel) {
-            const float a = voice_sample(voice, region, region_bytes, frame, channel);
-            const float b = fraction > 0 ? voice_sample(voice, region, region_bytes, next, channel) : a;
-            const float sample = filtered(voice, channel, a + (b - a) * fraction);
+            float value = voice_sample(voice, region, region_bytes, frame, channel);
+            if (fraction > 0) {
+                const float p0 = voice_sample(voice, region, region_bytes, before, channel), p1 = value;
+                const float p2 = voice_sample(voice, region, region_bytes, next, channel);
+                const float p3 = voice_sample(voice, region, region_bytes, last, channel);
+                const float t = fraction;
+                value = p1 + 0.5f * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+            }
+            const float sample = filtered(voice, channel, value);
             out[n * 2] += sample * gains.at(channel, 0, n);
             out[n * 2 + 1] += sample * gains.at(channel, 1, n);
         }
@@ -350,6 +329,7 @@ void mix_buffer_voice(Voice& voice, float* out, uint32_t frames) {
                 voice.position = loop_start + std::fmod(voice.position - end, static_cast<double>(loop_frames));
             } else {
                 voice.position = region_frames;
+                trace_voice(voice, "ended", 0);
                 voice.playing = false;
                 return;
             }
@@ -369,22 +349,35 @@ void mix_stream_voice(Voice& voice, float* out, uint32_t frames) {
         const uint32_t frame = current.consumed_frames;
         if (frame < packet_frames) {
             const float fraction = static_cast<float>(voice.stream_fraction);
-            for (uint32_t channel = 0; channel < channels; ++channel) {
-                const float a = voice_sample(voice, data, current.packet.max_size, frame, channel);
-                // The next frame, possibly the first of the next packet.
-                float b = a;
-                if (fraction > 0) {
-                    if (frame + 1 < packet_frames) {
-                        b = voice_sample(voice, data, current.packet.max_size, frame + 1, channel);
-                    } else if (voice.packets.size() > 1 && voice.format.format_tag != kFormatXboxAdpcm) {
-                        const StreamPacket& following = voice.packets[1];
-                        b = voice_sample(voice, guest<const uint8_t>(following.packet.buffer),
-                                         following.packet.max_size, 0, channel);
-                    }
+            // A later frame, possibly in the next packet. PCM only there: ADPCM's cache holds one block at a time.
+            const auto later = [&](uint32_t ahead, uint32_t channel, float otherwise) {
+                if (frame + ahead < packet_frames) {
+                    return voice_sample(voice, data, current.packet.max_size, frame + ahead, channel);
                 }
-                const float sample = filtered(voice, channel, a + (b - a) * fraction);
+                if (voice.packets.size() > 1 && voice.format.format_tag != kFormatXboxAdpcm) {
+                    const StreamPacket& following = voice.packets[1];
+                    return voice_sample(voice, guest<const uint8_t>(following.packet.buffer), following.packet.max_size,
+                                        frame + ahead - packet_frames, channel);
+                }
+                return otherwise;
+            };
+            for (uint32_t channel = 0; channel < channels; ++channel) {
+                const float p1 = voice_sample(voice, data, current.packet.max_size, frame, channel);
+                float value = p1;
+                if (fraction > 0) {
+                    // Catmull-Rom, as for buffers: linear interpolation took 3-4 dB off the music's top octave.
+                    const float p0 = voice.stream_previous[channel], p2 = later(1, channel, p1), p3 = later(2, channel, p2);
+                    const float t = fraction;
+                    value = p1 + 0.5f * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+                }
+                const float sample = filtered(voice, channel, value);
                 out[n * 2] += sample * gains.at(channel, 0, n);
                 out[n * 2 + 1] += sample * gains.at(channel, 1, n);
+            }
+            if (voice.stream_fraction + step >= 1) {
+                for (uint32_t channel = 0; channel < channels; ++channel) {
+                    voice.stream_previous[channel] = voice_sample(voice, data, current.packet.max_size, frame, channel);
+                }
             }
         }
         voice.stream_fraction += step;
@@ -405,7 +398,11 @@ void mix_stream_voice(Voice& voice, float* out, uint32_t frames) {
 
 void mix(float* out, uint32_t frames) {
     std::memset(out, 0, frames * 2 * sizeof(float));
+    const auto before_lock = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lock(g_mutex);
+    g_statistics.longest_lock_wait = std::max(
+        g_statistics.longest_lock_wait,
+        std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - before_lock).count());
     uint32_t active = 0;
     for (Voice* voice : g_voices) {
         if (voice->paused) {
@@ -426,11 +423,10 @@ void mix(float* out, uint32_t frames) {
         }
         if (voice->envelope_stage == EnvelopeStage::kDone) finish_release(*voice);
     }
-    // Master level (the Xbox keeps headroom too), then the look-ahead limiter (Limiter) for the moments when many
-    // voices add up past full scale.
-    // 0.3 at full volume: at 0.4 the limiter was turning the sound down three quarters of the time while driving.
+    // Master level, then the look-ahead limiter (Limiter) for the moments when many voices add up past full scale.
+    // With headroom and mix-in voices applied the game's own levels leave room, so little is taken off here.
     // Read every chunk: the in-game menu changes it.
-    const float master_gain = 0.3f * std::clamp(setting("volume"), 0.0f, 100.0f) / 100.0f;
+    const float master_gain = kFullVolumeGain * std::clamp(setting("volume"), 0.0f, 100.0f) / 100.0f;
     for (uint32_t i = 0; i < frames * 2; ++i) out[i] *= master_gain;
     g_statistics.limited_samples += g_limiter.process(out, frames);
     float peak = 0;
@@ -442,9 +438,9 @@ void mix(float* out, uint32_t frames) {
     statistics.most_voices = std::max(statistics.most_voices, active);
     if (statistics.chunks == 1000) {  // every 10 s
         log_line("audio: last 10 s: %u%% audible, peak %.2f, %u frames turned down, up to %u voices, %u stream packets "
-                 "completed, %zu voices",
+                 "completed, %zu voices, %u gaps, lock waited up to %.1f ms",
                  statistics.audible_chunks / 10, statistics.peak, statistics.limited_samples, statistics.most_voices,
-                 statistics.completed_packets, g_voices.size());
+                 statistics.completed_packets, g_voices.size(), statistics.underruns, statistics.longest_lock_wait);
         statistics = MixStatistics{};
         // MC3_AUDIO_VOICES=1: which voices are playing and how loud (for overlaps).
         static const bool list_voices = GetEnvironmentVariableA("MC3_AUDIO_VOICES", nullptr, 0) != 0;
@@ -462,13 +458,14 @@ void mix(float* out, uint32_t frames) {
                     bins += entry;
                 }
                 log_line("  voice %p %s flags %08X fmt %X/%u Hz/%u bit ch %u vol %d pitch %d loop %d size %u region "
-                         "%u+%u loop %u+%u pos %.0f age %.1f s gain L %.2f R %.2f bins%s",
+                         "%u+%u loop %u+%u pos %.0f age %.1f s gain L %.3f R %.3f bins%s | room %d out %p",
                          static_cast<const void*>(voice), voice->is_stream ? "stream" : "buffer", voice->create_flags,
                          voice->format.format_tag, voice->format.samples_per_second, voice->format.bits_per_sample,
-                         voice->format.channels, voice->volume, voice->pitch, voice->looping, voice->size,
+                         voice->format.channels, voice->volume, effective_pitch(*voice), voice->looping, voice->size,
                          voice->play_start, voice->play_length, voice->loop_start, voice->loop_length,
                          voice->position, voice->active_chunks / 100.0, gains[0][0] + gains[1][0],
-                         gains[0][1] + gains[1][1], bins.c_str());
+                         gains[0][1] + gains[1][1], bins.c_str(), voice->headroom,
+                         static_cast<const void*>(voice->output));
             }
         }
     }
@@ -564,9 +561,12 @@ void output_thread(HANDLE ready, bool* ok) {
     std::vector<std::array<float, kFramesPerChunk * 2>> ring(kChunkRing);
     uint32_t next = 0;
     WavDump dump;
+    bool primed = false;
     for (;;) {
         XAUDIO2_VOICE_STATE state;
         source->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
+        if (primed && state.BuffersQueued == 0) ++g_statistics.underruns;  // the device played silence meanwhile
+        primed = true;
         while (state.BuffersQueued < kQueuedChunks) {
             auto& chunk = ring[next];
             next = (next + 1) % kChunkRing;
@@ -589,6 +589,18 @@ void output_thread(HANDLE ready, bool* ok) {
 }  // namespace
 
 std::mutex& audio_lock() { return g_mutex; }
+
+void trace_voice(const Voice& voice, const char* what, uint32_t flags) {
+    static const bool enabled = GetEnvironmentVariableA("MC3_AUDIO_TRACE", nullptr, 0) != 0;
+    static uint32_t logged = 0;
+    if (!enabled || logged++ >= 4000) return;
+    log_line("audio: t %.2f %s %x %s %p data %p fmt %u/%u Hz ch %u vol %d pitch %d loop %u region %u+%u pos %.0f "
+             "age %.2f s bins %d",
+             GetTickCount64() / 1000.0, what, flags, voice.is_stream ? "stream" : "buffer", static_cast<const void*>(&voice),
+             static_cast<const void*>(voice.data), voice.format.format_tag, voice.format.samples_per_second,
+             voice.format.channels, voice.volume, voice.pitch, voice.looping, voice.play_start, voice.play_length,
+             voice.position, voice.active_chunks / 100.0, voice.mix_bin_count);
+}
 
 bool audio_output_present() {
     // COM may already be up on this thread, in either model: S_FALSE and RPC_E_CHANGED_MODE both leave it usable.
@@ -626,6 +638,9 @@ Voice* create_voice(bool is_stream) {
 
 void destroy_voice(Voice* voice) {
     g_voices.erase(std::remove(g_voices.begin(), g_voices.end(), voice), g_voices.end());
+    for (Voice* other : g_voices) {
+        if (other->output == voice) other->output = nullptr;
+    }
     delete voice;
 }
 

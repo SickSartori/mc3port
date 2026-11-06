@@ -186,11 +186,20 @@ uint32_t configured_language() {
     }
 }
 
+// Minutes from local time to UTC, as Windows has them now: the game shows its saves' times with this.
+uint32_t timezone_bias() {
+    TIME_ZONE_INFORMATION zone{};
+    const DWORD state = GetTimeZoneInformation(&zone);
+    if (state == TIME_ZONE_ID_INVALID) return 0;
+    const LONG extra = state == TIME_ZONE_ID_DAYLIGHT ? zone.DaylightBias : state == TIME_ZONE_ID_STANDARD ? zone.StandardBias : 0;
+    return static_cast<uint32_t>(zone.Bias + extra);
+}
+
 NTSTATUS __stdcall ExQueryNonVolatileSetting(uint32_t value_index, uint32_t* type, void* value, uint32_t value_length,
                                              uint32_t* result_length) {
     uint32_t dword = 0;
     switch (value_index) {
-        case 0x0: dword = 0; break;                       // XC_TIMEZONE_BIAS
+        case 0x0: dword = timezone_bias(); break;         // XC_TIMEZONE_BIAS
         case 0x7: dword = configured_language(); break;   // XC_LANGUAGE
         case 0x8: dword = video_flags(); break;           // XC_VIDEO_FLAGS
         case 0x9: dword = 0; break;                       // XC_AUDIO_FLAGS: stereo

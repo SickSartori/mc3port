@@ -6,6 +6,7 @@
 #include <d3d11.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <string>
 #include <vector>
@@ -110,6 +111,8 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
 bool renderer_over_shown_scene(const SurfaceState& surface);
 // Whether renderer_draw_fixed_function is available (shader compiled, buffers usable).
 bool renderer_has_fixed_function();
+// A PNG or JPEG as BGRA, on any thread (the launcher's logo too).
+bool renderer_load_picture(const std::filesystem::path& file, std::vector<uint8_t>& bgra, UINT& width, UINT& height);
 // The same draw with the fixed-function transform on the GPU: `vertex_data` holds the guest vertex bytes (4-byte
 // multiple) the shader decodes through constants.attribute_layout, `indices` the triangle list of vertex numbers.
 void renderer_draw_fixed_function(const SurfaceState& surface, const DrawState& state,

@@ -7,11 +7,15 @@
 // XAPI at startup through IoCreateSymbolicLink.
 
 #include <windows.h>
+#include <intrin.h>
 #include <malloc.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <cstdarg>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -24,7 +28,9 @@
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
+#include "pc/profile.h"
 #include "pc/input_hle.h"
+#include "pc/paths.h"
 #include "pc/physical_memory.h"
 #include "pc/settings.h"
 
@@ -152,6 +158,55 @@ namespace {
 
 const XdvdfsImage* g_disc = nullptr;
 fs::path g_host_root;
+
+bool tracing_saves() {
+    static const bool on = GetEnvironmentVariableW(L"MC3_TRACE_SAVES", nullptr, 0) != 0;
+    return on;
+}
+
+// MC3_TRACE_SAVES=1: what the game asks the file system and what it gets, with the game's address that asked, to compare
+// a run that stops at "Checking for saved files" with one that goes on. Up to 3000 lines.
+void trace_saves(void* caller, const char* format, ...) {
+    static std::atomic<int> lines{0};
+    if (!tracing_saves() || lines.fetch_add(1) >= 3000) return;
+    char text[400];
+    va_list args;
+    va_start(args, format);
+    std::vsnprintf(text, sizeof(text), format, args);
+    va_end(args);
+    log_line("saves: from %08X: %s", static_cast<uint32_t>(reinterpret_cast<uintptr_t>(caller)), text);
+}
+
+// With it, every file on the disc: size and a hash of its first megabyte, to compare with a known good image (the check
+// of the disc covers default.xbe only). No file's contents reach the log.
+void log_disc_files(const XdvdfsImage& disc) {
+    struct Item {
+        std::string path;
+        uint32_t size;
+        uint64_t hash;
+    };
+    std::vector<Item> items;
+    std::vector<uint8_t> buffer(1024 * 1024);
+    const auto walk = [&](const auto& self, const XdvdfsImage::Entry& directory, const std::string& prefix) -> void {
+        for (const XdvdfsImage::Entry& entry : disc.list(directory)) {
+            const std::string path = prefix + entry.name;
+            if (entry.is_directory) {
+                self(self, entry, path + "\\");
+                continue;
+            }
+            const size_t read = disc.read(entry, 0, buffer.data(), buffer.size());
+            uint64_t hash = 0xCBF29CE484222325ull;
+            for (size_t i = 0; i < read; ++i) hash = (hash ^ buffer[i]) * 0x100000001B3ull;
+            items.push_back({path, entry.size, hash});
+        }
+    };
+    walk(walk, disc.root(), "");
+    std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) { return a.path < b.path; });
+    for (const Item& item : items) {
+        log_line("disc file: %s %u %016llX", item.path.c_str(), item.size, static_cast<unsigned long long>(item.hash));
+    }
+    log_line("disc file: %zu files", items.size());
+}
 
 std::mutex g_links_mutex;
 std::unordered_map<std::string, std::string> g_symbolic_links;  // lower-case "\??\x:" -> device path
@@ -369,10 +424,46 @@ void finish_request(uint32_t event, uint32_t apc_routine, uint32_t apc_context, 
     }
 }
 
+// mods\<path on the disc> in the data folder: a file read instead of the disc's, read-only. It replaces a file of the
+// disc only: the game's directory listings stay the disc's.
+const fs::path& mods_folder() {
+    static const fs::path folder = [] {
+        const fs::path path = data_directory() / "mods";
+        std::error_code error;
+        if (fs::is_directory(path, error)) log_line("mods: folder %s in use", path.string().c_str());
+        return path;
+    }();
+    return folder;
+}
+
+bool open_mod(const Location& location, FileObject& file) {
+    std::error_code error;
+    static const bool any = fs::is_directory(mods_folder(), error);
+    if (!any) return false;
+    fs::path path = mods_folder();
+    for (const std::string& component : location.components) {
+        path /= fs::path(std::u8string(component.begin(), component.end()));
+    }
+    if (!fs::is_regular_file(path, error)) return false;
+    file.host = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file.host == INVALID_HANDLE_VALUE) {
+        log_line("mods: cannot open %s (error %lu): reading the disc's file", path.string().c_str(), GetLastError());
+        return false;
+    }
+    file.host_path = path;
+    file.kind = FileObject::Kind::HostFile;
+    log_line("mods: %s", path.string().c_str());
+    return true;
+}
+
 NTSTATUS open_disc(const Location& location, uint32_t disposition, uint32_t options, FileObject& file,
                    uint32_t* information) {
     if (location.components.empty() && !(options & kFileDirectoryFile)) {
         file.kind = FileObject::Kind::Volume;
+        *information = kInfoOpened;
+        return kStatusSuccess;
+    }
+    if (disposition == kFileOpen && !(options & kFileDirectoryFile) && open_mod(location, file)) {
         *information = kInfoOpened;
         return kStatusSuccess;
     }
@@ -518,6 +609,7 @@ NTSTATUS __stdcall NtOpenFile(uint32_t* file_handle, uint32_t desired_access, co
 
 NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_routine, uint32_t apc_context,
                               XIoStatusBlock* io_status, void* buffer, uint32_t length, const int64_t* byte_offset) {
+    ProfileScope scope(ProfileTime::file_reads);
     const std::shared_ptr<FileObject> file = file_from_handle(handle);
     if (!file) return kStatusInvalidHandle;
     std::lock_guard<std::mutex> lock(file->mutex);
@@ -555,6 +647,10 @@ NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_rout
         status = kStatusInvalidParameter;
     }
     file->position = offset + read;
+    if (file->kind != FileObject::Kind::DiscFile) {
+        trace_saves(_ReturnAddress(), "read %s offset %llX length %X -> %08X, %X bytes", file->location.xbox_path.c_str(),
+                    static_cast<unsigned long long>(offset), length, static_cast<uint32_t>(status), read);
+    }
     // Windows' write watch does not see what its own I/O writes; textures loaded from disc must be re-read.
     mark_physical_written(static_cast<uint32_t>(reinterpret_cast<uintptr_t>(buffer)), read);
     complete(io_status, status, read);
@@ -588,6 +684,8 @@ NTSTATUS __stdcall NtWriteFile(uint32_t handle, uint32_t event, uint32_t apc_rou
     const NTSTATUS status =
         WriteFile(file->host, buffer, length, &written, &overlapped) ? kStatusSuccess : status_from_win32(GetLastError());
     file->position = offset + written;
+    trace_saves(_ReturnAddress(), "write %s offset %llX length %X -> %08X, %X bytes", file->location.xbox_path.c_str(),
+                static_cast<unsigned long long>(offset), length, static_cast<uint32_t>(status), written);
     if (file->kind == FileObject::Kind::Volume) {
         log_line("raw write %s offset %llX length %X", file->location.xbox_path.c_str(),
                  static_cast<unsigned long long>(offset), length);
@@ -658,6 +756,11 @@ NTSTATUS __stdcall NtQueryInformationFile(uint32_t handle, XIoStatusBlock* io_st
     if (!file) return kStatusInvalidHandle;
     std::lock_guard<std::mutex> lock(file->mutex);
     const std::optional<FileInfo> info = info_of(*file);
+    if (file->kind != FileObject::Kind::DiscFile) {
+        trace_saves(_ReturnAddress(), "information %s class %u -> %s, size %llu", file->location.xbox_path.c_str(),
+                    information_class, info ? "found" : "not found",
+                    static_cast<unsigned long long>(info ? info->end_of_file : 0));
+    }
     if (!info) {
         complete(io_status, kStatusUnsuccessful, 0);
         return kStatusUnsuccessful;
@@ -807,7 +910,10 @@ NTSTATUS __stdcall NtQueryVolumeInformationFile(uint32_t handle, XIoStatusBlock*
                                                 uint32_t length, uint32_t information_class) {
     const std::shared_ptr<FileObject> file = file_from_handle(handle);
     if (!file) return kStatusInvalidHandle;
-    return query_volume(*file, io_status, information, length, information_class);
+    const NTSTATUS status = query_volume(*file, io_status, information, length, information_class);
+    trace_saves(_ReturnAddress(), "volume %s class %u length %X -> %08X", file->location.xbox_path.c_str(), information_class,
+                length, static_cast<uint32_t>(status));
+    return status;
 }
 
 // The same on a FILE_OBJECT (from ObReferenceObjectByHandle) instead of a handle; the returned length is a pointer.
@@ -831,6 +937,7 @@ NTSTATUS __stdcall NtQueryFullAttributesFile(const XObjectAttributes* attributes
     const std::optional<Location> location = resolve_attributes(attributes);
     if (!location) return kStatusObjectPathNotFound;
     const std::optional<FileInfo> info = info_of(*location);
+    trace_saves(_ReturnAddress(), "attributes %s -> %s", location->xbox_path.c_str(), info ? "found" : "not found");
     if (!info) return kStatusObjectNameNotFound;
     fill_network_open(information, *info);
     return kStatusSuccess;
@@ -916,8 +1023,12 @@ NTSTATUS __stdcall NtQueryDirectoryFile(uint32_t handle, uint32_t event, uint32_
             out->file_name_length = static_cast<uint32_t>(item.name.size());
             std::memcpy(out->file_name, item.name.data(), item.name.size());
             ++file->next_item;
+            trace_saves(_ReturnAddress(), "list %s item '%s' attributes %X size %llu", file->location.xbox_path.c_str(),
+                        item.name.c_str(), item.info.attributes, static_cast<unsigned long long>(item.info.end_of_file));
         }
     }
+    trace_saves(_ReturnAddress(), "list %s mask '%s' first %d length %X -> %08X", file->location.xbox_path.c_str(),
+                ansi_string(file_name).c_str(), first ? 1 : 0, length, static_cast<uint32_t>(status));
     complete(io_status, status, size);
     finish_request(event, apc_routine, apc_context, io_status);
     return status;
@@ -1100,6 +1211,7 @@ NTSTATUS __stdcall IoCreateDevice(uint32_t driver_object, uint32_t extension_siz
 
 void configure_file_system(const XdvdfsImage* disc, const wchar_t* host_data_directory) {
     g_disc = disc;
+    if (disc && tracing_saves()) log_disc_files(*disc);
     g_host_root = host_data_directory;
     std::error_code ignored;
     for (int partition = 1; partition <= 7; ++partition) {

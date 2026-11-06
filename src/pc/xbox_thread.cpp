@@ -19,7 +19,9 @@
 
 #include "core/byteorder.h"
 #include "pc/exec_memory.h"
+#include "pc/game_pause.h"
 #include "pc/log.h"
+#include "pc/nv2a.h"
 #include "pc/profile.h"
 #include "pc/xbox_types.h"
 
@@ -344,6 +346,24 @@ void log_game_threads(const char* reason) {
 void start_thread_watchdog(uint32_t code_begin, uint32_t code_end) {
     g_code_begin = code_begin;
     g_code_end = code_end;
+    // Always on, and cheap: no new game frame for 8 s outside a pause says where the threads are, in the log a player
+    // sends. The first few only: a long stall needs no more, and each one suspends the game's threads for a moment.
+    std::thread([] {
+        constexpr DWORD kCheck = 1000;
+        constexpr uint32_t kStallChecks = 8, kMostReports = 3;
+        uint32_t last_frames = 0, unchanged = 0, reports = 0;
+        while (reports < kMostReports) {
+            Sleep(kCheck);
+            const uint32_t frames = nv2a_frames_shown();
+            if (frames != last_frames || game_paused()) {
+                last_frames = frames;
+                unchanged = 0;
+            } else if (frames && ++unchanged == kStallChecks) {
+                ++reports;
+                log_game_threads("no new frame for 8 s");
+            }
+        }
+    }).detach();
     wchar_t value[16] = {};
     if (!GetEnvironmentVariableW(L"MC3_WATCHDOG", value, 16)) return;
     const DWORD period = static_cast<DWORD>(_wtoi(value)) * 1000;

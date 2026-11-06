@@ -91,6 +91,7 @@ struct Voice {
     uint32_t callback = 0;
     uint32_t callback_context = 0;
     double stream_fraction = 0;  // fractional frame inside the current packet
+    float stream_previous[2] = {};  // each channel's sample before the current frame, for the interpolation
     bool end_of_stream = false;  // Discontinuity: stop when the packets run out instead of starving
     // Stopped by an asynchronous flush: packets are handed back unplayed until the stream is set up again. XACT keeps
     // refilling a stopped stream until it sees it is no longer playing; playing them restarted the stopped music.
@@ -101,6 +102,8 @@ struct Voice {
     bool paused = false;
     int32_t volume = 0;  // hundredths of a dB, 0 = full scale
     int32_t pitch = 0;   // Xbox pitch: 4096 per octave, 0 = 48 kHz
+    int32_t headroom = 0;  // hundredths of a dB taken off before the mix bins
+    Voice* output = nullptr;  // SetOutputBuffer: the mix-in voice this one plays through
     int32_t mix_bin_count = 0;
     uint32_t mix_bins[8] = {};
     int32_t mix_bin_volumes[32] = {};  // per mix bin, hundredths of a dB
@@ -136,6 +139,8 @@ void destroy_voice(Voice* voice);
 // and then stops it (a stream is flushed).
 void start_envelope(Voice& voice);
 void release_voice(Voice& voice);
+// MC3_AUDIO_TRACE=1: one log line per play, stop, release end and natural end of a voice (diagnostic).
+void trace_voice(const Voice& voice, const char* what, uint32_t flags);
 
 // Pitch for a sample rate, like XAudioCalculatePitch: 0 at 48 kHz, 4096 per octave.
 int32_t pitch_for_rate(uint32_t samples_per_second);
