@@ -18,6 +18,7 @@
 #include <string>
 #include <mutex>
 
+#include "pc/audio_gains.h"
 #include "pc/audio_mixer.h"
 #include "pc/exec_memory.h"
 #include "pc/log.h"
@@ -310,6 +311,7 @@ HRESULT32 create_stream(const XDsStreamDesc* desc, uint32_t* stream) {
     GameLock lock(audio_lock());
     auto* object = new DsObject{kStreamVtable, 1, create_voice(true)};
     object->voice->create_flags = desc->flags;
+    object->voice->headroom = default_headroom(desc->flags, true);
     apply_format(*object->voice, desc->format);
     object->voice->max_attached_packets = desc->max_attached_packets;
     object->voice->callback = desc->callback;
@@ -385,6 +387,7 @@ HRESULT32 __stdcall DsCreateSoundBuffer(uint32_t, const XDsBufferDesc* desc, uin
     auto* object = new DsObject{kBufferVtable, 1, create_voice(false)};
     Voice& voice = *object->voice;
     voice.create_flags = desc->flags;
+    voice.headroom = default_headroom(desc->flags, false);
     static uint32_t logged = 0;
     if (logged++ < 30) {
         log_line("dsound: create buffer %p: size %u flags %08X bytes %u format %08X mix bins %08X input %08X",
@@ -416,7 +419,8 @@ HRESULT32 __stdcall VoiceSetVolume(uint32_t self, int32_t volume) {
 
 HRESULT32 __stdcall VoiceSetPitch(uint32_t self, int32_t pitch) {
     GameLock lock(audio_lock());
-    voice_of(self)->pitch = pitch;
+    Voice* voice = voice_of(self);
+    voice->pitch = pitch;
     return kOk;
 }
 
@@ -517,7 +521,7 @@ HRESULT32 __stdcall VoiceSetEnvelope(uint32_t self, const XDsEnvelopeDesc* desc)
     return kOk;
 }
 
-// LFO, filter and headroom shape the sound on the APU; not emulated yet.
+// The LFO shapes the sound on the APU; not emulated yet (MC3 was not seen using it in the city).
 HRESULT32 __stdcall VoiceSetLfo(uint32_t self, uint32_t desc) {
     static uint32_t logged = 0;
     if (desc && logged++ < 40) {
@@ -561,11 +565,32 @@ HRESULT32 __stdcall VoiceSetFilter(uint32_t self, const XDsFilterDesc* desc) {
     return kOk;
 }
 HRESULT32 __stdcall VoiceSetHeadroom(uint32_t self, uint32_t headroom) {
+    GameLock lock(audio_lock());
+    Voice* voice = voice_of(self);
+    voice->headroom = static_cast<int32_t>(std::min<uint32_t>(headroom, 10000));
     static uint32_t logged = 0;
-    if (logged++ < 40) log_line("dsound: voice %p headroom %u", static_cast<void*>(voice_of(self)), headroom);
+    if (logged++ < 40) log_line("dsound: voice %p headroom %u", static_cast<void*>(voice), headroom);
     return kOk;
 }
-HRESULT32 __stdcall VoiceSetOutputBuffer(uint32_t, uint32_t) { return kOk; }  // MC3 only ever passes NULL
+
+// XACT (0x40FB8E, 0x40FBCA) passes the mix-in buffer of a sound with a position, NULL for the others.
+HRESULT32 __stdcall VoiceSetOutputBuffer(uint32_t self, uint32_t output) {
+    GameLock lock(audio_lock());
+    Voice* voice = voice_of(self);
+    Voice* target = voice_of(output);
+    if (!valid_output(*voice, target)) {
+        log_line("dsound: voice %p output %p refused: it would make a loop", static_cast<void*>(voice),
+                 static_cast<void*>(target));
+        return kOk;
+    }
+    voice->output = target;
+    static uint32_t logged = 0;
+    if (target && logged++ < 20) {
+        log_line("dsound: voice %p plays through %p (flags %08X)", static_cast<void*>(voice), static_cast<void*>(target),
+                 target->create_flags);
+    }
+    return kOk;
+}
 
 // DirectSound 3D (see docs/ANALISI_XBE.md): 0x2C7C/0x1627 compute the source position relative to the listener and
 // 0x0C94 applies the result to the voice, 0x0DC5 switches 3D on and off. XACT only takes that path for 3D cues and
