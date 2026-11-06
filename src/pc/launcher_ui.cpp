@@ -85,6 +85,9 @@ struct Texts {
     const char *cheats, *cheats_lead, *cheat_money, *cheat_money_sub, *add_money, *game_codes, *game_codes_lead;
     const char *loading_screens, *loading_screens_sub;
     const char *crash_heading, *crash_sub, *crash_button, *crash_link;
+    const char *rtss_heading, *rtss_sub, *saves, *saves_sub;
+    const char *move_heading, *move_sub, *move_failed, *move_button;
+    const char *move_title, *move_lead, *move_now, *move_later;
 };
 
 const Texts kEnglish = {
@@ -135,6 +138,11 @@ const Texts kEnglish = {
     "Type them in the game's menu, Options > Cheat Codes (as found in the game's own check).",
     "Loading screens", "At least this long, to read them as on the Xbox (from the disc image loading is instant)",
     "The game crashed last time", "mc3port-crash-report.zip is ready to attach to a report", "Report", "Report the crash",
+    "RivaTuner (RTSS) can slow the game down a lot", "If it stutters: set mc3.exe to detection level None in RTSS, or close RTSS",
+    "Save folder", "Your profiles. For a backup, copy the whole xbox_hdd folder",
+    "You have files from an earlier version", "Move your saves and settings to Documents\\mc3port",
+    "Could not move them: close what uses them, then try again", "Move",
+    "Move your files", "Your saves and settings from an earlier version are in a hidden folder. Move them to Documents\\mc3port, where they are easy to find and copy. Until you do, the game keeps using them where they are.", "Move now", "Later",
 };
 
 const Texts kItalian = {
@@ -190,6 +198,11 @@ const Texts kItalian = {
     "Da scrivere nel menu del gioco, Opzioni > Codici (come li controlla il gioco stesso).",
     "Schermate di caricamento", "Almeno questa durata, per leggerle come sull'Xbox (dall'immagine del disco si carica subito)",
     "L'ultima volta il gioco si \xC3\xA8 chiuso per un errore", "mc3port-crash-report.zip \xC3\xA8 pronto da allegare alla segnalazione", "Segnala", "Segnala il crash",
+    "RivaTuner (RTSS) pu\xC3\xB2 rallentare molto il gioco", "Se scatta: in RTSS metti mc3.exe su detection level None, o chiudi RTSS",
+    "Cartella dei salvataggi", "I tuoi profili. Per un backup copia tutta la cartella xbox_hdd",
+    "Hai file di una versione precedente", "Sposta salvataggi e impostazioni in Documenti\\mc3port",
+    "Spostamento non riuscito: chiudi ci\xC3\xB2 che li usa e riprova", "Sposta",
+    "Sposta i tuoi file", "I salvataggi e le impostazioni di una versione precedente sono in una cartella nascosta. Spostali in Documenti\\mc3port, dove sono facili da trovare e copiare. Finch\xC3\xA9 non lo fai, il gioco continua a usarli dove sono.", "Sposta ora", "Pi\xC3\xB9 tardi",
 };
 
 const Texts& T() {
@@ -575,6 +588,7 @@ private:
     void stop_rumble();
     void poll_gamepads(float now);  // every XInput port into ImGui's keys, the left stick as a d-pad
     void focus_ring();              // the launcher's focus look on a standard ImGui widget
+    void focus_frame(ImVec2 a, ImVec2 b);  // the frame around the focused widget, from a controller's distance
     float pad_icon(ImDrawList* list, const char* name, ImVec2 at, float h, bool draw = true);
     void resize_if_needed();
     void upload_art();
@@ -614,6 +628,8 @@ private:
     void page_cheats();
     void page_about();
     void update_row(bool always);
+    void move_data_row();
+    void page_move_data();
     bool update_available();
     void page_wizard();
     void page_paused();
@@ -686,6 +702,7 @@ private:
     bool hover_armed_ = false;
     int cancel_frame_ = -1;               // the frame a rebinding was cancelled on: B does nothing else then
     bool wizard_ = false;
+    bool move_prompt_ = false;  // the page offering to move an earlier version's files, before all else
     int wizard_step_ = 0;
     int rebinding_ = -1;
     float rebinding_since_ = 0;
@@ -888,6 +905,40 @@ ComPtr<ID3D11ShaderResourceView> dxt_texture(ID3D11Device* device, const DxtImag
     return view;
 }
 
+// The player's own version of the game's logo, the same file the game draws in its menus (textures_replace, by the
+// texture's hash). Shown a level down from a large picture: ImGui's sampler reads one level only, and would alias it.
+ComPtr<ID3D11ShaderResourceView> replaced_logo(ID3D11Device* device, ID3D11DeviceContext* context) {
+    const std::filesystem::path file = data_directory() / "textures_replace" / "4B08E442017FBC3F.png";
+    std::error_code error;
+    std::vector<uint8_t> bgra;
+    UINT width = 0, height = 0;
+    if (!std::filesystem::exists(file, error) || !renderer_load_picture(file, bgra, width, height)) return nullptr;
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11ShaderResourceView> all_levels, view;
+    if (FAILED(device->CreateTexture2D(&desc, nullptr, &texture)) ||
+        FAILED(device->CreateShaderResourceView(texture.Get(), nullptr, &all_levels))) {
+        return nullptr;
+    }
+    context->UpdateSubresource(texture.Get(), 0, nullptr, bgra.data(), width * 4, 0);
+    context->GenerateMips(all_levels.Get());
+    D3D11_SHADER_RESOURCE_VIEW_DESC level{};
+    level.Format = desc.Format;
+    level.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    level.Texture2D.MostDetailedMip = width >= 1024 && height >= 2 ? 1 : 0;
+    level.Texture2D.MipLevels = 1;
+    if (FAILED(device->CreateShaderResourceView(texture.Get(), &level, &view))) return nullptr;
+    log_line("launcher: logo from %s", file.filename().string().c_str());
+    return view;
+}
+
 void Launcher::start_art_loader(const std::filesystem::path& disc_path) {
     if (art_thread_.joinable()) art_thread_.join();
     art_thread_ = std::thread([this, disc_path] {
@@ -907,7 +958,8 @@ void Launcher::upload_art() {
         art.swap(loaded_art_);
     }
     if (!art) return;
-    logo_ = dxt_texture(device_.Get(), art->logo);
+    logo_ = replaced_logo(device_.Get(), context_.Get());
+    if (!logo_) logo_ = dxt_texture(device_.Get(), art->logo);
     artwork_.clear();
     if (in_game_) return;  // the game is the background
     for (const DxtImage& picture : art->artwork) {
@@ -1031,9 +1083,12 @@ bool Launcher::small_button(const char* label, ImVec2 at, const char* id, ImVec2
     const bool pressed = ImGui::InvisibleButton(id, box, kNavigable);
     const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
     if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-    list_->AddRectFilled(at, ImVec2(at.x + box.x, at.y + box.y), fade(kRed, hot * 0.25f));
+    const bool focused = ImGui::IsItemFocused();
+    list_->AddRectFilled(at, ImVec2(at.x + box.x, at.y + box.y), focused ? fade(IM_COL32_WHITE) : fade(kRed, hot * 0.25f));
     list_->AddRect(at, ImVec2(at.x + box.x, at.y + box.y), fade(mix(IM_COL32(255, 255, 255, 60), kRed, hot)), 0, 0, px(1.5f));
-    text(body_bold_, px(18), ImVec2(at.x + px(14), at.y + px(6)), mix(kInk, IM_COL32(255, 120, 125, 255), hot), label);
+    focus_frame(at, ImVec2(at.x + box.x, at.y + box.y));
+    text(body_bold_, px(18), ImVec2(at.x + px(14), at.y + px(6)),
+         focused ? fade(IM_COL32(12, 12, 14, 255)) : mix(kInk, IM_COL32(255, 120, 125, 255), hot), label);
     if (size_out) *size_out = box;
     return pressed;
 }
@@ -1070,6 +1125,7 @@ bool Launcher::big_button(const char* label, const char* id, bool pulse) {
     const bool pressed = ImGui::InvisibleButton(id, ImVec2(b.x - a.x + px(14), b.y - a.y), kNavigable);
     const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
     if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    focus_frame(a, b);
     if (pulse) {
         const float p = std::fmod(static_cast<float>(ImGui::GetTime()), 2.2f) / 2.2f / 0.7f;
         if (p < 1) {
@@ -1098,6 +1154,7 @@ bool Launcher::tabs(const char* const* labels, int count, int* current) {
         }
         const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
         if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        focus_frame(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
         ImGui::PopID();
         const bool on = *current == i;
         text(heading_, px(22), ImVec2(x, origin_.y + cursor_), on ? kInk : mix(kDim, kInk, hot), labels[i]);
@@ -1139,6 +1196,7 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
         const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
         if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         const float on = anim(ImGui::GetItemID() + 1, *current == i, 16);
+        focus_frame(c, ImVec2(c.x + cell, c.y + height));
         ImGui::PopID();
         if (on > 0.01f || hot > 0.01f) {
             skewed_rect(list_, c, ImVec2(c.x + cell, c.y + height), fade(mix(IM_COL32(255, 255, 255, 30), kRed, on), std::max(on, hot)),
@@ -1217,7 +1275,8 @@ struct Resolution {
     const char *name, *lines;
 };
 constexpr Resolution kResolutions[] = {{0, "Auto", nullptr},        {1, "SD", "480p"},  {1.5f, "HD", "720p"},
-                                       {2.25f, "Full HD", "1080p"}, {3, "2K", "1440p"}, {4.5f, "4K", "2160p"}};
+                                       {2.25f, "Full HD", "1080p"}, {3, "2K", "1440p"}, {4.5f, "4K", "2160p"},
+                                       {6, "5K", "2880p"}};
 constexpr int kResolutionCount = static_cast<int>(std::size(kResolutions));
 
 // The choice for a render_scale; an earlier version's 2 or 4 shows as the nearest one.
@@ -1265,6 +1324,25 @@ bool restart_pending() {
 
 // A new mc3.exe, with the same command line, straight into the game (MC3_SKIP_LAUNCHER); it waits for this one to
 // end (MC3_RESTART_FROM, runtime.cpp) before it opens the log, the settings and the saves.
+// A new mc3.exe that moves the old data folder before it opens anything there, back in the launcher.
+void restart_to_move_old_data() {
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring command = GetCommandLineW();
+    SetEnvironmentVariableW(L"MC3_MOVE_OLD_DATA", L"1");
+    SetEnvironmentVariableW(L"MC3_RESTART_FROM", std::to_wstring(GetCurrentProcessId()).c_str());
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(exe, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+        log_line("launcher: restart to move the old data failed (error %lu)", GetLastError());
+        return;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    log_line("launcher: restart to move the old data");
+    end_process(0);
+}
+
 void restart_game() {
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -1310,12 +1388,38 @@ void Launcher::run_disc_dialog() {
 
 void report_problem();
 
+// Earlier versions kept the player's files in a hidden folder: moved only when the player says so.
+void Launcher::move_data_row() {
+    if (!old_data_in_use()) return;
+    const Texts& t = T();
+    if (status(false, t.move_heading, old_data_move_failed() ? t.move_failed : t.move_sub, t.move_button, "##move_data", true)) {
+        restart_to_move_old_data();
+    }
+}
+
+// Shown first at every start until the files have moved: a row among others is easy to miss.
+void Launcher::page_move_data() {
+    const Texts& t = T();
+    title(t.move_title);
+    lead(old_data_move_failed() ? t.move_failed : t.move_lead);
+    if (big_button(t.move_now, "##move_now", true)) restart_to_move_old_data();
+    if (small_button(t.move_later, ImVec2(origin_.x, origin_.y + cursor_), "##move_later")) {
+        move_prompt_ = false;
+        wizard_ = !disc_;
+        page_since_ = static_cast<float>(ImGui::GetTime());
+    }
+    cursor_ += px(52);
+}
+
 void Launcher::page_play() {
     const Texts& t = T();
     title(t.ready);
     lead(t.ready_lead);
     update_row(false);
+    move_data_row();
     if (crash_report_ready() && status(false, t.crash_heading, t.crash_sub, t.crash_button, "##crash_report")) report_problem();
+    // It hooks the presents of the thread that also runs the emulated GPU (the log says so too, see profile.cpp).
+    if (GetModuleHandleW(L"RTSSHooks.dll")) status(false, t.rtss_heading, t.rtss_sub, nullptr, nullptr);
     if (disc_) {
         if (status(true, t.disc_ok, "Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 PAL", t.change, "##disc")) choose_disc();
     } else if (status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), t.choose_iso, "##disc")) {
@@ -1640,6 +1744,7 @@ void Launcher::page_controls() {
         }
         const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused() || waiting);
         if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        focus_frame(box_a, box_b);
         ImGui::PopID();
         list_->AddRectFilled(box_a, box_b, fade(mix(IM_COL32(255, 255, 255, 14), kRed, hot * (waiting ? 0.8f : 0.35f))));
         text(body_bold_, px(16), ImVec2(box_b.x - key_size.x - px(9), y + (row_height - key_size.y) / 2), kInk, key.c_str());
@@ -1719,9 +1824,19 @@ bool Launcher::update_available() {
     return updates_.state == 2 && updates_.download != 2;
 }
 
+// Where the game keeps its profiles, as on the Xbox's hard disk (54540079 is the game's title ID). Before the first save
+// only the disk's folder exists.
+void show_saves() {
+    const std::filesystem::path disk = data_directory() / "xbox_hdd", saves = disk / "Partition1" / "UDATA" / "54540079";
+    std::error_code ignored;
+    std::filesystem::create_directories(disk, ignored);
+    const std::filesystem::path folder = std::filesystem::exists(saves, ignored) ? saves : disk;
+    ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
 // mc3port.log selected in Explorer, or the report of a crash when there is a new one.
 void show_log() {
-    const std::filesystem::path file = crash_report_ready() ? crash_report_path() : data_directory() / "mc3port.log";
+    const std::filesystem::path file = crash_report_ready() ? crash_report_path() : log_directory() / "mc3port.log";
     const std::wstring argument = L"/select,\"" + file.wstring() + L"\"";
     ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
 }
@@ -1731,7 +1846,7 @@ void show_log() {
 // in on GitHub.
 void report_problem() {
     std::string system;
-    if (std::FILE* file = _wfopen((data_directory() / "mc3port.log").c_str(), L"r")) {
+    if (std::FILE* file = _wfopen((log_directory() / "mc3port.log").c_str(), L"r")) {
         char line[512];
         for (int i = 0; i < 80 && std::fgets(line, sizeof(line), file); ++i) {
             line[std::strcspn(line, "\r\n")] = 0;
@@ -1767,6 +1882,7 @@ void Launcher::page_about() {
     if (status(true, heading, t.credits, "GitHub", "##github")) {
         ShellExecuteA(nullptr, "open", (std::string("https://github.com/") + kRepository).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     }
+    if (status(true, t.saves, t.saves_sub, t.open, "##saves")) show_saves();
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
     if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
     cursor_ += px(8);
@@ -1776,12 +1892,17 @@ void Launcher::page_about() {
 }
 
 void Launcher::page_wizard() {
+    if (move_prompt_) {
+        page_move_data();
+        return;
+    }
     const Texts& t = T();
     steps(wizard_step_, 3);
     if (wizard_step_ == 0) {
         title(t.welcome);
         lead(t.welcome_lead);
         update_row(false);
+        move_data_row();
         if (disc_) {
             if (status(true, t.disc_ok, "Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 PAL", t.change, "##disc")) choose_disc();
         } else if (status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), t.choose_iso,
@@ -2082,9 +2203,10 @@ void Launcher::side_menu(float now, float since, const char* const* labels, cons
         if (on > 0.01f) {
             // Brighter while the keys move through the menu; darker once they work on the page.
             const float lit = anim(ImGui::GetID(labels[i]) + 1, menu_has_focus_ || wizard_);
-            skewed_rect(list_, ImVec2(a.x + shift, a.y), b, mix(kRedDark, kRed, 0.5f + 0.5f * lit), kRedDark);
-            skewed_rect(list_, ImVec2(a.x - px(14) + shift, a.y), ImVec2(a.x - px(8) + shift, b.y),
-                        fade(kChrome, on * (0.4f + 0.6f * lit)), fade(kChrome, on * (0.4f + 0.6f * lit)));
+            skewed_rect(list_, ImVec2(a.x + shift, a.y), b, mix(IM_COL32(70, 12, 16, 255), kRed, lit), mix(IM_COL32(50, 8, 12, 255), kRedDark, lit));
+            skewed_rect(list_, ImVec2(a.x - px(14) + shift, a.y), ImVec2(a.x - px(6) + shift, b.y),
+                        fade(IM_COL32_WHITE, on * (0.25f + 0.75f * lit)), fade(IM_COL32_WHITE, on * (0.25f + 0.75f * lit)));
+            if (lit > 0.01f) list_->AddRectFilled(ImVec2(a.x + shift, b.y + px(3)), ImVec2(b.x, b.y + px(6)), fade(IM_COL32_WHITE, lit));
         }
         text(black_, px(36), ImVec2(a.x + px(22) + shift, a.y + px(7)), mix(hovered ? kInk : kDim, IM_COL32_WHITE, on), labels[i]);
         if (targets[i] == Page::kAbout && update_available()) {  // a newer version: a dot after the label
@@ -2282,14 +2404,22 @@ void Launcher::poll_gamepads(float now) {
     analog(ImGuiKey_GamepadRStickDown, pad.sThumbRY, -kDead, -32768);
 }
 
-// A thin red frame around the last ImGui widget while it is hovered or focused, like the launcher's own buttons;
-// ImGui's own navigation rectangle is off.
+// White and thick: on a sofa, a controller's selection has to be seen at once against the red and the dark panels.
+void Launcher::focus_frame(ImVec2 a, ImVec2 b) {
+    if (!ImGui::IsItemFocused()) return;
+    const float gap = px(4);
+    list_->AddRect(ImVec2(a.x - gap, a.y - gap), ImVec2(b.x + gap, b.y + gap), fade(IM_COL32_WHITE), 0, 0, px(3));
+}
+
+// A thin red frame around the last ImGui widget while it is hovered, like the launcher's own buttons, and the white one
+// while it is focused; ImGui's own navigation rectangle is off.
 void Launcher::focus_ring() {
     const float hot = anim(ImGui::GetItemID(), ImGui::IsItemHovered() || ImGui::IsItemFocused());
     if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     if (hot < 0.01f) return;
     const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
     list_->AddRect(ImVec2(a.x - px(2), a.y - px(2)), ImVec2(b.x + px(2), b.y + px(2)), fade(kRed, hot), 0, 0, px(1.5f));
+    focus_frame(a, b);
 }
 
 // Xbox-style glyphs for the controller's buttons, drawn with circles and rounded boxes (no textures): the face
@@ -2429,6 +2559,7 @@ void Launcher::page_paused() {
     const Texts& t = T();
     title(t.paused);
     lead(t.paused_lead);
+    if (GetModuleHandleW(L"RTSSHooks.dll")) status(false, t.rtss_heading, t.rtss_sub, nullptr, nullptr);
     status(pad_connected_, pad_connected_ ? t.pad_on : t.pad_off, pad_connected_ ? t.pad_on_sub : t.pad_off_sub, nullptr, nullptr);
     char summary[160];
     const int preset = quality_preset();
@@ -2645,7 +2776,9 @@ std::optional<GameDisc> Launcher::run() {
     }
     nv2a_set_window_hook(window_hook);
     disc_ = find_game_disc(exe_directory_, disc_problem_);
-    wizard_ = !disc_;
+    move_prompt_ = old_data_in_use();
+    wizard_ = !disc_ || move_prompt_;
+    focus_panel_ = move_prompt_;  // Move now already selected: one press of A
     if (disc_) start_art_loader(disc_->path);
     if (setting("check_updates") != 0) update_thread_ = std::thread(check_for_updates, &updates_);
     char page[16] = {};  // MC3_LAUNCHER_PAGE=settings|controls|cheats|about: test screenshots

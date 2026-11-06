@@ -77,11 +77,11 @@ std::string zip_of(const std::string* const* contents, const char* const* names,
 
 }  // namespace
 
-std::filesystem::path crash_report_path() { return data_directory() / "mc3port-crash-report.zip"; }
+std::filesystem::path crash_report_path() { return log_directory() / "mc3port-crash-report.zip"; }
 
 bool make_crash_report() {
     try {
-        const std::filesystem::path folder = data_directory();
+        const std::filesystem::path folder = log_directory();
         const std::filesystem::path dump_path = folder / "mc3port-crash.dmp", log_path = folder / "mc3port.log";
         std::error_code error;
         const auto dump_time = std::filesystem::last_write_time(dump_path, error);

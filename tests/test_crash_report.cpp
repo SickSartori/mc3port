@@ -22,7 +22,9 @@ using namespace mc3::pc;
 int main() {
     TemporaryFolder folder("mc3port-test-crash");
     g_folder = folder.path;
-    const auto log = folder.path / "mc3port.log", dump = folder.path / "mc3port-crash.dmp";
+    const auto logs = log_directory();
+    std::filesystem::create_directories(logs);
+    const auto log = logs / "mc3port.log", dump = logs / "mc3port-crash.dmp";
     const std::string log_text = "a log\nof two lines\n";
     std::string dump_text(70000, '\0');
     for (size_t i = 0; i < dump_text.size(); ++i) dump_text[i] = static_cast<char>(i * 31);
@@ -50,7 +52,7 @@ int main() {
     CHECK(crash_report_ready());
     CHECK(std::filesystem::exists(crash_report_path()));
     CHECK(!std::filesystem::exists(dump));  // or the next start would make it again
-    CHECK(!std::filesystem::exists(folder.path / "mc3port-crash-report.zip.tmp"));
+    CHECK(!std::filesystem::exists(logs / "mc3port-crash-report.zip.tmp"));
     CHECK(read_file(log) == log_text);
 
     // tar comes with Windows and reads zip; a wrong size or CRC makes it fail.
