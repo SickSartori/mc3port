@@ -54,7 +54,7 @@ Compared with the console:
 - **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
 - **A HUD of its own**, optional: speedometer, rev counter, gear and special ability drawn sharp at any resolution.
 - **A frame counter**, optional, and the opening films skipped (they can be switched back on).
-- **Loading screens you can read**: they stay up a few seconds, as from the Xbox's disc, instead of flashing by.
+- **Loading screens you can read**, if you want: they can stay up a few seconds, as from the Xbox's disc.
 - **Cheats** in the in-game menu: money for your career, and the game's own cheat codes with what each does.
 - **Keyboard support** with rebindable keys, and Xbox controllers for up to four players; the game's own button
   symbols say LB and RB where the original controller had White and Black.
@@ -195,7 +195,7 @@ straight away (progress since the last save is lost). The main ones:
 | Sharp pictures | the radar's map, the icons, the letters and the cars' stickers enlarged with clean edges instead of blurred or stepped; on by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 | Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
-| Loading screens | stay up at least 2, 4 or 6 seconds (6 by default) so you can read them, or as short as the loading (off) |
+| Loading screens | as short as the loading (off, by default), or at least 4, 8 or 12 seconds so you can read them; any other number in `mc3port.ini` (`loading_screen_seconds`) |
 | `hud_aspect` (ini only) | in 16:9, the HUD keeps its shape (1, the default) or is stretched as on a widescreen TV (0) |
 
 **Replacement pictures**: a PNG or JPG in a folder `textures_replace` next to `mc3port.ini`, named after a 2D

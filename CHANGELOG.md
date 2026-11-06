@@ -30,6 +30,7 @@
 - The music keeps more of its top octave: streams are resampled like the effects.
 - The log says where the game's threads are when no new frame comes for 8 seconds, without any setting.
 - Times shown by the game follow the time zone of Windows.
+- **Loading screens**: off, 4, 8 or 12 seconds, off by default, also on RecompLauncher's page; `mc3port.ini` takes any number.
 - The logs of the two runs before are kept, as `mc3port.1.log` and `mc3port.2.log`: starting the game again no longer
   loses the log of a run that went wrong. Logs and crash reports are now in the data folder's `logs` folder.
 - **Your files are easy to find**: saves, settings, logs and mods now go in `Documents\mc3port`. If you have played an

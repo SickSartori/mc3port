@@ -1511,9 +1511,10 @@ void Launcher::page_settings() {
             if (segmented("##skip_intro", toggle, 2, &skip)) set_setting("skip_intro", static_cast<float>(skip));
         }
         row(t.loading_screens, t.loading_screens_sub);
-        const char* durations[] = {t.off, "2 s", "4 s", "6 s"};
-        int duration = std::clamp(static_cast<int>(setting("loading_screen_seconds")) / 2, 0, 3);
-        if (segmented("##loading_screens", durations, 4, &duration)) set_setting("loading_screen_seconds", duration * 2.0f);
+        const char* durations[] = {t.off, "4 s", "8 s", "12 s"};
+        // Another value from the ini file shows as the nearest choice, and stays until one is picked.
+        int duration = std::clamp(static_cast<int>(std::lround(setting("loading_screen_seconds") / 4.0f)), 0, 3);
+        if (segmented("##loading_screens", durations, 4, &duration)) set_setting("loading_screen_seconds", duration * 4.0f);
     } else if (settings_tab_ == 1) {
         row(t.aspect, t.aspect_sub, true);
         const char* aspects[] = {"4:3", "16:9"};
