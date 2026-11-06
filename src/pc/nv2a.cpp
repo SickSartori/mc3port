@@ -364,9 +364,11 @@ void service_present() {
     const DisplayMode display = current_display();
     const uint32_t front = g_front_buffer ? g_front_buffer.load() : display.frame_buffer;
     if (!front || !display.pitch) return;
+    bool flipped = false;
     {  // DEBUG: game frames (changes of the shown buffer) per 10 s
         static uint32_t last_front = 0, flips = 0, presents = 0;
         if (front != last_front) {
+            flipped = true;
             ++flips, ++g_frames_shown, last_front = front;
             static uint64_t last_flip_vblank = 0;  // blanks between shown frames set the game's time step
             const uint64_t vblank = g_frames;
@@ -381,6 +383,13 @@ void service_present() {
             flips = presents = 0;
         }
     }
+    // Present blocks when the display or a frame limiter (forced V-Sync, RTSS) takes fewer frames than the blanks
+    // ask for, and this thread also runs the push buffer: the game would starve (issues #3, #6). So only a new game
+    // frame is presented, every blank while paused (the menu), and otherwise 10 times a second for the overlay.
+    static ULONGLONG last_present = 0;
+    const ULONGLONG now = GetTickCount64();
+    if (!flipped && !game_paused() && now - last_present < 100) return;
+    last_present = now;
     // The picture can be narrower than the pitch (widescreen: 720 of 768 pixels): what the game draws into.
     const uint32_t drawn = kelvin_drawn_width(front & 0x0FFFFFFF);
     const uint32_t width = drawn && drawn < display.pitch / 4 ? drawn : display.pitch / 4;
