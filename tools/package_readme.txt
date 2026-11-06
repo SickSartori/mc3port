@@ -50,7 +50,7 @@ FIRST START
 3. The launcher asks for your disc image: choose the .iso (or .cci) file. mc3port
    checks it and remembers where it is; if you move the file later,
    choose it again.
-4. Pick a quality preset, the aspect ratio and the frame rate, then PLAY.
+4. Pick a style, Original or Enhanced, then PLAY.
    Next time the launcher opens on its main page: PLAY, Enter or A starts
    the game.
 
@@ -121,7 +121,7 @@ IF SOMETHING GOES WRONG
   About page and press "Log folder"; mc3port.log says what happened last,
   mc3port.1.log and mc3port.2.log the two runs before.
 - The game is not smooth: choose 30 fps, a lower internal resolution, or
-  the Balanced or Original preset, in Settings. The processor counts more than the graphics card.
+  the Original style, in Settings. The processor counts more than the graphics card.
   mc3port has been tested on few machines so far.
 - Very low frame rate with MSI Afterburner or RivaTuner (RTSS) running:
   add mc3.exe to RTSS with "Application detection level: None", or close

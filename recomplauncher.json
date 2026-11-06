@@ -29,7 +29,7 @@
         { "label": "30 fps", "set": { "frame_rate": "30" } },
         { "label": "60 fps", "set": { "frame_rate": "60" } }
       ],
-      "defaults": { "frame_rate": "30" }
+      "defaults": { "frame_rate": "60" }
     },
     {
       "id": "resolution",
@@ -63,7 +63,7 @@
         { "label": "The game's", "set": { "hud_style": "0" } },
         { "label": "mc3port's", "set": { "hud_style": "1" } }
       ],
-      "defaults": { "hud_style": "0" }
+      "defaults": { "hud_style": "1" }
     },
     {
       "id": "speed_units",
