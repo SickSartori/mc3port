@@ -24,11 +24,11 @@ struct Setting {
 
 const Setting kSettings[] = {
     {"game_language", 0, "Game language: 0 = like Windows, 1 = English, 3 = German, 4 = French, 5 = Spanish, 6 = Italian."},
-    {"frame_rate", 30, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work)."},
+    {"frame_rate", 60, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work)."},
     {"widescreen", 1, "16:9 widescreen: 1 = the game's own widescreen mode (wider view, no black bars), 0 = 4:3 like a classic TV."},
     {"hud_aspect", 1, "In 16:9, keep the HUD's round shapes round (radar, dials): 1 = yes, 0 = stretched as on the Xbox."},
     {"sharp_2d", 1, "The HUD's pictures (radar map, icons, letters) and the cars' stickers enlarged with their edges kept: 1 = sharper at high resolutions, 0 = as the game's."},
-    {"hud_style", 0, "HUD: 0 = the game's, 1 = mc3port's (speedometer, rev counter and gear redrawn, sharp at any resolution)."},
+    {"hud_style", 1, "HUD: 0 = the game's, 1 = mc3port's (speedometer, rev counter and gear redrawn, sharp at any resolution)."},
     {"hud_units", 0, "Speed in mc3port's HUD: 0 = mph, 1 = km/h."},
     {"fullscreen", 0, "Start in full screen: 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},
     {"volume", 100, "Overall volume, 0 to 100."},
@@ -62,6 +62,7 @@ struct TextSetting {
 
 const TextSetting kTextSettings[] = {
     {"disc_image", "Your Midnight Club 3: DUB Edition Remix disc image (.iso or .cci; of an image split in parts, any part). Filled in when you choose it; empty = ask."},
+    {"custom_style", "The launcher's Custom style, kept while another style is on; the launcher fills it in."},
     {"keyboard", "Keyboard keys for controller 1 (Windows virtual-key codes); change them in the launcher. Empty = defaults."},
 };
 

@@ -35,7 +35,14 @@
   loses the log of a run that went wrong. Logs and crash reports are now in the data folder's `logs` folder.
 - **Your files are easy to find**: saves, settings, logs and mods now go in `Documents\mc3port`. If you have played an
   earlier version, your files keep working where they are, and the launcher asks at each start whether to move them.
-- With a controller or the keyboard, the selection in the launcher is now easy to see: a thick white frame.
+- **Style**: one choice above the settings' tabs, **Original** (the game as on the Xbox), **Enhanced** (the best this
+  port can show) or **Custom** (your own values, kept when you try another style). It replaces Quality and Effects
+  style, and the first-run guide asks for it. New installations start in Enhanced, so at 60 fps with mc3port's HUD;
+  existing settings stay as they are.
+- The settings' tabs are now Picture, Effects, Game and Audio, and Controls has two: game keys and PC keys. Small
+  texts are bigger and the launcher's background pictures softer.
+- With a controller or the keyboard, the launcher now lights the whole selected row, and left and right change its value
+  at once. On a page with a big button, that button is selected first, such as Back to game in the in-game menu.
 - The program's folder holds only `mc3.exe`, `mc3runtime.dll` and `README.txt`, with the other documents in `docs`.
 - If RivaTuner Statistics Server (RTSS) is hooked into mc3port, the launcher and the in-game menu say so and how to
   turn it off for the game.

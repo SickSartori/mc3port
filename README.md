@@ -30,7 +30,7 @@ optional modern effects.
 | | |
 |---|---|
 | ![A race in Tokyo, 16:9](docs/screenshots/race-16x9.jpg) | ![The launcher](docs/screenshots/launcher.jpg) |
-| ![Launcher settings, Effects tab](docs/screenshots/launcher-settings.jpg) | ![Launcher controls: what each button does, rebindable keys](docs/screenshots/launcher-controls.jpg) |
+| ![Launcher settings: the style above the tabs, then the Picture tab](docs/screenshots/launcher-settings.jpg) | ![Launcher controls: what each button does, rebindable keys](docs/screenshots/launcher-controls.jpg) |
 
 The launcher speaks English or Italian, following Windows; these captures come from an Italian Windows. Its logo and
 pictures are read from the player's disc. The game content in the screenshots belongs to its owners.
@@ -136,7 +136,7 @@ What it takes:
 ## First start
 
 The launcher opens and asks for your disc image. Choose the `.iso` (or `.cci`) file: mc3port checks it and remembers where it is
-(if you move the file later, choose it again). Then pick a quality preset, the aspect ratio and the frame rate, and
+(if you move the file later, choose it again). Then pick a style, **Original** or **Enhanced**, and
 press **PLAY**. Next time the launcher opens on its main page; **PLAY** (or Enter, or A on a controller) starts the
 game.
 
@@ -182,13 +182,14 @@ straight away (progress since the last save is lost). The main ones:
 
 | Setting | What it does |
 |---|---|
+| Style | Above the tabs. **Enhanced** (the default): 60 fps, 16:9, your screen's resolution, 16x texture filter, modern effects, mc3port's HUD, sharp pictures, no opening films, no wait on loading screens. **Original**: the game as on the Xbox, 30 fps, 4:3, 480p, speed blur and light streaks, the game's HUD, opening films, loading screens of 8 seconds. **Custom**: your own values, which stay when you try another style. Changing a row below makes it Custom. Language, volumes, window mode, speed unit and keys are never touched |
 | Game language | English, French, German, Spanish or Italian; by default like Windows |
 | Frames per second | 60, or 30 like the Xbox |
 | Aspect ratio | 16:9 (the game's widescreen mode) or 4:3 |
-| Quality | Original (like the Xbox), Balanced or High: filtering and effects together; the resolution is its own setting |
+| Texture filter | anisotropic filtering, 1x to 16x |
 | Internal resolution | Auto (as many lines as your screen, the default), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p, 4K 2160p or 5K 2880p |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
-| Effects style | **Enhanced** (the default): modern glow, sharpening, colour, vignette and ambient occlusion, without the game's speed blur and light streaks. **Original**: the Xbox's picture, speed blur and light streaks included. **Custom**: every value by itself, speed blur and light streaks too |
+| Modern effects | glow, sharpening, colour, vignette and ambient occlusion, on or off (F10 while playing); under them every value by itself, speed blur and light streaks too |
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
 | HUD | the game's, or mc3port's: speedometer, rev counter, gear, nitrous and special ability drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |
@@ -212,7 +213,7 @@ game's logo, too.
 The game itself is light; most of the work goes into turning the Xbox's graphics commands into Direct3D 11. The
 processor does that, mostly on one thread, while the graphics card has little to do: one fast processor core
 matters more than a powerful graphics card. So far mc3port has been tested on few machines: if the game is not
-smooth on yours, choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset, and please
+smooth on yours, choose 30 fps, a lower internal resolution, or the **Original** style, and please
 report how it runs.
 
 The first time each graphics shader is needed it is compiled, which can cause a short pause in that run, for example
@@ -236,7 +237,7 @@ on entering a city; the results are kept in the `shader_cache` folder, so later 
   (the SHA-256 in `SHA256SUMS` lets you check it is the original).
 - **The program closes at once, or the game crashes**: start it again and press **Report the crash**; or open the
   launcher's **About** page and press **Log folder**: `mc3port.log` says what happened last, `mc3port.1.log` and `mc3port.2.log` the two runs before.
-- **The game is not smooth**: choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset,
+- **The game is not smooth**: choose 30 fps, a lower internal resolution, or the **Original** style,
   in Settings.
 - **Very low frame rate with MSI Afterburner or RivaTuner (RTSS) running**: add `mc3.exe` to RTSS with "Application
   detection level: None", or close them while playing.
