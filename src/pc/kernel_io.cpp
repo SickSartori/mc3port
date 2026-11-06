@@ -28,7 +28,9 @@
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
+#include "pc/profile.h"
 #include "pc/input_hle.h"
+#include "pc/paths.h"
 #include "pc/physical_memory.h"
 #include "pc/settings.h"
 
@@ -422,10 +424,46 @@ void finish_request(uint32_t event, uint32_t apc_routine, uint32_t apc_context, 
     }
 }
 
+// mods\<path on the disc> in the data folder: a file read instead of the disc's, read-only. It replaces a file of the
+// disc only: the game's directory listings stay the disc's.
+const fs::path& mods_folder() {
+    static const fs::path folder = [] {
+        const fs::path path = data_directory() / "mods";
+        std::error_code error;
+        if (fs::is_directory(path, error)) log_line("mods: folder %s in use", path.string().c_str());
+        return path;
+    }();
+    return folder;
+}
+
+bool open_mod(const Location& location, FileObject& file) {
+    std::error_code error;
+    static const bool any = fs::is_directory(mods_folder(), error);
+    if (!any) return false;
+    fs::path path = mods_folder();
+    for (const std::string& component : location.components) {
+        path /= fs::path(std::u8string(component.begin(), component.end()));
+    }
+    if (!fs::is_regular_file(path, error)) return false;
+    file.host = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file.host == INVALID_HANDLE_VALUE) {
+        log_line("mods: cannot open %s (error %lu): reading the disc's file", path.string().c_str(), GetLastError());
+        return false;
+    }
+    file.host_path = path;
+    file.kind = FileObject::Kind::HostFile;
+    log_line("mods: %s", path.string().c_str());
+    return true;
+}
+
 NTSTATUS open_disc(const Location& location, uint32_t disposition, uint32_t options, FileObject& file,
                    uint32_t* information) {
     if (location.components.empty() && !(options & kFileDirectoryFile)) {
         file.kind = FileObject::Kind::Volume;
+        *information = kInfoOpened;
+        return kStatusSuccess;
+    }
+    if (disposition == kFileOpen && !(options & kFileDirectoryFile) && open_mod(location, file)) {
         *information = kInfoOpened;
         return kStatusSuccess;
     }
@@ -571,6 +609,7 @@ NTSTATUS __stdcall NtOpenFile(uint32_t* file_handle, uint32_t desired_access, co
 
 NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_routine, uint32_t apc_context,
                               XIoStatusBlock* io_status, void* buffer, uint32_t length, const int64_t* byte_offset) {
+    ProfileScope scope(ProfileTime::file_reads);
     const std::shared_ptr<FileObject> file = file_from_handle(handle);
     if (!file) return kStatusInvalidHandle;
     std::lock_guard<std::mutex> lock(file->mutex);

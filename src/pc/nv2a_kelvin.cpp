@@ -1151,6 +1151,20 @@ void kelvin_initialise(DmaResolver resolver) {
     for (Vec4& attribute : g_k.attribute) attribute = Vec4{0, 0, 0, 1};
 }
 
+void kelvin_inline_data(const uint32_t* words, uint32_t count) {
+    g_k.inline_data.insert(g_k.inline_data.end(), words, words + count);
+}
+
+void kelvin_array_elements16(const uint32_t* words, uint32_t count) {
+    const size_t used = g_k.elements.size();
+    g_k.elements.resize(used + size_t{count} * 2);
+    uint32_t* out = g_k.elements.data() + used;
+    for (uint32_t i = 0; i < count; ++i) {
+        out[i * 2] = words[i] & 0xFFFF;
+        out[i * 2 + 1] = words[i] >> 16;
+    }
+}
+
 bool kelvin_method(uint32_t method, uint32_t argument) {
     DrawState& d = g_k.draw;
     CombinerProgram& p = d.program;

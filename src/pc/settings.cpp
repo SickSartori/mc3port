@@ -39,7 +39,7 @@ const Setting kSettings[] = {
     {"pause_in_background", 1, "Pause the game (in-game menu) when its window goes to the background: 1 = yes, 0 = no."},
     {"check_updates", 1, "Look for a newer mc3port release on GitHub when the launcher opens: 1 = yes, 0 = no."},
     {"gpu_vertices", 1, "Vertex processing on the graphics card: 1 = yes (faster), 0 = on the processor."},
-    {"render_scale", 0, "Internal resolution, times the game's 480 lines: 0 = like the screen, 1 = like the Xbox (480p), 1.5 = 720p, 2.25 = 1080p, 3 = 1440p, 4.5 = 2160p (4K). Higher = smoother edges."},
+    {"render_scale", 0, "Internal resolution, times the game's 480 lines: 0 = like the screen, 1 = like the Xbox (480p), 1.5 = 720p, 2.25 = 1080p, 3 = 1440p, 4.5 = 2160p (4K), 6 = 2880p (5K). Higher = smoother edges."},
     {"anisotropy", 16, "Anisotropic texture filtering: 1 = off, up to 16."},
     {"effects", 1, "Modern effects: 1 = on, 0 = original picture (F10 toggles them while playing)."},
     {"sharpen", 0.5f, "Adaptive sharpening: 0 = off, 1 = strongest."},

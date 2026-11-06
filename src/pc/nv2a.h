@@ -21,6 +21,11 @@ bool start_nv2a();
 // Called from the vectored exception handler; true if the fault was a register access and has been emulated.
 bool nv2a_handle_access_violation(CONTEXT* context, uint32_t address);
 
+// The channel's PUT and GET without a trap: called thousands of times a second from the game's Direct3D (hle_patches).
+constexpr uint32_t kNv2aUserChannel = kNv2aRegisterBase + 0x800000;
+void nv2a_kick_off(uint32_t put);
+uint32_t nv2a_dma_get();
+
 // The game window, created on first use (its own thread runs the message loop). start_nv2a uses it too.
 HWND nv2a_open_window();
 // A function seeing the window's messages first (the launcher's UI); returning true means handled, with *result.

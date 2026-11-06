@@ -137,6 +137,54 @@ __declspec(naked) void quantize_frame_step() {
     }
 }
 
+// --- GPU channel ---
+//
+// Direct3D's kick-off (0x4163C0) flushes the write-back cache and writes PUT about 2,400 times a second, and a helper
+// (0x416260) reads GET about 1,300 times: 11,000 of the game's 14,000 register traps a second, half of its core's time
+// in the kernel. The flush does nothing on a PC (caches are coherent), so it goes, and PUT and GET are reached by a
+// call. [device+0x1C20] can also point at a channel in memory (0x416440): that one is accessed as before.
+
+// Replaces 0x4163E7-0x41641A: PUT in edx, device in esi; continues at 0x41641B with ecx and edx as the original left them.
+__declspec(naked) void kick_off_without_trap() {
+    __asm {
+        mov ecx, dword ptr [esi + 0x1C20]
+        and edx, 0x0FFFFFFF
+        cmp ecx, kNv2aUserChannel
+        jne in_memory
+        push ecx
+        push edx
+        push edx
+        call nv2a_kick_off
+        add esp, 4
+        pop edx
+        pop ecx
+        jmp done
+    in_memory:
+        mov dword ptr [ecx + 0x40], edx
+    done:
+        push 0x0041641B
+        ret
+    }
+}
+
+// Replaces 0x416260-0x416268: device in ecx, GET wanted in eax; edx is not live.
+__declspec(naked) void read_get_without_trap() {
+    __asm {
+        mov eax, dword ptr [ecx + 0x1C20]
+        cmp eax, kNv2aUserChannel
+        jne in_memory
+        push ecx
+        call nv2a_dma_get
+        pop ecx
+        jmp done
+    in_memory:
+        mov eax, dword ptr [eax + 0x44]
+    done:
+        push 0x00416269
+        ret
+    }
+}
+
 struct JumpPatch {
     const char* name;
     uint32_t address;
@@ -154,6 +202,8 @@ const JumpPatch kJumpPatches[] = {
     {"time manager fixed step", 0x0020BB00, {0x8B, 0x44, 0x24, 0x08, 0x85}, reinterpret_cast<const void*>(&set_fixed_step)},
     {"time manager round-up", 0x0020B737, {0xF3, 0x0F, 0x10, 0x0D, 0xF0},
      reinterpret_cast<const void*>(&quantize_frame_step)},
+    {"D3D kick-off", 0x004163E7, {0x8B, 0x88, 0x10, 0x04, 0x10}, reinterpret_cast<const void*>(&kick_off_without_trap)},
+    {"D3D read of GET", 0x00416260, {0x8B, 0x81, 0x20, 0x1C, 0x00}, reinterpret_cast<const void*>(&read_get_without_trap)},
 };
 
 struct Patch {

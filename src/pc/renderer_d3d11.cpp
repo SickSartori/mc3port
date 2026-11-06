@@ -28,7 +28,9 @@
 #include "pc/log.h"
 #include "pc/paths.h"
 #include "pc/physical_memory.h"
+#include "pc/profile.h"
 #include "pc/settings.h"
+#include "pc/texture_page_hash.h"
 #include "pc/texture_upscale.h"
 
 namespace mc3::pc {
@@ -386,7 +388,8 @@ struct CachedTexture {
     ComPtr<ID3D11ShaderResourceView> srv;
     uint64_t content_hash = 0;
     uint32_t checked_generation = 0;  // memory unchanged since this write-tracking generation
-    bool waiting = false;             // sharp_2d: the enlarged version is being made (Enlarger)
+    TexturePageHashes page_hashes;
+    bool waiting = false;            // sharp_2d: the enlarged version is being made (Enlarger)
 };
 
 // By address, format, pitch, rectangle, palette and whether it is enlarged for 2D (setting sharp_2d).
@@ -590,6 +593,7 @@ uint64_t change_hash(const uint8_t* data, size_t size) {
 
 ComPtr<ID3DBlob> compile(const char* source, size_t size, const char* profile, const char* name) {
     ComPtr<ID3DBlob> code, errors;
+    ProfileScope scope(ProfileTime::shader_compile);
     const HRESULT hr = D3DCompile(source, size, name, nullptr, nullptr, "main", profile, D3DCOMPILE_OPTIMIZATION_LEVEL1,
                                   0, &code, &errors);
     if (FAILED(hr)) {
@@ -611,6 +615,43 @@ float g_scale = 1;
 LONG scaled(uint32_t pixels) { return std::lround(static_cast<float>(pixels) * g_scale); }
 uint32_t scaled_size(uint32_t pixels) { return static_cast<uint32_t>(scaled(pixels)); }
 float scaled_float(uint32_t pixels) { return static_cast<float>(pixels) * g_scale; }
+
+// The graphics card stopped answering (a driver crash or update, a GPU overloaded): nothing drawn from here on would
+// show. mc3port says so and starts again, once: a second loss in a row is not one a restart mends.
+[[noreturn]] void device_lost(HRESULT hr) {
+    constexpr wchar_t kRestarted[] = L"MC3_RESTARTED_AFTER_GPU_LOSS";
+    const HRESULT reason = g_device ? g_device->GetDeviceRemovedReason() : hr;
+    log_line("renderer: the graphics card stopped responding: %08lX, reason %08lX", hr, reason);
+    const bool restart = !GetEnvironmentVariableW(kRestarted, nullptr, 0);
+    if (!GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0)) {
+        MessageBoxA(nullptr,
+                    restart ? "The graphics card stopped responding, so the game has to start again. Progress since "
+                              "your last save is lost.\n\nIf it happens again, update the graphics driver or lower "
+                              "the resolution in the settings."
+                            : "The graphics card stopped responding again. Update the graphics driver or lower the "
+                              "resolution in the settings, then start mc3port again.",
+                    "mc3port", MB_ICONERROR | MB_OK);
+    }
+    if (restart) {
+        wchar_t path[MAX_PATH] = {};
+        if (GetModuleFileNameW(nullptr, path, MAX_PATH)) {
+            SetEnvironmentVariableW(kRestarted, L"1");
+            // The new process waits for this one before it touches the log, which says why it restarted.
+            SetEnvironmentVariableW(L"MC3_RESTART_FROM", std::to_wstring(GetCurrentProcessId()).c_str());
+            STARTUPINFOW startup{};
+            startup.cb = sizeof(startup);
+            PROCESS_INFORMATION process{};
+            std::wstring command = GetCommandLineW();
+            if (CreateProcessW(path, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+                CloseHandle(process.hThread);
+                CloseHandle(process.hProcess);
+            } else {
+                log_line("renderer: could not start again: error %lu", GetLastError());
+            }
+        }
+    }
+    end_process(1);
+}
 
 // A failed creation used to pass silently and leave a hole in the picture; the log now says what was asked for,
 // since a driver may refuse a format or a size that others accept. A few lines are enough: the first ones tell.
@@ -1114,7 +1155,7 @@ void find_replacements() {
 
 // The picture `file` as BGRA, through Windows' image decoders (PNG, JPEG).
 bool load_picture(const std::filesystem::path& file, std::vector<uint8_t>& bgra, UINT& width, UINT& height) {
-    static const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    thread_local const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);  // the launcher's thread and the GPU's
     (void)com;
     ComPtr<IWICImagingFactory> factory;
     ComPtr<IWICBitmapDecoder> decoder;
@@ -1247,9 +1288,14 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     const uint64_t hash_start = ticks();
     // The texture's own bytes name its replacement (the palette address is set for every format, and its memory
     // changes between runs).
-    const uint64_t hash = change_hash(memory, bytes) ^ (d.palette ? change_hash(physical_pointer(d.palette), 1024) : 0);
+    const auto hash_piece = [](const uint8_t* data, uint32_t size) {
+        g_stats.hashed_bytes += size;
+        return change_hash(data, size);
+    };
+    const uint64_t hash = hash_written_pages(cached.page_hashes, memory, d.address & 0x7FFFFFFF, bytes, cached.checked_generation,
+                                             [](uint32_t address) { return physical_write_generation(address, 1); }, hash_piece) ^
+                          (d.palette ? hash_piece(physical_pointer(d.palette), 1024) : 0);
     g_stats.hash_ticks += ticks() - hash_start;
-    g_stats.hashed_bytes += bytes;
     cached.checked_generation = g_write_generation;
     if (cached.srv && cached.content_hash == hash) return cached.srv.Get();
     static const bool replacements = (find_replacements(), !g_replacements.empty());
@@ -1272,6 +1318,7 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     }
 
     const uint64_t upload_start = ticks();
+    ProfileScope upload_scope(ProfileTime::texture_upload);
     struct Account {
         uint64_t start;
         ~Account() {
@@ -1369,14 +1416,35 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     return cached.srv.Get();
 }
 
+// Named after the shader's text: any change of it is a new file.
+std::filesystem::path shader_cache_file(const char* prefix, const std::string& text) {
+    uint64_t hash = 14695981039346656037ull;
+    for (const char ch : text) hash = (hash ^ static_cast<uint8_t>(ch)) * 1099511628211ull;
+    char file_name[40];
+    std::snprintf(file_name, sizeof(file_name), "%s-%016llX.cso", prefix, static_cast<unsigned long long>(hash));
+    return data_directory() / "shader_cache" / file_name;
+}
+
 ID3D11PixelShader* pixel_shader(const CombinerProgram& program) {
     const uint64_t key = combiner_hash(program);
     const auto it = g_pixel_shaders.find(key);
     if (it != g_pixel_shaders.end()) return it->second.Get();
     ComPtr<ID3D11PixelShader>& shader = g_pixel_shaders[key];
     const std::string source = generate_pixel_shader(program);
+    // Compiled here, on the GPU thread: a quarter of a second on entering a city. From the second run on, read from disk.
+    const std::filesystem::path file = shader_cache_file("ps", source);
+    std::ifstream cached(file, std::ios::binary);
+    const std::vector<char> stored((std::istreambuf_iterator<char>(cached)), std::istreambuf_iterator<char>());
+    if (!stored.empty() && SUCCEEDED(g_device->CreatePixelShader(stored.data(), stored.size(), nullptr, &shader))) {
+        return shader.Get();
+    }
     if (ComPtr<ID3DBlob> code = compile(source.c_str(), source.size(), "ps_5_0", "combiner")) {
-        g_device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &shader);
+        if (SUCCEEDED(g_device->CreatePixelShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &shader))) {
+            std::error_code error;
+            std::filesystem::create_directories(file.parent_path(), error);
+            std::ofstream(file, std::ios::binary)
+                .write(static_cast<const char*>(code->GetBufferPointer()), code->GetBufferSize());
+        }
     } else {
         log_line("%s", source.c_str());
     }
@@ -1730,7 +1798,7 @@ bool renderer_start(HWND window) {
         GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor);
         scale = static_cast<float>(monitor.rcMonitor.bottom - monitor.rcMonitor.top) / 480.0f;
     }
-    g_scale = std::clamp(scale, 1.0f, 4.5f);
+    g_scale = std::clamp(scale, 1.0f, 6.0f);
     log_line("renderer: internal resolution %.0f lines (%.3gx)%s", 480.0f * g_scale, g_scale,
              requested <= 0 ? ", automatic" : "");
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0};
@@ -2266,7 +2334,6 @@ struct ProgramShader {
 std::mutex g_program_mutex;
 std::unordered_map<uint64_t, ProgramShader> g_program_shaders;  // under g_program_mutex
 
-std::filesystem::path program_cache_folder() { return data_directory() / "shader_cache"; }
 ProgramConstants g_program_uploaded{};
 bool g_program_valid = false;
 
@@ -2319,6 +2386,10 @@ void draw_vertex_data(const SurfaceState& surface, const DrawState& state, ID3D1
 
 }  // namespace
 
+bool renderer_load_picture(const std::filesystem::path& file, std::vector<uint8_t>& bgra, UINT& width, UINT& height) {
+    return load_picture(file, bgra, width, height);
+}
+
 bool renderer_has_fixed_function() { return g_fixed_function_vertex_shader != nullptr; }
 
 void renderer_draw_fixed_function(const SurfaceState& surface, const DrawState& state,
@@ -2337,11 +2408,7 @@ bool renderer_prepare_program(uint64_t key, const std::function<std::string()>& 
         g_program_shaders[key].state = ProgramShader::kPending;
     }
     const std::string text = std::string(kVertexDataShader) + kVertexProgramShader + source();
-    uint64_t hash = 14695981039346656037ull;  // the file name: any change of the shader text is a new file
-    for (const char ch : text) hash = (hash ^ static_cast<uint8_t>(ch)) * 1099511628211ull;
-    char file_name[40];
-    std::snprintf(file_name, sizeof(file_name), "vp-%016llX.cso", static_cast<unsigned long long>(hash));
-    const std::filesystem::path file = program_cache_folder() / file_name;
+    const std::filesystem::path file = shader_cache_file("vp", text);
     const auto finish = [key](ComPtr<ID3D11VertexShader> shader) {
         std::lock_guard<std::mutex> lock(g_program_mutex);
         ProgramShader& entry = g_program_shaders[key];
@@ -2682,7 +2749,8 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
         if (extra != g_targets.end()) dump_frame(extra->second.texture.Get(), "target");
     }
     const uint64_t swap_start = ticks();
-    g_swap_chain->Present(0, 0);
+    const HRESULT presented = g_swap_chain->Present(0, 0);
+    if (presented == DXGI_ERROR_DEVICE_REMOVED || presented == DXGI_ERROR_DEVICE_RESET) device_lost(presented);
     const uint64_t swap_end = ticks();
     g_stats.swap_ticks += swap_end - swap_start;
     // A present that holds the GPU thread up holds up the game too (it waits for the GPU to take its commands): which

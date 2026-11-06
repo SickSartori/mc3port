@@ -105,6 +105,8 @@ constexpr uint32_t kFlipStall = 0x0130;
 constexpr uint32_t kSetContextDmaSemaphore = 0x01A4;
 constexpr uint32_t kSetSemaphoreOffset = 0x1D6C;
 constexpr uint32_t kBackEndWriteSemaphoreRelease = 0x1D70;
+constexpr uint32_t kArrayElement16 = 0x1800;
+constexpr uint32_t kInlineArray = 0x1818;
 
 // Register file. Only the GPU emulation touches it directly; the game goes through the MMIO traps.
 std::vector<uint32_t> g_registers(kNv2aRegisterSize / 4);
@@ -625,6 +627,21 @@ void run_push_buffer(uint32_t put) {
             get = put;
             break;
         }
+        // Two thirds of the words are indices and inline vertices of one method: taken as a block, not word by word.
+        if (s.method_count > 1 && s.non_increasing && (s.method == kInlineArray || s.method == kArrayElement16) &&
+            g_subchannel_class[s.subchannel & 7] == kClassKelvin && !g_collect_statistics && g_trace_budget <= 0 &&
+            put > get) {
+            const uint32_t count = std::min(s.method_count, (put - get) / 4);
+            if (count && physical_pointer(get + count * 4 - 1)) {
+                wait_for_pgraph_access();
+                const auto* words = reinterpret_cast<const uint32_t*>(pointer);
+                if (s.method == kInlineArray) kelvin_inline_data(words, count);
+                else kelvin_array_elements16(words, count);
+                get += count * 4;
+                s.method_count -= count;
+                continue;
+            }
+        }
         const uint32_t word = *reinterpret_cast<const uint32_t*>(pointer);
         get += 4;
 
@@ -950,6 +967,10 @@ bool nv2a_handle_access_violation(CONTEXT* context, uint32_t address) {
              context->Eip, address, code[0], code[1], code[2], code[3]);
     return false;
 }
+
+void nv2a_kick_off(uint32_t put) { write_register(kUserDmaPut, put); }
+
+uint32_t nv2a_dma_get() { return g_push.get; }
 
 HWND nv2a_open_window() {
     if (!g_window) {

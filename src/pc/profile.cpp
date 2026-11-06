@@ -23,7 +23,8 @@ namespace {
 constexpr ULONGLONG kIntervalMilliseconds = 10000;
 constexpr size_t kKinds = static_cast<size_t>(ProfileTime::count);
 const char* const kKindNames[kKinds] = {"object waits", "sleeps",     "dispatch lock", "idle",
-                                        "present",      "trap waits", "flip waits",    "access waits"};
+                                        "present",      "trap waits", "flip waits",    "access waits",
+                                        "shader compile", "texture upload", "file reads"};
 
 struct ThreadProfile {
     char name[32] = {};
@@ -31,6 +32,7 @@ struct ThreadProfile {
     HANDLE handle = nullptr;
     DWORD id = 0;
     std::atomic<uint64_t> ticks[kKinds] = {};
+    std::atomic<uint64_t> frame_ticks[kKinds] = {};  // since the last shown frame (MC3_PROFILE=1)
     uint64_t last_cpu = 0, last_kernel = 0;  // 100 ns units, at the last log
 };
 
@@ -111,12 +113,43 @@ uint64_t profile_ticks() {
 }
 
 void profile_add(ProfileTime kind, uint64_t ticks) {
-    if (t_profile) t_profile->ticks[static_cast<size_t>(kind)].fetch_add(ticks, std::memory_order_relaxed);
+    if (!t_profile) return;
+    t_profile->ticks[static_cast<size_t>(kind)].fetch_add(ticks, std::memory_order_relaxed);
+    if (g_detailed) t_profile->frame_ticks[static_cast<size_t>(kind)].fetch_add(ticks, std::memory_order_relaxed);
+}
+
+// A frame took at least twice the usual two blanks: what this thread (the GPU's) did meanwhile, and what the game's
+// threads were blocked on. Work not listed is "other": methods and draws on this thread.
+void report_late_frame(uint32_t vblanks) {
+    static int reports = 0;
+    double own[kKinds] = {}, game[kKinds] = {};
+    {
+        std::lock_guard<std::mutex> lock(g_threads_mutex);
+        for (ThreadProfile* profile : g_threads) {
+            for (size_t i = 0; i < kKinds; ++i) {
+                const double ms = profile->frame_ticks[i].exchange(0, std::memory_order_relaxed) / ticks_per_millisecond();
+                if (profile == t_profile) own[i] = ms;
+                else if (profile->game_core) game[i] += ms;
+            }
+        }
+    }
+    if (vblanks < 4 || reports >= 500) return;
+    ++reports;
+    const auto kind = [](ProfileTime k) { return static_cast<size_t>(k); };
+    const double total = vblanks * 1000.0 / nv2a_vblank_hz();
+    double accounted = 0;
+    for (const double ms : own) accounted += ms;
+    log_line("profile: late frame, %u blanks (%.0f ms) at %.1f s: GPU thread idle %.1f, flip waits %.1f, trap waits %.1f, "
+             "present %.1f, shader compile %.1f, texture upload %.1f, other %.1f ms; game threads file reads %.1f ms",
+             vblanks, total, GetTickCount64() / 1000.0, own[kind(ProfileTime::idle)], own[kind(ProfileTime::flip_waits)],
+             own[kind(ProfileTime::trap_waits)], own[kind(ProfileTime::present)], own[kind(ProfileTime::shader_compile)],
+             own[kind(ProfileTime::texture_upload)], std::max(0.0, total - accounted), game[kind(ProfileTime::file_reads)]);
 }
 
 void profile_frame_shown(uint32_t vblanks) {
     ++g_frames;
     ++g_blanks[std::clamp<uint32_t>(vblanks, 1, 5) - 1];
+    if (g_detailed) report_late_frame(vblanks);
 }
 
 void profile_register_access(uint32_t offset, uint32_t eip) {
