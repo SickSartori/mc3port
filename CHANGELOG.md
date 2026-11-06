@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.1 (2026-11-05)
+## 0.3.1 (2026-11-06)
 
 ### New
 
@@ -11,6 +11,12 @@
 - **Crash report**: the first start after a crash keeps that crash's log, which it used to overwrite, with the crash
   dump in `mc3port-crash-report.zip`, and offers **Report the crash** on the launcher's first page and in the bottom
   bars: it opens the bug report form and shows the file to attach. Nothing is sent by itself.
+- **Mods**: a file in the `mods` folder, in the data folder, with the path it has on the disc (`mods\flash\...`), is read
+  instead of the disc's.
+- Resolution up to **5K (2880p)**.
+- A replacement picture of the game's logo in `textures_replace` is shown in the launcher too.
+- **Save folder**: the launcher's About page opens the folder with your profiles.
+- If the graphics card stops responding, mc3port says so and starts again, once.
 
 ### Improved
 
@@ -21,9 +27,30 @@
 - The cars' stickers no longer show steps along their edges at high resolutions: they are enlarged like the HUD's
   pictures, under the same setting, now called **Sharp pictures**.
 - The log says when RivaTuner Statistics Server (RTSS) is hooked into mc3port, which can slow it down a lot.
+- The music keeps more of its top octave: streams are resampled like the effects.
+- The log says where the game's threads are when no new frame comes for 8 seconds, without any setting.
+- Times shown by the game follow the time zone of Windows.
+- The logs of the two runs before are kept, as `mc3port.1.log` and `mc3port.2.log`: starting the game again no longer
+  loses the log of a run that went wrong. Logs and crash reports are now in the data folder's `logs` folder.
+- **Your files are easy to find**: saves, settings, logs and mods now go in `Documents\mc3port`. If you have played an
+  earlier version, your files keep working where they are, and the launcher asks at each start whether to move them.
+- With a controller or the keyboard, the selection in the launcher is now easy to see: a thick white frame.
+- The program's folder holds only `mc3.exe`, `mc3runtime.dll` and `README.txt`, with the other documents in `docs`.
+- If RivaTuner Statistics Server (RTSS) is hooked into mc3port, the launcher and the in-game menu say so and how to
+  turn it off for the game.
+- Lighter on the processor while driving: in a free drive at 60 fps the game's core went from 39% to 28% busy, and the
+  emulated graphics chip's thread does about a fifth less work per draw. The frame rate on a fast PC stays at 60; the
+  room is for slower ones.
+- No more pause of about a third of a second on entering a city at every start: the shaders made from the game's
+  materials are now kept in `shader_cache` too, so only the first run compiles them.
 
 ### Fixed
 
+- **The cars' engines could hardly be heard and did not follow the revs**: the sounds of a car, of the wind and of other
+  traffic play through a shared voice that sets their distance, pan and, for an engine, the revs; mc3port ignored it and
+  played them at full level at the pitch of their recording. Voices also keep the 6 dB of headroom they start with. Far
+  cars and the wind no longer cover your engine, and the overall level was raised to match. These sounds are also
+  centred and stronger next to the music.
 - The nitrous gauge stayed behind in 16:9 and, with mc3port's HUD, floated between the rev counter and the gear: it now
   follows the game's dials, and mc3port's HUD draws it as an arc above the speedometer, in the colour chosen in the shop.
 - In the garage's menus a press of the d-pad or the left stick is one step, and holding repeats at a menu's pace.

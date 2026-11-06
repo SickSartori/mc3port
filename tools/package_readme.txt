@@ -8,7 +8,7 @@ Microsoft. No game data is included or distributed: no disc images, no
 executables, no textures, sounds, music or films. Please do not ask for
 game files and do not share them.
 
-The full guide, with pictures, is README.md in this folder and online at
+The full guide, with pictures, is docs/README.md in this folder and online at
 https://github.com/SickSartori/mc3port
 
 
@@ -62,10 +62,12 @@ shader_cache folder and later runs are smooth from the start.
 WHERE YOUR FILES ARE
 --------------------
 
-Settings (mc3port.ini), saves (the xbox_hdd folder), the log (mc3port.log)
-and the shader cache live in %LOCALAPPDATA%\mc3port, normally
-C:\Users\<you>\AppData\Local\mc3port. Updates and uninstalling never
-touch them; to remove everything, delete that folder too.
+Settings (mc3port.ini), saves (the xbox_hdd folder), the logs (the logs
+folder) and the shader cache live in your Documents folder:
+C:\Users\<you>\Documents\mc3port. Versions up to 0.3.0 kept them in
+%LOCALAPPDATA%\mc3port: they keep working there, and at each start the
+launcher asks whether to move them, until you do. Updates and uninstalling never touch them; to remove everything, delete that folder
+too.
 
 To back up your progress, copy the xbox_hdd folder.
 
@@ -84,7 +86,7 @@ SHA-256 and shows it in Explorer: start it to install the update.
 Portable zip: extract the new version in the same place, replacing the
 files of this folder. Settings and saves are kept.
 
-What changed in each version: CHANGELOG.md in this folder.
+What changed in each version: docs/CHANGELOG.md in this folder.
 
 
 KEYS
@@ -116,7 +118,8 @@ IF SOMETHING GOES WRONG
   install the Media Feature Pack. An antivirus may also have quarantined
   the file; the SHA-256 in SHA256SUMS lets you check it is the original.
 - The program closes at once, or the game crashes: open the launcher's
-  About page and press "Log folder"; mc3port.log says what happened last.
+  About page and press "Log folder"; mc3port.log says what happened last,
+  mc3port.1.log and mc3port.2.log the two runs before.
 - The game is not smooth: choose 30 fps, a lower internal resolution, or
   the Balanced or Original preset, in Settings. The processor counts more than the graphics card.
   mc3port has been tested on few machines so far.
@@ -157,7 +160,7 @@ everything.
 
 Zip, by hand: put your .iso in this folder, then run "wine mc3.exe"
 here. Your files are then in the Wine prefix, under
-drive_c/users/<you>/AppData/Local/mc3port.
+drive_c/users/<you>/Documents/mc3port.
 
 It has been tested on one machine only, with Wine 11 under WSL2: the
 launcher, the opening films and the career's menus work, sound included.
@@ -182,6 +185,6 @@ LICENCE
 -------
 
 mc3port's code is released under the MIT licence (LICENSE). Third-party
-parts keep their own licences: THIRD_PARTY.md and the licenses folder.
+parts keep their own licences: docs/THIRD_PARTY.md and docs/licenses.
 The game itself, and everything read from your disc, belongs to its
 owners.

@@ -68,8 +68,8 @@ build\pc-x86\Debug\mc3.exe "percorso\del\gioco.iso"
 
 Con un'ISO come argomento il launcher viene saltato (anche con `MC3_SKIP_LAUNCHER=1`). Senza argomenti si apre il launcher, che usa l'ISO ricordata in `mc3port.ini`, o la prima `.iso` accanto a `mc3.exe` o nella cartella corrente, o la fa scegliere.
 
-I dati dell'utente stanno in `%LOCALAPPDATA%\mc3port` (`paths.cpp`): l'hard disk dell'Xbox (salvataggi in `UDATA`,
-dati del titolo in `TDATA`, cache `Z:`) è la cartella `xbox_hdd`, il log di ogni avvio è `mc3port.log`, e lì
+I dati dell'utente stanno in `Documents\mc3port` (`paths.cpp`; fino alla 0.3.0 in `%LOCALAPPDATA%\mc3port`, che resta in uso finché il launcher non li sposta su richiesta del giocatore): l'hard disk dell'Xbox (salvataggi in `UDATA`,
+dati del titolo in `TDATA`, cache `Z:`) è la cartella `xbox_hdd`, il log di ogni avvio è `logs\mc3port.log` (con i due precedenti, `.1` e `.2`), e lì
 stanno anche `mc3port.ini` e `shader_cache`. Se accanto a `mc3.exe` c'è un file `portable.txt` o un `mc3port.ini`,
 tutto resta invece accanto a `mc3.exe` (modalità portatile): è il caso delle build in `build\pc-x86\<config>`.
 
@@ -133,7 +133,7 @@ Variabili d'ambiente:
 | `MC3_DUMP_TEXTURE=<indirizzo hex>` | salva le texture decodificate di quella pagina di 4 KB come `texture-<indirizzo>.bmp` (con l'alfa) |
 | `MC3_DUMP_2D=1` | salva ogni texture dei draw piatti dell'HUD come `texture-<indirizzo>-<hash>.bmp` (le compresse a blocchi così come sono, in `.dds`); l'hash è il nome da dare all'immagine in `textures_replace` |
 | `MC3_GPU_STATS=1` | ogni 10 s, i metodi GPU più usati |
-| `MC3_PROFILE=1` | ogni 10 s, oltre alla riga `profile:` sempre presente (fps del gioco, vblank per fotogramma, carico del core del gioco e del thread della GPU): tempo CPU e attese di ogni thread, registri della GPU letti o scritti dal gioco tramite eccezioni, con l'indirizzo del codice |
+| `MC3_PROFILE=1` | ogni 10 s, oltre alla riga `profile:` sempre presente (fps del gioco, vblank per fotogramma, carico del core del gioco e del thread della GPU): tempo CPU e attese di ogni thread, registri della GPU letti o scritti dal gioco tramite eccezioni, con l'indirizzo del codice. Anche una riga `late frame` per ogni fotogramma che arriva dopo 4 vblank o più, con dove è andato il tempo |
 | `MC3_INPUT_SCRIPT=<s>:<pulsante>,<da>-<a>:<pulsante>,...` | preme (0,2 s) o tiene premuti pulsanti del controller 1 a quei secondi dall'avvio, per i test (`start back a b x y black white up down left right lt rt`, `sl`/`sr` per sterzare). Con `@<file>[#n]+<s>[~<durata>]:<pulsante>` il tempo conta da quando il gioco apre un file con quel nome (per esempio `@bg_main+5:down`). Con il prefisso `p2`...`p4` (`p2start`, `p2rt`) i pulsanti vanno ai controller 2-4, che compaiono collegati anche senza un controller vero; con un controller vero sulla porta 1 le pressioni si sommano alle sue |
 | `MC3_DUMP_BUFFER=<byte>` | salva i dati grezzi dei buffer audio di quella dimensione in `buffer-<byte>-<indirizzo>.bin` (cartella di lavoro) |
 | `MC3_TRACE_SAVES=1` | nel log, tutti i file del disco (dimensione e hash del primo MB) e cosa il gioco chiede ai file system con la risposta e l'indirizzo che chiede (`saves: from ...`, fino a 3000 righe): per confrontare una corsa ferma su "Checking for saved files" con una che prosegue |

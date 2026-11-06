@@ -37,8 +37,11 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
 - **Memoria fisica**: 64 MB a `0x80000000` come sull'Xbox (`physical_memory.cpp`); gli indirizzi GPU tornano.
 - **Registri** a `0xFD000000`: non mappati; ogni accesso genera un'eccezione che `mmio.cpp` decodifica (mov, movzx,
   test, cmp, or, and) e ripete sul modello dei registri (interrupt write-1-to-clear, timer, FIFO sempre inattiva,
-  PUT che sveglia il thread GPU). La RAM d'istanza (`0xFD700000`) è memoria normale.
-- **Push buffer**: salti, chiamate, metodi; oggetti risolti tramite RAMHT; semafori e reference per i fence.
+  PUT che sveglia il thread GPU). La RAM d'istanza (`0xFD700000`) è memoria normale. Il KickOff di D3D (`0x4163C0`) e
+  la lettura di GET (`0x416260`) sono deviati (`hle_patches.cpp`): il flush della cache WBC non serve su PC, PUT e GET
+  arrivano con una chiamata. Le eccezioni scendono da circa 14.000 a 2.400 al secondo in città.
+- **Push buffer**: salti, chiamate, metodi; oggetti risolti tramite RAMHT; semafori e reference per i fence. Gli
+  argomenti di `ARRAY_ELEMENT16` e `INLINE_ARRAY`, due terzi delle parole, si prendono a blocchi.
 - **Vblank** a 60 Hz verso l'ISR del driver; la finestra Win32 mostra il front buffer (`PCRTC_START`).
 - **Rendering** (`nv2a_kelvin.cpp` -> `renderer_d3d11.cpp`): i vertici passano dal vertex program NV2A interpretato
   sulla CPU (`nv2a_vsh.cpp`) oppure dalla pipeline fixed-function (matrice composita, offset del viewport, texgen
@@ -65,7 +68,9 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
   another thread's DISPATCH_LEVEL"): da 8-18 ogni 10 s a 0-1 nella carriera; uno di quelli in XACT (`0x40F013`) è la
   causa probabile del crash casuale in `0x0040652C` (lista dei suoni con un elemento vuoto).
 - **Velocità**: con la build Release i menu 3D vanno a 28-50 fps (in Debug 2 fps). Le texture si rileggono solo se
-  la loro memoria è stata scritta (write watch di Windows sulla RAM emulata); le render target non si ricreano più
+  la loro memoria è stata scritta (write watch di Windows sulla RAM emulata), e di una texture grande si ricontrollano
+  solo le pagine scritte (`texture_page_hash.h`). I pixel shader dei combiner si compilano sul thread GPU la prima
+  volta e poi si leggono da `shader_cache` (`ps-*.cso`, accanto ai `vp-*.cso` dei vertex program); le render target non si ricreano più
   quando cambia il clip (le superfici swizzled hanno la dimensione del formato). Il log riporta ogni 10 s fps, draw
   e tempo per vertici/texture/D3D.
 
@@ -126,10 +131,17 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
   FL, FR, BL, BR), 10 mandata al riverbero I3DL2, 11-30 mandate agli effetti, 31 submix. XACT instrada ogni voce
   nuova a XTLK + centro + LFE + I3DL2 e poi la reinstrada a 0-5; in città nessuna voce resta su 6 e oltre.
 - **Uscita**: i mixbin ridotti a stereo (anteriori 1, centrale e posteriori 0,5, XTLK come i loro altoparlanti;
-  LFE, riverbero e mandate esclusi), volume generale 0,3 e limitatore con 2 ms di anticipo e 150 ms di rilascio;
-  interpolazione lineare nel ricampionamento e rampa del volume in ogni blocco da 10 ms (niente click quando il
+  LFE, riverbero e mandate esclusi), volume generale 0,9 e limitatore con 2 ms di anticipo e 150 ms di rilascio;
+  interpolazione Catmull-Rom nel ricampionamento e rampa del volume in ogni blocco da 10 ms (niente click quando il
   gioco cambia volume e tono del motore). Una voce senza mixbin prende quelli del suo primo `SetMixBinVolumes`.
-  Il gioco mette a 0 l'headroom di tutti i mixbin e delle voci, e non chiede mai volumi sopra 0 dB.
+  Il gioco mette a 0 l'headroom dei mixbin; le voci partono da 6 dB (0 per 3D, mix-in ed effect-in) e XACT ne azzera
+  alcune con `SetHeadroom`. Il gioco non chiede mai volumi sopra 0 dB.
+- **Voci mix-in**: XACT passa con `SetOutputBuffer` (`0x40FB8E`, `0x40FBCA`) una voce senza dati (flag `0x2000`) ai suoni
+  con una posizione: motore, vento, traffico. La voce suona solo attraverso il mix-in: volume e mixbin del mix-in danno
+  distanza e panorama, i mixbin della voce non contano. Il mix-in è un solo segnale mono mandato a tutti i suoi mixbin,
+  qualunque sia il suo formato (XACT lo crea senza, che qui vale stereo). Questi suoni hanno 10 dB in più rispetto alla
+  musica (`kMixInGain`): lo stadio di effetti della console non è emulato. Il **tono dei giri del motore** il gioco lo imposta sul mix-in e
+  si somma a quello del campione. Codice in `src/pc/audio_gains.h`.
 - **Come XACT suona un effetto**: lo avvia in loop e 10 ms dopo chiama `StopEx(ENVELOPE | RELEASEWAVEFORM)`: la
   voce esce dal loop, suona fino alla fine del campione e sfuma con il rilascio dell'inviluppo. L'inviluppo lo
   imposta prima con `SetEG`: `dwEG` 1 (`DSEG_AMPLITUDE`; 0 è il "multi" di tono e filtro), modo 1, attacco 0-23 e
@@ -154,7 +166,7 @@ XPP vengono rediretti a funzioni con lo stesso prototipo. XACT e Bink restano qu
 - **Emulato anche**: il filtro DLS2 passa-basso per voce (`SetFilter`, un filtro a variabili di stato a 48 kHz;
   XACT lo usa su pochi suoni, come l'acqua del fiume a Tokyo).
 - **Non emulati**: effetti DSP (riverbero, il file `dsstdfx.bin` viene accettato e ignorato), LFO, inviluppo
-  multiplo (tono e filtro), equalizzatore parametrico, headroom (il gioco lo mette a 0), audio 3D (non usato da MC3).
+  multiplo (tono e filtro), equalizzatore parametrico, audio 3D (non usato da MC3).
   In città il gioco non chiama LFO né inviluppo multiplo. Quattro funzioni DirectSound non sono identificate con
   certezza: accettano gli argomenti, riescono e lo registrano nel log.
 

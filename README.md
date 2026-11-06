@@ -46,7 +46,7 @@ Compared with the console:
 - **True 16:9**: the game's own widescreen mode, with a wider view and no stretching or black bars, and the HUD
   kept in shape: round radar and dials.
 - **60 fps**, or 30 like the Xbox.
-- **Higher internal resolution** (from the Xbox's 480p up to 4K, or as many lines as your screen) with anisotropic
+- **Higher internal resolution** (from the Xbox's 480p up to 5K, or as many lines as your screen) with anisotropic
   filtering, for smooth edges and sharp textures.
 - **Modern effects**, all optional: light glow, adaptive sharpening, colour, vignette and ambient occlusion
   (F10 switches them on and off to compare).
@@ -99,9 +99,13 @@ All packages contain `README.txt`, a short guide to what you need, the first sta
 To check a download, compare its SHA-256 with the `SHA256SUMS` file of the release. The files are not code signed,
 so Windows SmartScreen may ask once whether you trust them ("More info", then "Run anyway").
 
-Your settings (`mc3port.ini`), saves (`xbox_hdd`), log and shader cache live in `%LOCALAPPDATA%\mc3port`, so updates
+Your settings (`mc3port.ini`), saves (`xbox_hdd`), logs (`logs`) and shader cache live in your `Documents\mc3port` folder (`C:\Users\<you>\Documents\mc3port`), so updates
 and uninstalling never touch them. To keep them next to `mc3.exe` instead (a USB stick, say), create an empty file
-named `portable.txt` there.
+named `portable.txt` there. Versions up to 0.3.0 kept them in `%LOCALAPPDATA%\mc3port`: they keep working there, and at each start the
+launcher asks whether to move them, until you do.
+
+Your profiles are in `xbox_hdd\Partition1\UDATA\54540079`, laid out like the Xbox's hard disk: the launcher's **About**
+page opens that folder. For a backup, copy the whole `xbox_hdd` folder.
 
 ## Linux (experimental)
 
@@ -126,7 +130,7 @@ What it takes:
   the Wine and Linux versions.
 - Or the **portable zip**, by hand: extract it, put your `.iso` in the `mc3port` folder (it is found there without
   asking) or choose it in the launcher, then start it with `wine mc3.exe` from that folder. Your files are then in
-  the Wine prefix, `~/.wine/drive_c/users/<you>/AppData/Local/mc3port` (or next to `mc3.exe` with `portable.txt`).
+  the Wine prefix, `~/.wine/drive_c/users/<you>/Documents/mc3port` (or next to `mc3.exe` with `portable.txt`).
   With Steam, "Add a non-Steam game" pointing at `mc3.exe` starts it through Proton (not tested yet).
 
 ## First start
@@ -182,7 +186,7 @@ straight away (progress since the last save is lost). The main ones:
 | Frames per second | 60, or 30 like the Xbox |
 | Aspect ratio | 16:9 (the game's widescreen mode) or 4:3 |
 | Quality | Original (like the Xbox), Balanced or High: filtering and effects together; the resolution is its own setting |
-| Internal resolution | Auto (as many lines as your screen, the default), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p or 4K 2160p |
+| Internal resolution | Auto (as many lines as your screen, the default), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p, 4K 2160p or 5K 2880p |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
 | Effects style | **Enhanced** (the default): modern glow, sharpening, colour, vignette and ambient occlusion, without the game's speed blur and light streaks. **Original**: the Xbox's picture, speed blur and light streaks included. **Custom**: every value by itself, speed blur and light streaks too |
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
@@ -197,7 +201,11 @@ straight away (progress since the last save is lost). The main ones:
 **Replacement pictures**: a PNG or JPG in a folder `textures_replace` next to `mc3port.ini`, named after a 2D
 picture's hash (16 hex digits, for example `83E5DF1E4AC28289.png`), is drawn instead of the game's picture, at any
 size. `MC3_DUMP_2D=1` saves the HUD's pictures with their hash in the name (see `docs/DEVELOPMENT.md`). mc3port
-includes no pictures: the folder does not exist until you make it.
+includes no pictures: the folder does not exist until you make it. The launcher shows `4B08E442017FBC3F.png`, the
+game's logo, too.
+
+**Mods**: a file in a folder `mods` next to `mc3port.ini`, with the path it has on the disc (for example
+`mods\flash\bg_main.xbck`), is read instead of the disc's. mc3port includes no such files.
 
 ## Performance
 
@@ -207,8 +215,8 @@ matters more than a powerful graphics card. So far mc3port has been tested on fe
 smooth on yours, choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset, and please
 report how it runs.
 
-The first time each graphics shader is needed it is compiled in the background (meanwhile the processor does that
-work); the results are kept in the `shader_cache` folder, so later runs start without hitches.
+The first time each graphics shader is needed it is compiled, which can cause a short pause in that run, for example
+on entering a city; the results are kept in the `shader_cache` folder, so later runs do not pause for them.
 
 ## Known issues
 
@@ -227,7 +235,7 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
   is missing: on Windows N editions install the Media Feature Pack; an antivirus may also have quarantined the file
   (the SHA-256 in `SHA256SUMS` lets you check it is the original).
 - **The program closes at once, or the game crashes**: start it again and press **Report the crash**; or open the
-  launcher's **About** page and press **Log folder**: `mc3port.log` says what happened last.
+  launcher's **About** page and press **Log folder**: `mc3port.log` says what happened last, `mc3port.1.log` and `mc3port.2.log` the two runs before.
 - **The game is not smooth**: choose 30 fps, a lower internal resolution, or the **Balanced** or **Original** preset,
   in Settings.
 - **Very low frame rate with MSI Afterburner or RivaTuner (RTSS) running**: add `mc3.exe` to RTSS with "Application
@@ -245,8 +253,8 @@ work); the results are kept in the `shader_cache` folder, so later runs start wi
 To report a problem, press **Report a problem** in the launcher's bottom bar (or in the in-game menu's): it opens the
 form on GitHub with your version and PC filled in, and the folder with `mc3port.log` to attach. Or open an
 [issue](https://github.com/SickSartori/mc3port/issues) yourself with your Windows version, your graphics card, what
-you were doing and `mc3port.log` attached (normally in `%LOCALAPPDATA%\mc3port`; the launcher's **About** page opens
-the folder). Each start overwrites the log, so copy it before starting the game again.
+you were doing and `mc3port.log` attached (normally in `Documents\mc3port\logs`; the launcher's **About** page
+opens the folder). The logs of the two runs before are there too, as `mc3port.1.log` and `mc3port.2.log`.
 
 After a crash, the next start makes `mc3port-crash-report.zip` in the same folder, with the crash's log and
 `mc3port-crash.dmp`, and offers **Report the crash** on the launcher's first page and in the bottom bars: it opens the

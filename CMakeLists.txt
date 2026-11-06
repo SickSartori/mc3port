@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Read when targets are created, so it has to come before them.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# The configuration with symbols inlines like Release, so that what is measured and tried is what ships.
+string(REPLACE "/Ob1" "/Ob2" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+string(REPLACE "/Ob1" "/Ob2" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+
 # Portable core: disc image and XBE parsing, kernel export table.
 # No platform headers here.
 add_library(mc3core STATIC
@@ -86,6 +90,9 @@ if(WIN32)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
                                MC3PORT_VERSION="${PROJECT_VERSION}" ${MC3_VERSION_DEFINES})
     target_compile_options(mc3runtime PRIVATE /utf-8)
+    # The GPU thread's hot path crosses files (methods, physical memory, renderer).
+    set_target_properties(mc3runtime PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE ON
+                                                INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
 
     # Launcher: linked at the XBE base (0x10000) so Windows reserves the game's address range for us.
     # It has no CRT; runtime checks and security cookies would pull one in.
@@ -115,6 +122,10 @@ if(WIN32)
         endfunction()
         mc3_test(test_core)
         mc3_test(test_direction_pace)
+        mc3_test(test_audio_gains)
+        mc3_test(test_texture_pages)
+        mc3_test(test_log src/pc/log.cpp)
+        mc3_test(test_data_folder src/pc/paths.cpp)
         mc3_test(test_crash_report src/pc/crash_report.cpp)
         mc3_test(test_textures src/pc/nv2a_texture.cpp src/pc/texture_upscale.cpp)
         mc3_test(test_game_disc src/pc/game_disc.cpp)

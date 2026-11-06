@@ -100,7 +100,7 @@
   ],
   "folders": {
     "saves": "{install}/xbox_hdd",
-    "logs": "{install}"
+    "logs": "{install}/logs"
   },
   "exit_codes": {
     "2": "mc3port could not use your disc image. It needs the European release (PAL) of Midnight Club 3: DUB Edition Remix as a complete .iso: pick it again on the game's page."

@@ -13,8 +13,9 @@ export WINEDEBUG=${WINEDEBUG:--all}
 command -v wine >/dev/null 2>&1 || { echo "wine not found: install Wine first (README.md, section Linux)." >&2; exit 1; }
 
 mkdir -p "$dest" "$bin" "$apps"
-cp -f "$here/mc3.exe" "$here/mc3runtime.dll" "$here/mc3port.png" "$here"/*.md "$here/README.txt" "$here/LICENSE" "$dest/"
-rm -rf "$dest/licenses" && cp -r "$here/licenses" "$dest/"
+cp -f "$here/mc3.exe" "$here/mc3runtime.dll" "$here/mc3port.png" "$here/README.txt" "$dest/"
+# Up to 0.3.0 the documents were next to mc3.exe; they are in docs now.
+rm -rf "$dest/licenses" "$dest/docs" "$dest"/*.md "$dest/LICENSE" && cp -r "$here/docs" "$dest/"
 # Settings, saves, log and shader cache next to mc3.exe (README.md, "Portable"): everything in one folder.
 : > "$dest/portable.txt"
 
