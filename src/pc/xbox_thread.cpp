@@ -343,6 +343,26 @@ void log_game_threads(const char* reason) {
     }
 }
 
+// Whether a game thread is in [begin, end): suspends each for a moment.
+static bool game_thread_in(uint32_t begin, uint32_t end) {
+    std::vector<XboxThreadContext*> threads;
+    {
+        std::lock_guard<std::mutex> lock(g_threads_mutex);
+        threads = g_threads;
+    }
+    bool found = false;
+    for (XboxThreadContext* context : threads) {
+        if (found || context == current_xbox_thread()) continue;
+        if (WaitForSingleObject(context->windows_thread, 0) == WAIT_OBJECT_0) continue;  // exited
+        if (SuspendThread(context->windows_thread) == static_cast<DWORD>(-1)) continue;
+        CONTEXT registers{};
+        registers.ContextFlags = CONTEXT_CONTROL;
+        found = GetThreadContext(context->windows_thread, &registers) && registers.Eip >= begin && registers.Eip < end;
+        ResumeThread(context->windows_thread);
+    }
+    return found;
+}
+
 void start_thread_watchdog(uint32_t code_begin, uint32_t code_end) {
     g_code_begin = code_begin;
     g_code_end = code_end;
@@ -351,9 +371,24 @@ void start_thread_watchdog(uint32_t code_begin, uint32_t code_end) {
     std::thread([] {
         constexpr DWORD kCheck = 1000;
         constexpr uint32_t kStallChecks = 8, kMostReports = 3;
-        uint32_t last_frames = 0, unchanged = 0, reports = 0;
+        uint32_t last_frames = 0, unchanged = 0, reports = 0, ticks = 0, spinning = 0;
         while (reports < kMostReports) {
             Sleep(kCheck);
+            // D3D's wait for a fence ends in a loop without a pause (0x4166D7-0x4166E1, see hle_patches.cpp): a thread
+            // still there after 6 s is stuck, while frames may go on. Its numbers: handed, done, as the loop reads them.
+            if (++ticks % 2 == 0) {
+                spinning = game_thread_in(0x004166D7, 0x004166E1) ? spinning + 1 : 0;
+                if (spinning == 3) {
+                    ++reports;
+                    const uint32_t device = *reinterpret_cast<const uint32_t*>(0x00422D78);
+                    if (device) {
+                        const uint32_t done_at = *reinterpret_cast<const uint32_t*>(device + 0x30);
+                        log_line("D3D fence wait for 6 s: handed %08X, done %08X", *reinterpret_cast<const uint32_t*>(device + 0x2C),
+                                 done_at ? *reinterpret_cast<const uint32_t*>(done_at) : 0);
+                    }
+                    log_game_threads("in the D3D fence wait for 6 s");
+                }
+            }
             const uint32_t frames = nv2a_frames_shown();
             if (frames != last_frames || game_paused()) {
                 last_frames = frames;

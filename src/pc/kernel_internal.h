@@ -21,6 +21,8 @@ void register_dispatcher_functions();
 void register_thread_functions();
 // A loading screen opened (its Flash file): the loading behind it lasts at least loading_screen_seconds.
 void note_loading_screen();
+// On the thread that opened a loading screen, the next file it opens waits until the screen has been up long enough.
+void hold_loading_screen();
 void register_memory_functions();
 // A read fault at `address`: if the page is reserved by the game's memory (the tail NtAllocateVirtualMemory adds
 // to new regions), commits it zero-filled and returns true so that the read can be retried.

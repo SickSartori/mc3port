@@ -142,6 +142,7 @@ Variabili d'ambiente:
 | `MC3_AUDIO_VOICES=1` | ogni 10 s, l'elenco delle voci audio attive con formato, volume, tono, regioni, età e uscite |
 | `MC3_AUDIO_TRACE=1` | una riga di log per ogni play, stop, fine del rilascio e fine naturale di una voce (tempo, formato, volume, tono, regione, mixbin), fino a 4000 righe |
 | `MC3_SKIP=<texture>:<superficie>:<fusione>` / `MC3_DUMP_DRAW=...` | salta, o salva prima e dopo, i draw corrispondenti (per isolare un difetto grafico) |
+| `MC3_DISC_MBPS=<MB/s>` | letture del disco lente come da un lettore DVD (la Xbox fa circa 6 MB/s), più `MC3_DISC_SEEK_MS` (80 ms) quando la lettura salta: trova i bug che un'immagine veloce nasconde |
 | `MC3_WATCHDOG=<s>` | ogni `s` secondi, dove si trovano i thread del gioco (cambia la temporizzazione) |
 
 ## Prove automatiche

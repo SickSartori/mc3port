@@ -203,6 +203,7 @@ std::vector<CompletedPacket> flush_stream(Voice& voice) {
     voice.envelope_stage = EnvelopeStage::kOff;
     voice.playing = false;
     voice.end_of_stream = false;
+    voice.stream_fed = false;
     return take_completed_packets(voice);
 }
 
@@ -260,6 +261,7 @@ HRESULT32 __stdcall StreamProcess(uint32_t self, const XMediaPacket* input, cons
     }
     voice->packets.push_back(StreamPacket{*input, 0});
     voice->playing = true;
+    voice->stream_fed = true;
     return kOk;
 }
 
@@ -270,10 +272,11 @@ void restart_stream(Voice& voice) { voice.stopped_by_flush = false; }
 HRESULT32 __stdcall StreamDiscontinuity(uint32_t self) {
     GameLock lock(audio_lock());
     Voice* voice = voice_of(self);
-    if (voice->packets.empty()) {
+    if (stops_at_discontinuity(*voice)) {
         voice->playing = false;
     } else {
         voice->end_of_stream = true;
+        voice->playing = true;
     }
     return kOk;
 }

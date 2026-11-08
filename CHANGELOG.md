@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.2 (2026-11-08)
+
+### New
+
+- **Your own launcher backgrounds**: pictures (PNG, JPG and the other formats Windows reads) in a folder
+  `launcher_backgrounds`, in the data folder, are shown instead of the disc's artwork.
+
+### Improved
+
+- mc3port's HUD takes the colour chosen in the garage's paint shop, the custom one too, instead of always orange.
+- In the launcher, A no longer changes a setting's value: left and right do, with the D-pad, the arrows or the stick.
+
+### Fixed
+
+- **Stuck on "Checking saved games"** on fast PCs: a wait in the game's own graphics code compared two counters in a way
+  that could never end once the graphics card ran ahead; it now ends. If the game still stops there, the log says where.
+- Your own launcher backgrounds keep more of their colour than the disc's artwork.
+- **Pedestrians** can be heard again: short sounds played from the disc's sound banks were dropped before they played.
+  They are also a little louder, closer to the other sounds.
+- **Loading screens**: the time chosen now keeps them on screen, still animating; before, the game had already gone on.
+  The shortest, Off, is now 2 seconds, enough to see the screen.
+
 ## 0.3.1 (2026-11-06)
 
 ### New

@@ -16,6 +16,7 @@
 #include <cstdarg>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -565,6 +566,7 @@ NTSTATUS __stdcall NtCreateFile(uint32_t* file_handle, uint32_t desired_access, 
                                 XIoStatusBlock* io_status, const int64_t* /*allocation_size*/,
                                 uint32_t /*file_attributes*/, uint32_t /*share_access*/, uint32_t disposition,
                                 uint32_t options) {
+    hold_loading_screen();
     const std::string name = ansi_string(guest<XAnsiString>(attributes->object_name));
     const std::optional<Location> location = resolve_attributes(attributes);
     if (!location) {
@@ -607,6 +609,25 @@ NTSTATUS __stdcall NtOpenFile(uint32_t* file_handle, uint32_t desired_access, co
                         open_options);
 }
 
+// MC3_DISC_MBPS=<MB/s> (and MC3_DISC_SEEK_MS, 80 by default): disc reads take as long as from a DVD drive, about
+// 6 MB/s on the Xbox, plus a seek away from where the last read ended. A disc image reads at once: this finds the
+// bugs that hides, such as the game's wait for XACT's reads.
+void slow_disc_read(uint64_t position, uint32_t bytes) {
+    static const double rate = [] {
+        char value[16] = {};
+        return GetEnvironmentVariableA("MC3_DISC_MBPS", value, sizeof(value)) ? std::atof(value) : 0.0;
+    }();
+    if (rate <= 0) return;
+    static const double seek = [] {
+        char value[16] = {};
+        return GetEnvironmentVariableA("MC3_DISC_SEEK_MS", value, sizeof(value)) ? std::atof(value) : 80.0;
+    }();
+    static std::atomic<uint64_t> next{0};
+    const double ms = bytes / (rate * 1000.0) + (next.exchange(position + bytes) != position ? seek : 0.0);
+    ProfileScope scope(ProfileTime::file_reads);
+    Sleep(static_cast<DWORD>(ms));
+}
+
 NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_routine, uint32_t apc_context,
                               XIoStatusBlock* io_status, void* buffer, uint32_t length, const int64_t* byte_offset) {
     ProfileScope scope(ProfileTime::file_reads);
@@ -624,6 +645,7 @@ NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_rout
         } else {
             read = static_cast<uint32_t>(g_disc->read(file->disc_entry, offset, buffer, length));
             if (read == 0 && length) status = kStatusUnsuccessful;
+            slow_disc_read(file->disc_entry.sector * 2048ull + offset, read);
         }
     } else if (file->host != INVALID_HANDLE_VALUE) {
         OVERLAPPED overlapped{};

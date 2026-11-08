@@ -93,6 +93,7 @@ struct Voice {
     double stream_fraction = 0;  // fractional frame inside the current packet
     float stream_previous[2] = {};  // each channel's sample before the current frame, for the interpolation
     bool end_of_stream = false;  // Discontinuity: stop when the packets run out instead of starving
+    bool stream_fed = false;     // a packet has come since the last flush
     // Stopped by an asynchronous flush: packets are handed back unplayed until the stream is set up again. XACT keeps
     // refilling a stopped stream until it sees it is no longer playing; playing them restarted the stopped music.
     bool stopped_by_flush = false;
@@ -132,6 +133,13 @@ bool start_audio_output();
 // True when Windows has a default audio output device. Checked before XAudio2 is created: without a device,
 // XAudio2 on Windows fails and says so, but Wine's crashes inside CreateMasteringVoice.
 bool audio_output_present();
+// Discontinuity (no more data) on a stream without packets: it stops now if it has had data or was flushed. One
+// still waiting for its first read keeps playing: stopped, XACT took a sound that fits in one read as over and closed
+// it unheard (the pedestrians' voices).
+inline bool stops_at_discontinuity(const Voice& voice) {
+    return voice.packets.empty() && (voice.stream_fed || voice.stopped_by_flush);
+}
+
 Voice* create_voice(bool is_stream);
 void destroy_voice(Voice* voice);
 

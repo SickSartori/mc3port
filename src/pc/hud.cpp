@@ -107,6 +107,9 @@ int gear_of_cell(float u, float v) {
 // comes down as the nitrous burns, to a height of 0, still drawn. Only a car with nitrous has it.
 constexpr float kNitroLeft = 77.0f / 108, kNitroBottom = -7.0f / 108, kNitroWidth = 80.0f / 108, kNitroHeight = 40.0f / 108;
 float g_nitro_full = 0;          // the tallest seen since the dials last showed
+// The HUD colour the player chose in the garage: the game tints only the nitrous gauge (and the radar's ring) with it,
+// so it is read there and kept for cars without nitrous. Orange until one is seen, the game's default.
+float g_hud_colour[3] = {1.0f, 0.54f, 0.0f};
 uint32_t g_nitro_texture = 0;    // its texture: for the log, other pieces on it
 
 // One frame's reading, complete: its players replace the last ones (a reading without a speedometer and its needle,
@@ -153,6 +156,7 @@ void publish(Reading& r) {
             g_nitro_full = std::max(g_nitro_full, nitro.height);
             p->nitro = g_nitro_full > 0 ? std::clamp(nitro.height / g_nitro_full, 0.0f, 1.0f) : 0;
             std::copy(nitro.colour, nitro.colour + 3, p->nitro_colour);
+            std::copy(nitro.colour, nitro.colour + 3, g_hud_colour);
         }
     }
     // A reading whose largest dial is much smaller than the last speedometer missed the speedometer (its rev
@@ -451,7 +455,9 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
                       pic.window_top + (y - pic.surface_top) * scale_y);
     };
     const bool kmh = setting("hud_units") != 0;
-    static const ImU32 kAccent = colour(255, 138, 0);
+    const auto channel = [](float c) { return static_cast<int>(std::clamp(c, 0.0f, 1.0f) * 255); };
+    const int red = channel(g_hud_colour[0]), green = channel(g_hud_colour[1]), blue = channel(g_hud_colour[2]);
+    const ImU32 accent = colour(red, green, blue);
     for (const Player& p : g_players) {
         // Style A's layout (1280 x 720), around the speedometer: s = 1 when the game's face is 108 lines of 480.
         const float s = p.speed.size() * scale_y / 162 * 0.85f;  // 0.85: style A at full size covered too much
@@ -461,25 +467,25 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         const ImVec2 speed_centre(original.x - 16 * s, std::min(original.y - 17 * s, lowest));
         const float mph = std::max(0.0f, (p.speed.angle + 130) / 270 * 175);
         const float shown = kmh ? mph * 1.609344f : mph;
-        dial(list, fonts, speed_centre, 118 * s, s, shown, kmh ? 300.0f : 180.0f, 10, kmh ? 50.0f : 20.0f, 0, kAccent,
+        dial(list, fonts, speed_centre, 118 * s, s, shown, kmh ? 300.0f : 180.0f, 10, kmh ? 50.0f : 20.0f, 0, accent,
              true);
         char number[16];
         std::snprintf(number, sizeof(number), "%.0f", shown);
         const ImVec2 number_at(speed_centre.x, speed_centre.y + 62 * s);
         centred_text(list, fonts.numbers, 34 * s, number_at, colour(244, 244, 244), number);
-        centred_text(list, fonts.labels, 12 * s, ImVec2(speed_centre.x, speed_centre.y + 86 * s), kAccent,
+        centred_text(list, fonts.labels, 12 * s, ImVec2(speed_centre.x, speed_centre.y + 86 * s), accent,
                      kmh ? "KM/H" : "MPH");
 
         if (p.rpm.seen) {
             const float rpm = std::max(0.0f, (p.rpm.angle + 130) / 270 * 6);
             const ImVec2 c(speed_centre.x + 41 * s, speed_centre.y - 183 * s);
-            dial(list, fonts, c, 54 * s, s, rpm, 7, 0.5f, 1, 6, kAccent, false);
+            dial(list, fonts, c, 54 * s, s, rpm, 7, 0.5f, 1, 6, accent, false);
             centred_text(list, fonts.labels, 9 * s, ImVec2(c.x, c.y + 33 * s), colour(201, 201, 201), "x1000 RPM");
         }
         if (p.gear != 0) {
             const ImVec2 c(speed_centre.x + 122 * s, speed_centre.y - 104 * s);
             list->AddCircleFilled(ImVec2(c.x, c.y + 3 * s), 27 * s, colour(0, 0, 0, 0.45f), 32);
-            list->AddCircleFilled(c, 26 * s, kAccent, 32);
+            list->AddCircleFilled(c, 26 * s, accent, 32);
             list->AddCircle(c, 26 * s, colour(11, 11, 13), 32, 3 * s);
             const char* text = p.gear == -1 ? "R" : p.gear == -2 ? "N" : p.gear == -3 ? "-" : nullptr;
             char digit[4];
@@ -487,10 +493,10 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
             centred_text(list, fonts.numbers, 34 * s, ImVec2(c.x - 1 * s, c.y), colour(17, 17, 17), text);
         }
         if (p.nitro >= 0) {  // the nitrous: an arc outside the speedometer, upper right, between rev counter and gear
-            const auto channel = [&](int i) { return static_cast<int>(std::clamp(p.nitro_colour[i], 0.0f, 1.0f) * 255); };
             const float r = 127 * s;
             arc(list, speed_centre, r, 18, 50, colour(255, 255, 255, 0.16f), 5 * s);
-            arc(list, speed_centre, r, 18, 18 + 32 * p.nitro, colour(channel(0), channel(1), channel(2)), 5 * s);
+            arc(list, speed_centre, r, 18, 18 + 32 * p.nitro,
+                colour(channel(p.nitro_colour[0]), channel(p.nitro_colour[1]), channel(p.nitro_colour[2])), 5 * s);
         }
         // The game's red bar under the speedometer is not redrawn: it lights only at the rev limiter, which the rev
         // counter's red zone already shows.
@@ -498,11 +504,12 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
                               // none while it is empty (a car without an ability never charges it)
             const float r = 127 * s;
             arc(list, speed_centre, r, 60, 140, colour(255, 255, 255, 0.16f), 5 * s);
-            arc(list, speed_centre, r, 140 - 80 * p.special, 140, kAccent, 5 * s);
+            arc(list, speed_centre, r, 140 - 80 * p.special, 140, accent, 5 * s);
             if (p.special > 0.98f) {  // full, ready to use: a glow that pulses twice a second, as the game's own
                 const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 4 * kPi);
-                arc(list, speed_centre, r, 60, 140, colour(255, 138, 0, 0.15f + 0.30f * pulse), (9 + 6 * pulse) * s);
-                arc(list, speed_centre, r, 60, 140, colour(255, 214, 140, 0.55f + 0.45f * pulse), 5 * s);
+                arc(list, speed_centre, r, 60, 140, colour(red, green, blue, 0.15f + 0.30f * pulse), (9 + 6 * pulse) * s);
+                arc(list, speed_centre, r, 60, 140,
+                    colour((red + 255) / 2, (green + 255) / 2, (blue + 255) / 2, 0.55f + 0.45f * pulse), 5 * s);
             }
         }
     }

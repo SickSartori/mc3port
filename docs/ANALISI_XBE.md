@@ -152,6 +152,22 @@ tramite vtable.
 
 Elenco completo, compresi gli stream e le quattro funzioni non identificate, in `src/pc/dsound_hle.cpp`.
 
+### Attesa di un fence di D3D
+
+`0x4165A0` aspetta che la GPU arrivi a un valore: device in `[0x422D78]`, "consegnato" in `device+0x2C`, puntatore al contatore
+della GPU in `device+0x30`. Confronta `consegnato - obiettivo` con `consegnato - fatto` senza segno (`0x4165BE` `jae`,
+ciclo senza pause `0x4166D7`-`0x4166DF` `jb`), e "consegnato" lo legge una volta sola. Se un altro thread consegna altro lavoro
+e la GPU supera la prima lettura, la differenza si riavvolge e il ciclo non finisce più (un core al 100%). Sulla Xbox la finestra
+è di microsecondi; qui, con frame veloci, il gioco si fermava su "Checking saved games". Il confronto ora è con segno (`jge`,
+`jl`, in `hle_patches.cpp`); il watchdog scrive nel log un thread fermo nel ciclo per 6 s. Pista trovata nel progetto
+mcdub3-nx (MIT), correzione scritta da noi.
+
+### Schermate di caricamento
+
+Il thread che apre `flash\loadscreen_*` continua a caricare; il thread avviato a `0x0001BBF0` (`0x1B9D0`) anima la schermata finché
+il caricamento non è finito, senza che il gioco aspetti la sua uscita. `loading_screen_seconds` ferma quindi il primo, alla
+successiva `NtCreateFile`: fermare il secondo congela la schermata all'inizio e non trattiene nulla alla fine.
+
 ### Come XACT ferma e controlla le voci
 
 - **Stop**: `0x40F229` chiama `StopEx(ENVELOPE | RELEASEWAVEFORM)` sui buffer e `FlushEx(ASYNC | ENVELOPE)` sugli
@@ -160,6 +176,12 @@ Elenco completo, compresi gli stream e le quattro funzioni non identificate, in 
 - **"Sta suonando?"** (`0x40F198`): per i buffer `GetStatus & 1`, per gli stream lo stato XMO `& 0x10000`
   (`DSSTREAMSTATUS_PLAYING`). Gli altri bit: `0x20000` in pausa, `0x40000` senza dati, `0x80000` rilascio in corso.
   Anche il lettore musicale del gioco (`0x2ED80F`) dopo il flush aspetta che `0x10000` si spenga.
+- **Voci brevi in streaming** (voci dei pedoni, `dx.xwb`, 74 voci mono a 24000 Hz): XACT prepara due pacchetti leggendo dal
+  disco. Una voce che sta in una sola lettura arriva subito a "fine dati" (`0x40B5A4`): marca il secondo pacchetto `0xDEAD` e chiede
+  a `0x40603C` se c'è una lettura in corso. Sulla Xbox c'è, e il pacchetto parte dopo. Qui le letture finiscono subito:
+  `0x40603C` azzera lo stato del pacchetto letto, risponde no e XACT toglie il bit 8 del suono, che non riceve più nulla.
+  La domanda è saltata (`0x40B5B0`, in `hle_patches.cpp`). Il `Discontinuity` arriva quindi prima del primo pacchetto: lo stream
+  resta `PLAYING` fino alla fine di quel pacchetto, altrimenti XACT lo dà per finito (`0x40F198`).
 - **Stream fermato**: XACT continua a rimandare pacchetti (letti con polling dello stato, non con callback,
   `0x40B241`) finché non vede lo stream fermo; uno stream fermato da un flush asincrono restituisce quindi i pacchetti
   senza suonarli finché non viene preparato di nuovo (pausa, formato o mixbin).
@@ -207,6 +229,32 @@ mc3port (`hud.cpp`).
     quei tasti sono LB e RB. Le versioni PlayStation sono atlanti a parte.
   - L'anello del radar è fatto di quarti ruotati delle texture `03390200` e `033B0380`; la maschera rotonda è la
     texture 8x8 `00BD4800`.
+
+## Indirizzi raccolti dal progetto mcdub3-nx
+
+Il progetto [mcdub3-nx](https://github.com/laureladastra/mcdub3-nx) (MIT) ricompila lo stesso XBE europeo: i suoi indirizzi
+valgono qui. Quelli segnati "verificato" li abbiamo controllati nel nostro disassemblato; gli altri sono da confermare.
+
+| Indirizzo | Cosa | Stato |
+|---|---|---|
+| `0x4165A0`, `0x422D78`, `0x422D80` | attesa di un fence di D3D, device, stato del push buffer | verificato (vedi sopra) |
+| `0x1BBF0`, `0x1B9D0` | thread che anima la schermata di caricamento | verificato |
+| `0x1B15D0` | thread "battito": sezione critica `0x527C68`, poi `Sleep(0)` (`0x1B164D`) | verificato; qui non gira a vuoto (0-1 `Sleep(0)` ogni 10 s) |
+| `0x41B550` | callback del push buffer: `param & 0x1F` comando (1 = flip), `(param >> 5) & 7` intervallo (menu: 2) | da confermare |
+| `0x41B170` | ritiro dei flip, restituisce quanti; device `+0x1C0` vblank, `+0x1C8` ultimo obiettivo | da confermare |
+| `0x2D5400` | un passo del ciclo principale | da confermare |
+| `0x4073D9`-`0x407A14` | 37 funzioni dell'API di XACT (le ultime dieci sono salti) | da confermare |
+| `0x40DBEF` | scelta della variazione di un suono XACT | da confermare |
+| `0x40B71F`, `0x40BE8F` | cambio di stato e stop di un suono XACT; stato a `snd+0x30` (5 suona, 7 fermo) | da confermare |
+| `0x4078AD` -> `0x40EDB3` | preparazione di un suono; nel descrittore il bit 2 vuol dire "in streaming" | da confermare |
+| `0x4260AD`, vtable `0x4A5594` | decoder WMA della musica (`mx.xwb`, 110 brani a 44,1 kHz) | da confermare |
+| `0x3AB590`, `0x3ADA70`, `0x3AD2C0`, `0x3AD280`, `0x3AD8D0`, `0x3ACDF0` | Bink: Open, Close, DoFrame, CopyToBuffer, NextFrame, Wait | da confermare |
+| `0x3B2F40`, `0x3AEDB0` | Bink: decodifica video e audio di un fotogramma | da confermare |
+| `0x2E9AC0` | rilevamento MMX di Bink | da confermare |
+| `0x2DB4C0` | `memmove` della CRT | da confermare |
+| `0x20880`, `0x20B6F0`, `0x534770`, `0x4B2D48`-`0x4B2D60` | passo del tempo di gioco (vedi `hle_patches.cpp`); tetto del passo a `0x4B2D5C` | confermano la nostra mappa |
+| `0x277EE0` | `mcPgCareer::ReportRaceResult`; ascoltatori di fine gara `0x2793C0`, `0x279430` | da confermare |
+| `0x152420`, salto a `0x1525FC` | unica differenza di codice con la Remix americana (`ja` invece di `jae`) | da confermare: nessun disco americano per provarlo |
 
 ## Rete
 

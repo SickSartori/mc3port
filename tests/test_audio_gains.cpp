@@ -136,6 +136,33 @@ void test_no_output_loops() {
 
 }  // namespace
 
+// "No more data" ends a stream at once only if it has had data or was flushed; one waiting for its first read goes on.
+void test_discontinuity() {
+    Voice waiting;
+    waiting.is_stream = true;
+    CHECK(!stops_at_discontinuity(waiting));
+    Voice fed = waiting;
+    fed.stream_fed = true;
+    CHECK(stops_at_discontinuity(fed));
+    Voice flushed = waiting;
+    flushed.stopped_by_flush = true;
+    CHECK(stops_at_discontinuity(flushed));
+    Voice with_data = fed;
+    with_data.packets.push_back(StreamPacket{});
+    CHECK(!stops_at_discontinuity(with_data));
+}
+
+// A stream without mix bins (the pedestrians' voices) has the effect stage's gain; a buffer without them has none.
+void test_stream_without_mix_bins() {
+    Voice stream = mono(0);
+    stream.is_stream = true;
+    float gains[2][2];
+    channel_gains(stream, gains);
+    CHECK(near(gains[0][0], kStreamWithoutBinsGain) && near(gains[0][1], kStreamWithoutBinsGain));
+    channel_gains(mono(0), gains);
+    CHECK(near(gains[0][0], 1.0f) && near(gains[0][1], 1.0f));
+}
+
 int main() {
     test_headroom_defaults();
     test_direct_voice();
@@ -144,5 +171,7 @@ int main() {
     test_stereo_into_mix_in();
     test_pitch_through_mix_in();
     test_no_output_loops();
+    test_discontinuity();
+    test_stream_without_mix_bins();
     return test_result();
 }

@@ -21,6 +21,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -483,7 +484,7 @@ constexpr char kBackgroundShader[] = R"(
 cbuffer Background : register(b0) {
     float4 a_rect;   // uv offset (xy) and scale (zw) of picture A
     float4 b_rect;
-    float4 params;   // x: weight of B, y: 1 with pictures, z: time, w: screen aspect
+    float4 params;   // x: weight of B, y: 1 with the disc's pictures, 2 with the player's own, z: time, w: screen aspect
 };
 Texture2D picture_a : register(t0);
 Texture2D picture_b : register(t1);
@@ -508,17 +509,18 @@ float3 soft(Texture2D picture, float2 uv) {
           picture.Sample(linear_clamp, uv + float2(d.x, -d.y)).rgb + picture.Sample(linear_clamp, uv - float2(d.x, -d.y)).rgb) * 0.0625;
     return c;
 }
-float3 grade(float3 c) {
+float3 grade(float3 c, float colour) {
     const float luma = dot(c, float3(0.299, 0.587, 0.114));
-    c = lerp(luma.xxx, c, 0.45);
+    c = lerp(luma.xxx, c, colour);
     return saturate((c - 0.5) * 1.1 + 0.5) * 0.95;
 }
 float4 ps(Output i) : SV_Target {
     const float2 uv = i.uv;
     float3 c;
     if (params.y > 0.5) {
-        const float3 a = grade(soft(picture_a, a_rect.xy + uv * a_rect.zw));
-        const float3 b = grade(soft(picture_b, b_rect.xy + uv * b_rect.zw));
+        const float colour = params.y > 1.5 ? 0.85 : 0.45;  // the player's own keep most of their colour
+        const float3 a = grade(soft(picture_a, a_rect.xy + uv * a_rect.zw), colour);
+        const float3 b = grade(soft(picture_b, b_rect.xy + uv * b_rect.zw), colour);
         c = lerp(a, b, params.x);
     } else {
         c = lerp(float3(0.03, 0.03, 0.035), float3(0.085, 0.08, 0.08), uv.y);
@@ -544,6 +546,19 @@ struct BackgroundConstants {
 struct Trail {
     float x, y, speed, length;
     ImU32 colour;
+};
+
+// A background picture: the disc's artwork (512x256 inside a painted frame), or one of the player's own.
+struct BackgroundPicture {
+    ComPtr<ID3D11ShaderResourceView> view;
+    float aspect = 2;
+    bool framed = true;
+};
+
+// The player's own picture, decoded on the loader thread.
+struct OwnPicture {
+    std::vector<uint8_t> bgra;
+    UINT width = 0, height = 0;
 };
 
 class Launcher {
@@ -695,9 +710,10 @@ private:
     std::string disc_problem_;
     std::mutex art_mutex_;
     std::optional<LauncherArt> loaded_art_;  // from the loader thread, uploaded by the next frame
+    std::vector<OwnPicture> own_pictures_;   // the same
     std::thread art_thread_;
     ComPtr<ID3D11ShaderResourceView> logo_;
-    std::vector<ComPtr<ID3D11ShaderResourceView>> artwork_;
+    std::vector<BackgroundPicture> artwork_;
     int slide_ = 0;
     float slide_start_ = -100;
 
@@ -928,12 +944,9 @@ ComPtr<ID3D11ShaderResourceView> dxt_texture(ID3D11Device* device, const DxtImag
 
 // The player's own version of the game's logo, the same file the game draws in its menus (textures_replace, by the
 // texture's hash). Shown a level down from a large picture: ImGui's sampler reads one level only, and would alias it.
-ComPtr<ID3D11ShaderResourceView> replaced_logo(ID3D11Device* device, ID3D11DeviceContext* context) {
-    const std::filesystem::path file = data_directory() / "textures_replace" / "4B08E442017FBC3F.png";
-    std::error_code error;
-    std::vector<uint8_t> bgra;
-    UINT width = 0, height = 0;
-    if (!std::filesystem::exists(file, error) || !renderer_load_picture(file, bgra, width, height)) return nullptr;
+// A picture with all its levels; `level_down` shows it from the second level only.
+ComPtr<ID3D11ShaderResourceView> picture_texture(ID3D11Device* device, ID3D11DeviceContext* context,
+                                                 const std::vector<uint8_t>& bgra, UINT width, UINT height, bool level_down) {
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = width;
     desc.Height = height;
@@ -950,14 +963,44 @@ ComPtr<ID3D11ShaderResourceView> replaced_logo(ID3D11Device* device, ID3D11Devic
     }
     context->UpdateSubresource(texture.Get(), 0, nullptr, bgra.data(), width * 4, 0);
     context->GenerateMips(all_levels.Get());
+    if (!level_down) return all_levels;
     D3D11_SHADER_RESOURCE_VIEW_DESC level{};
     level.Format = desc.Format;
     level.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    level.Texture2D.MostDetailedMip = width >= 1024 && height >= 2 ? 1 : 0;
+    level.Texture2D.MostDetailedMip = 1;
     level.Texture2D.MipLevels = 1;
     if (FAILED(device->CreateShaderResourceView(texture.Get(), &level, &view))) return nullptr;
-    log_line("launcher: logo from %s", file.filename().string().c_str());
     return view;
+}
+
+ComPtr<ID3D11ShaderResourceView> replaced_logo(ID3D11Device* device, ID3D11DeviceContext* context) {
+    const std::filesystem::path file = data_directory() / "textures_replace" / "4B08E442017FBC3F.png";
+    std::error_code error;
+    std::vector<uint8_t> bgra;
+    UINT width = 0, height = 0;
+    if (!std::filesystem::exists(file, error) || !renderer_load_picture(file, bgra, width, height)) return nullptr;
+    ComPtr<ID3D11ShaderResourceView> view = picture_texture(device, context, bgra, width, height, width >= 1024 && height >= 2);
+    if (view) log_line("launcher: logo from %s", file.filename().string().c_str());
+    return view;
+}
+
+// The player's own backgrounds: every picture Windows can read in launcher_backgrounds, in the data folder. Shown
+// instead of the disc's artwork, in a random order.
+std::vector<OwnPicture> load_own_backgrounds() {
+    constexpr size_t kMost = 30;  // shortcut: all decoded in memory at once, fine for a few dozen screen-sized pictures
+    std::vector<OwnPicture> found;
+    std::error_code error;
+    for (std::filesystem::directory_iterator it(data_directory() / "launcher_backgrounds", error), end;
+         !error && it != end && found.size() < kMost; it.increment(error)) {
+        OwnPicture picture;
+        if (it->is_regular_file(error) && renderer_load_picture(it->path(), picture.bgra, picture.width, picture.height) &&
+            picture.width && picture.height) {
+            found.push_back(std::move(picture));
+        }
+    }
+    std::shuffle(found.begin(), found.end(), std::mt19937(std::random_device{}()));
+    if (!found.empty()) log_line("launcher: %zu own backgrounds", found.size());
+    return found;
 }
 
 void Launcher::start_art_loader(const std::filesystem::path& disc_path) {
@@ -967,32 +1010,44 @@ void Launcher::start_art_loader(const std::filesystem::path& disc_path) {
         const std::unique_ptr<XdvdfsImage> disc = XdvdfsImage::open(disc_path, &error);
         if (!disc) return;
         LauncherArt art = load_launcher_art(*disc);
+        std::vector<OwnPicture> own = load_own_backgrounds();
         std::lock_guard<std::mutex> lock(art_mutex_);
         loaded_art_ = std::move(art);
+        own_pictures_ = std::move(own);
     });
 }
 
 void Launcher::upload_art() {
     std::optional<LauncherArt> art;
+    std::vector<OwnPicture> own;
     {
         std::lock_guard<std::mutex> lock(art_mutex_);
         art.swap(loaded_art_);
+        own.swap(own_pictures_);
     }
     if (!art) return;
     logo_ = replaced_logo(device_.Get(), context_.Get());
     if (!logo_) logo_ = dxt_texture(device_.Get(), art->logo);
     artwork_.clear();
     if (in_game_) return;  // the game is the background
+    for (const OwnPicture& picture : own) {
+        if (ComPtr<ID3D11ShaderResourceView> view =
+                picture_texture(device_.Get(), context_.Get(), picture.bgra, picture.width, picture.height, false)) {
+            artwork_.push_back({view, static_cast<float>(picture.width) / static_cast<float>(picture.height), false});
+        }
+    }
     for (const DxtImage& picture : art->artwork) {
-        if (ComPtr<ID3D11ShaderResourceView> view = dxt_texture(device_.Get(), picture)) artwork_.push_back(view);
+        if (!artwork_.empty() && !artwork_.front().framed) break;  // the player's own instead
+        if (ComPtr<ID3D11ShaderResourceView> view = dxt_texture(device_.Get(), picture)) artwork_.push_back({view});
     }
     slide_ = 0;
     slide_start_ = -100;
 }
 
-// The part of a 512x256 picture covering the screen: inside its painted frame, zoomed by `zoom`, panned by `pan`.
-void cover_rect(float screen_aspect, float zoom, float pan, float* rect) {
-    constexpr float kWidth = 512, kHeight = 256, kInnerWidth = kWidth * 0.94f, kInnerHeight = kHeight * 0.88f;
+// The part of a picture covering the screen, zoomed by `zoom`, panned by `pan`; the disc's inside its painted frame.
+void cover_rect(float screen_aspect, float zoom, float pan, const BackgroundPicture& picture, float* rect) {
+    const float kWidth = picture.aspect, kHeight = 1, margin = picture.framed ? 0.03f : 0;
+    const float kInnerWidth = kWidth * (1 - 2 * margin), kInnerHeight = kHeight * (picture.framed ? 0.88f : 1);
     float w, h;
     if (screen_aspect < kInnerWidth / kInnerHeight) {
         h = kInnerHeight / zoom;
@@ -1001,8 +1056,8 @@ void cover_rect(float screen_aspect, float zoom, float pan, float* rect) {
         w = kInnerWidth / zoom;
         h = w / screen_aspect;
     }
-    const float cx = std::clamp(kWidth * (0.5f - pan), kWidth * 0.03f + w / 2, kWidth * 0.97f - w / 2);
-    const float cy = kHeight * 0.47f;
+    const float cx = std::clamp(kWidth * (0.5f - pan), kWidth * margin + w / 2, kWidth * (1 - margin) - w / 2);
+    const float cy = kHeight * (picture.framed ? 0.47f : 0.5f);
     rect[0] = (cx - w / 2) / kWidth;
     rect[1] = (cy - h / 2) / kHeight;
     rect[2] = w / kWidth;
@@ -1024,13 +1079,13 @@ void Launcher::draw_background(float now) {
         const float previous_age = age + kSlide;
         const float fade_in = artwork_.size() > 1 ? std::clamp(age / kFade, 0.0f, 1.0f) : 1.0f;
         cover_rect(aspect, 1.08f + 0.10f * std::min(previous_age / kZoomTime, 1.0f),
-                   0.02f * std::min(previous_age / kZoomTime, 1.0f), constants.a_rect);
+                   0.02f * std::min(previous_age / kZoomTime, 1.0f), artwork_[previous], constants.a_rect);
         cover_rect(aspect, 1.08f + 0.10f * std::min(age / kZoomTime, 1.0f), 0.02f * std::min(age / kZoomTime, 1.0f),
-                   constants.b_rect);
+                   artwork_[slide_], constants.b_rect);
         constants.params[0] = fade_in;
-        constants.params[1] = 1;
-        views[0] = artwork_[previous].Get();
-        views[1] = artwork_[slide_].Get();
+        constants.params[1] = artwork_[slide_].framed ? 1.0f : 2.0f;
+        views[0] = artwork_[previous].view.Get();
+        views[1] = artwork_[slide_].view.Get();
     }
     constants.params[2] = now;
     constants.params[3] = aspect;
@@ -1217,7 +1272,7 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
     const int hovered_cell =
         hovered ? std::clamp(static_cast<int>((ImGui::GetIO().MousePos.x - a.x) / cell), 0, count - 1) : -1;
     int next = *current;
-    if (pressed) next = nav_selected() ? (*current + 1) % count : (hovered_cell >= 0 ? hovered_cell : *current);  // A: the next one
+    if (pressed && hovered_cell >= 0) next = hovered_cell;  // the mouse; A changes nothing, left and right do
     next = std::clamp(next + value_step(), 0, count - 1);
     if (next != *current) {
         *current = next;
