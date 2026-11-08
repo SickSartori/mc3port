@@ -1,6 +1,7 @@
 #include "pc/renderer_d3d11.h"
 
 #include <d3d11_1.h>
+#include <d3d11_4.h>
 #include <d3dcompiler.h>
 #include <wincodec.h>
 #include <dxgi1_2.h>
@@ -503,7 +504,15 @@ uint32_t g_upload_width = 0, g_upload_height = 0;
 
 // Presentation: the frame is drawn into the window keeping the game's 4:3 shape, black bars around it.
 HWND g_window_handle = nullptr;
-ComPtr<ID3D11RenderTargetView> g_back_buffer_rtv;
+// The finished window picture (effects and overlay), drawn by the GPU thread; a thread of its own copies it into the
+// swap chain and presents it, so a frame limiter or overlay tool (RTSS) waiting inside Present holds up that thread
+// only, not the emulated GPU (issues #3, #6).
+ComPtr<ID3D11Texture2D> g_final_texture, g_back_buffer;
+ComPtr<ID3D11RenderTargetView> g_final_rtv;
+std::mutex g_present_mutex;  // the final picture: being drawn or being copied
+std::mutex g_swap_mutex;     // the swap chain: presenting or resizing
+std::condition_variable g_present_wake;
+bool g_present_pending = false, g_present_threaded = false;
 ComPtr<ID3D11VertexShader> g_present_vertex_shader;
 ComPtr<ID3D11PixelShader> g_present_pixel_shader;
 ComPtr<ID3D11SamplerState> g_present_sampler;
@@ -1506,15 +1515,22 @@ void ensure_swap_chain_size() {
     GetClientRect(g_window_handle, &client);
     const auto width = static_cast<uint32_t>(std::max<LONG>(1, client.right - client.left));
     const auto height = static_cast<uint32_t>(std::max<LONG>(1, client.bottom - client.top));
-    if (width == g_swap_width && height == g_swap_height && g_back_buffer_rtv) return;
+    if (width == g_swap_width && height == g_swap_height && g_final_rtv) return;
+    std::scoped_lock lock(g_swap_mutex, g_present_mutex);
     g_context->OMSetRenderTargets(0, nullptr, nullptr);
-    g_back_buffer_rtv.Reset();
+    g_final_rtv.Reset();
+    g_final_texture.Reset();
+    g_back_buffer.Reset();
     g_swap_chain->ResizeBuffers(2, width, height, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
     g_swap_width = width;
     g_swap_height = height;
-    ComPtr<ID3D11Texture2D> back_buffer;
-    g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
-    g_device->CreateRenderTargetView(back_buffer.Get(), nullptr, &g_back_buffer_rtv);
+    g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&g_back_buffer));
+    D3D11_TEXTURE2D_DESC desc{};
+    g_back_buffer->GetDesc(&desc);
+    desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+    desc.MiscFlags = 0;
+    g_device->CreateTexture2D(&desc, nullptr, &g_final_texture);
+    g_device->CreateRenderTargetView(g_final_texture.Get(), nullptr, &g_final_rtv);
 }
 
 // --- modern effects, applied to the finished frame when it is presented ---
@@ -1661,8 +1677,7 @@ void post_pass(ID3D11RenderTargetView* rtv, const D3D11_VIEWPORT& area, ID3D11Pi
 // centred, filtered, with the effects.
 void present_frame(ID3D11ShaderResourceView* frame, uint32_t frame_width, uint32_t frame_height) {
     const ForgetBound forget;
-    ensure_swap_chain_size();
-    if (!g_back_buffer_rtv || !g_present_pixel_shader) return;
+    if (!g_final_rtv || !g_present_pixel_shader) return;
     if (g_effects_enabled && g_final_pixel_shader && frame_width && frame_height) {
         const float aspect = renderer_aspect();
         float width = static_cast<float>(g_swap_width), height = static_cast<float>(g_swap_height);
@@ -1696,10 +1711,10 @@ void present_frame(ID3D11ShaderResourceView* frame, uint32_t frame_width, uint32
             glow = g_bloom_srv[0].Get();
         }
         const float black[4] = {0, 0, 0, 1};
-        g_context->ClearRenderTargetView(g_back_buffer_rtv.Get(), black);
+        g_context->ClearRenderTargetView(g_final_rtv.Get(), black);
         constants.output_texel[0] = 1.0f / width, constants.output_texel[1] = 1.0f / height;
         ID3D11ShaderResourceView* sources[2] = {frame, glow};
-        post_pass(g_back_buffer_rtv.Get(), area, g_final_pixel_shader.Get(), sources, 2, constants);
+        post_pass(g_final_rtv.Get(), area, g_final_pixel_shader.Get(), sources, 2, constants);
         return;
     }
     const float aspect = renderer_aspect();
@@ -1711,8 +1726,8 @@ void present_frame(ID3D11ShaderResourceView* frame, uint32_t frame_width, uint32
     }
     const float left = std::floor((g_swap_width - width) / 2), top = std::floor((g_swap_height - height) / 2);
     const float black[4] = {0, 0, 0, 1};
-    g_context->ClearRenderTargetView(g_back_buffer_rtv.Get(), black);
-    ID3D11RenderTargetView* rtv = g_back_buffer_rtv.Get();
+    g_context->ClearRenderTargetView(g_final_rtv.Get(), black);
+    ID3D11RenderTargetView* rtv = g_final_rtv.Get();
     g_context->OMSetRenderTargets(1, &rtv, nullptr);
     g_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
     g_context->OMSetDepthStencilState(nullptr, 0);
@@ -1786,6 +1801,41 @@ void upload_scaled(Target& to, uint32_t x, uint32_t y, uint32_t width, uint32_t 
     g_context->PSSetShaderResources(0, 1, &none);
 }
 
+// Copies the finished picture into the swap chain and presents it: on the present thread, or on the GPU thread when
+// the context has no multithread protection.
+void present_now() {
+    std::lock_guard<std::mutex> swap(g_swap_mutex);
+    {
+        std::lock_guard<std::mutex> drawing(g_present_mutex);
+        if (!g_back_buffer || !g_final_texture) return;
+        g_context->CopyResource(g_back_buffer.Get(), g_final_texture.Get());
+    }
+    const uint64_t start = ticks();
+    const HRESULT presented = g_swap_chain->Present(0, 0);
+    if (presented == DXGI_ERROR_DEVICE_REMOVED || presented == DXGI_ERROR_DEVICE_RESET) device_lost(presented);
+    const uint64_t taken = ticks() - start;
+    {
+        std::lock_guard<std::mutex> drawing(g_present_mutex);  // read by log_statistics on the GPU thread
+        g_stats.swap_ticks += taken;
+    }
+    static int slow_presents = 0;
+    if (milliseconds(taken) > 250 && slow_presents < 20) {
+        ++slow_presents;
+        log_line("renderer: a Present took %.0f ms", milliseconds(taken));
+    }
+}
+
+void present_thread() {
+    for (;;) {
+        {
+            std::unique_lock<std::mutex> lock(g_present_mutex);
+            g_present_wake.wait(lock, [] { return g_present_pending; });
+            g_present_pending = false;
+        }
+        present_now();
+    }
+}
+
 }  // namespace
 
 bool renderer_start(HWND window) {
@@ -1808,6 +1858,14 @@ bool renderer_start(HWND window) {
         return false;
     }
     g_context.As(&g_context1);
+    // The present thread uses the immediate context too (one copy per frame): D3D11 then serializes the calls.
+    ComPtr<ID3D11Multithread> multithread;
+    if (SUCCEEDED(g_context.As(&multithread))) {
+        multithread->SetMultithreadProtected(TRUE);
+        g_present_threaded = true;
+    } else {
+        log_line("renderer: no multithread protection, presenting on the GPU thread");
+    }
 
     ComPtr<IDXGIDevice> dxgi_device;
     ComPtr<IDXGIAdapter> adapter;
@@ -1830,6 +1888,7 @@ bool renderer_start(HWND window) {
     }
     factory->MakeWindowAssociation(window, DXGI_MWA_NO_ALT_ENTER);  // full screen is the window's own (nv2a.cpp)
     g_window_handle = window;
+    if (g_present_threaded) std::thread(present_thread).detach();
 
     ComPtr<ID3DBlob> vs = compile(kVertexShader, sizeof(kVertexShader) - 1, "vs_5_0", "vertex");
     if (!vs) return false;
@@ -2710,15 +2769,17 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     }
     D3D11_TEXTURE2D_DESC frame_desc{};
     if (frame) frame->GetDesc(&frame_desc);
+    ensure_swap_chain_size();
     const uint64_t effects_start = ticks();
+    std::unique_lock<std::mutex> drawing(g_present_mutex);
     present_frame(frame_view, frame_desc.Width, frame_desc.Height);
     hud_frame_shown();
     ++g_presented;
     ++g_stats.presents;
     log_statistics();
     const uint64_t overlay_start = ticks();
-    if (const RendererOverlay overlay = g_overlay.load(); overlay && g_back_buffer_rtv) {
-        overlay(g_device.Get(), g_context.Get(), g_back_buffer_rtv.Get(), g_swap_width, g_swap_height);
+    if (const RendererOverlay overlay = g_overlay.load(); overlay && g_final_rtv) {
+        overlay(g_device.Get(), g_context.Get(), g_final_rtv.Get(), g_swap_width, g_swap_height);
     }
     const uint64_t overlay_end = ticks();
     // MC3_DUMP_SECONDS=<s>: a frame every s seconds of real time (frame-<milliseconds>.bmp... named by count).
@@ -2740,28 +2801,26 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     if ((g_dump_every && g_presented % g_dump_every == 0) || timed_dump) {
         dump_frame(frame);  // the game's frame at its own size, not the window
         static const bool dump_window = GetEnvironmentVariableA("MC3_DUMP_WINDOW", nullptr, 0) != 0;
-        if (dump_window) {  // what the window shows, with the effects and the overlay (window-NNNNN.bmp)
-            ComPtr<ID3D11Texture2D> back_buffer;
-            g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
-            dump_frame(back_buffer.Get(), "window");
-        }
+        if (dump_window) dump_frame(g_final_texture.Get(), "window");  // with the effects and the overlay
         const auto extra = g_targets.find(g_dump_target);
         if (extra != g_targets.end()) dump_frame(extra->second.texture.Get(), "target");
     }
-    const uint64_t swap_start = ticks();
-    const HRESULT presented = g_swap_chain->Present(0, 0);
-    if (presented == DXGI_ERROR_DEVICE_REMOVED || presented == DXGI_ERROR_DEVICE_RESET) device_lost(presented);
-    const uint64_t swap_end = ticks();
-    g_stats.swap_ticks += swap_end - swap_start;
-    // A present that holds the GPU thread up holds up the game too (it waits for the GPU to take its commands): which
+    if (g_present_threaded) {
+        g_present_pending = true;
+        drawing.unlock();
+        g_present_wake.notify_one();
+    } else {
+        drawing.unlock();
+        present_now();
+    }
+    // Drawing that holds the GPU thread up holds up the game too (it waits for the GPU to take its commands): which
     // part took the time, for the first few.
-    static int slow_presents = 0;
-    const double total = milliseconds(swap_end - effects_start);
-    if (total > 250 && slow_presents < 20) {
-        ++slow_presents;
-        log_line("renderer: a present took %.0f ms: effects %.0f, overlay %.0f, saved frames %.0f, Present %.0f", total,
-                 milliseconds(overlay_start - effects_start), milliseconds(overlay_end - overlay_start),
-                 milliseconds(swap_start - overlay_end), milliseconds(swap_end - swap_start));
+    static int slow_frames = 0;
+    const double total = milliseconds(overlay_end - effects_start);
+    if (total > 250 && slow_frames < 20) {
+        ++slow_frames;
+        log_line("renderer: drawing the window took %.0f ms: effects %.0f, overlay %.0f", total,
+                 milliseconds(overlay_start - effects_start), milliseconds(overlay_end - overlay_start));
     }
 }
 
