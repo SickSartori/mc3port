@@ -222,7 +222,8 @@ const Patch kPatches[] = {
     {"XGetDeviceEnumerationStatus", 0x004411A2, {0x56, 0x33, 0xF6}, {0x33, 0xC0, 0xC3}},   // return IDLE (0)
     // XACT, having read a stream's last data, asks (0x40603C) whether a read is still on its way: on the Xbox it is. Here
     // reads finish at once, so a sound that fits in one read (the pedestrians' voices) had its data dropped unplayed
-    // and the stream closed. The question is skipped: jmp over it to 0x40B5C5.
+    // and the stream closed. Streams without a decoder ([esi+4Ch] == 0) skip the question; the WMA music keeps the
+    // original outcome (no read in flight: clear bit 3), else its decoder overran its buffer at a song change.
     // D3D's wait for a fence (0x4165A0) compares "handed to the GPU minus fence" with "handed minus done" unsigned, the
     // first read once. When another thread hands more work and the GPU passes the first reading meanwhile, "done" is
     // past "handed", the difference wraps and the last loop spins forever: on the Xbox the window is microseconds,
@@ -231,7 +232,7 @@ const Patch kPatches[] = {
     {"D3D fence wait, loop", 0x004166DD, {0x3B, 0xC7, 0x72, 0xF6}, {0x3B, 0xC7, 0x7C}},
     {"XACT reads in flight", 0x0040B5B0,
      {0xFF, 0x76, 0x40, 0x8B, 0x0D, 0xA8, 0x0F, 0x41, 0x00, 0xE8, 0x7E, 0xAA, 0xFF, 0xFF, 0x85, 0xC0, 0x75, 0x03, 0x80, 0x26, 0xF7},
-     {0xEB, 0x13}},
+     {0x83, 0x7E, 0x4C, 0x00, 0x74, 0x0F, 0x80, 0x26, 0xF7, 0xEB, 0x0A}},  // cmp; je 40B5C5; and; jmp 40B5C5
 };
 
 }  // namespace

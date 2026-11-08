@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.3 (2026-11-08)
+
+### Improved
+
+- "Report a problem" fills in more of the GitHub form: how mc3port is installed next to the system and, after a crash,
+  the crash itself in a few lines, so a report says where the game stopped even without the log attached.
+
+### Fixed
+
+- **A crash in a race when the music changes** (back to the dashboard): the 0.3.2 fix for the pedestrians also
+  changed how the music ends, and the music's decoder then wrote past its buffer. The fix now applies to short sounds
+  only.
+
 ## 0.3.2 (2026-11-08)
 
 ### New
