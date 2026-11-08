@@ -1019,7 +1019,14 @@ NTSTATUS __stdcall NtQueryDirectoryFile(uint32_t handle, uint32_t event, uint32_
     }
     std::lock_guard<std::mutex> lock(file->mutex);
     const bool first = !file->listed || restart_scan;
-    if (first) build_listing(*file, ansi_string(file_name));
+    if (first) {
+        build_listing(*file, ansi_string(file_name));
+        // Always, once per listing: a player's log then shows what the save scan found (issue #6 stops there).
+        if (!tracing_saves()) {
+            log_line("saves: list %s mask '%s': %zu items", file->location.xbox_path.c_str(), ansi_string(file_name).c_str(),
+                     file->listing.size());
+        }
+    }
 
     NTSTATUS status = kStatusSuccess;
     uint32_t size = 0;

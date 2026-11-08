@@ -30,6 +30,7 @@ bool hud_take_quad(const HudQuad& quad);
 // and the red bar.
 struct HudBox {
     float left, top, right, bottom;
+    bool wide_only = false;  // the special ability's tall track: only draws as wide as it count (not the letters of a text over it)
 };
 const std::vector<HudBox>& hud_boxes();
 // renderer_present: what this frame's draws showed becomes what the HUD draws.
