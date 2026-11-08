@@ -898,7 +898,7 @@ struct Narrowing {
 
 bool inside(float left, float top, float right, float bottom, const HudBox& box, float margin) {
     return left >= box.left - margin && right <= box.right + margin && top >= box.top - margin &&
-           bottom <= box.bottom + margin;
+           bottom <= box.bottom + margin && (!box.wide_only || right - left >= 0.8f * (box.right - box.left));
 }
 
 // The narrowing for something from `left` to `right` and `top` to `bottom` (pixels) on `surface`; none when it is
@@ -930,9 +930,13 @@ Narrowing hud_narrowing(const SurfaceState& surface, float left, float right, fl
     const bool shown = g_shown_surfaces.count(surface.color_address) != 0;
     const bool radar = now - g_radar_seen < 1000 &&
                        inside(left, top, right, bottom, g_radar_box, 0.35f * (g_radar_box.right - g_radar_box.left));
+    // With mc3port's HUD the game's dials are not drawn (hud.cpp takes them), so nothing in their boxes needs the
+    // narrowing, and the letters of a text that cross a box (the special ability's tall track reaches the texts
+    // above the dials) were torn from the rest of their line.
     const std::vector<HudBox>& dials = hud_boxes();
-    const bool dial = std::any_of(dials.begin(), dials.end(),
-                                  [&](const HudBox& box) { return inside(left, top, right, bottom, box, 6); });
+    const bool dial = !hud_enabled() && std::any_of(dials.begin(), dials.end(), [&](const HudBox& box) {
+                          return inside(left, top, right, bottom, box, 6);
+                      });
     if (narrow < 0.99f && over_scene && shown && (radar || dial)) {
         n.anchor = radar ? 0 : width;
         n.factor = narrow;

@@ -184,7 +184,7 @@ void publish(Reading& r) {
             if (face.has_needle) g_boxes.push_back({face.left, face.top, face.right, face.bottom});
         }
         g_boxes.insert(g_boxes.end(), r.gear_circles.begin(), r.gear_circles.end());
-        for (const Reading::Arc& arc : r.arcs) g_boxes.push_back({arc.left, arc.top, arc.right, arc.bottom});
+        for (const Reading::Arc& arc : r.arcs) g_boxes.push_back({arc.left, arc.top, arc.right, arc.bottom, true});
         for (const Reading::Nitro& nitro : r.nitros) {
             g_boxes.push_back({nitro.left, nitro.bottom - largest * kNitroHeight, nitro.right, nitro.bottom});
         }
