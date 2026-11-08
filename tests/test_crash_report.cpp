@@ -72,5 +72,17 @@ int main() {
     // The next start, with no new crash, makes nothing and keeps the report there.
     CHECK(!make_crash_report());
     CHECK(std::filesystem::exists(crash_report_path()));
+
+    // The summary for the issue form: the first exception's line, its address and return addresses, nothing else.
+    CHECK(crash_summary().empty());  // the log above had no exception
+    const std::string crashed =
+        "audio: fine\r\nfirst-chance exception:\r\n\r\nunhandled exception C0000005 at 0042D3B6 (in the game's code)\r\n"
+        "  write of address 0AF6F000\r\n  memory there: region 0AF6F000+11000 (reserved)\r\n  eax=1 ebx=2\r\n"
+        "  return addresses on the stack: 00489C88 004390C8\r\nfirst-chance exception:\r\n\r\n"
+        "unhandled exception C0000005 at 00212316 (in the game's code)\r\n";
+    CHECK(crash_summary_of(crashed) ==
+          "unhandled exception C0000005 at 0042D3B6 (in the game's code)\n  write of address 0AF6F000\n"
+          "  return addresses on the stack: 00489C88 004390C8\n");
+    CHECK(crash_summary_of("no crash\n").empty());
     return test_result();
 }

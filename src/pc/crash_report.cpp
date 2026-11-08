@@ -16,6 +16,7 @@ namespace mc3::pc {
 namespace {
 
 bool g_ready = false;
+std::string g_summary;
 
 constexpr uint32_t crc32(const char* data, size_t size) {
     uint32_t crc = 0xFFFFFFFFu;
@@ -104,6 +105,7 @@ bool make_crash_report() {
         }
         std::filesystem::rename(temporary, crash_report_path());
         std::filesystem::remove(dump_path, error);  // it is in the report; left there, the next start would make it again
+        g_summary = crash_summary_of(log);
         g_ready = true;
         return true;
     } catch (const std::exception&) {  // out of memory or a file in use: the dump stays for the next start
@@ -112,5 +114,30 @@ bool make_crash_report() {
 }
 
 bool crash_report_ready() { return g_ready; }
+
+std::string crash_summary() { return g_summary; }
+
+std::string crash_summary_of(const std::string& log) {
+    const size_t start = log.find("unhandled exception ");
+    if (start == std::string::npos) return {};
+    std::string summary;
+    size_t line = start;
+    for (int kept = 0; line < log.size() && kept < 3;) {
+        size_t end = log.find('\n', line);
+        if (end == std::string::npos) end = log.size();
+        std::string text = log.substr(line, end - line);
+        if (!text.empty() && text.back() == '\r') text.pop_back();
+        if (line != start && text.rfind("  ", 0) != 0) break;  // the exception's block ends at the next unindented line
+        const bool first = line == start;
+        if (first || text.rfind("  read of", 0) == 0 || text.rfind("  write of", 0) == 0 ||
+            text.rfind("  execute of", 0) == 0 || text.rfind("  return addresses", 0) == 0) {
+            if (text.size() > 200) text.resize(200);  // the form travels in the address: keep it short
+            summary += text + "\n";
+            ++kept;
+        }
+        line = end + 1;
+    }
+    return summary;
+}
 
 }  // namespace mc3::pc

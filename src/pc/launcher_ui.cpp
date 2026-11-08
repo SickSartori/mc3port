@@ -1924,9 +1924,18 @@ void show_log() {
     ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
 }
 
-// The issue form (.github/ISSUE_TEMPLATE/bug_report.yml) takes its fields from the address: the version, and the
-// machine as the log's first lines describe it; the log to attach is shown too. Sending stays with the player, signed
-// in on GitHub.
+// How it is installed, as the form names it. GitHub does not fill a dropdown from the address, so it goes in "System".
+const char* install_kind() {
+    if (GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "wine_get_version")) return "Linux, Wine or Proton (portable zip)";
+    if (GetEnvironmentVariableW(L"RECOMPLAUNCHER", nullptr, 0)) return "RecompLauncher";
+    std::error_code ignored;
+    if (!portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored)) return "Installer";
+    return "Portable zip";
+}
+
+// The issue form (.github/ISSUE_TEMPLATE/bug_report.yml) takes its fields from the address: the version, how it is
+// installed with the machine as the log's first lines describe it and, after a crash, the crash in a few lines; the
+// log to attach is shown too. Sending stays with the player, signed in on GitHub.
 void report_problem() {
     std::string system;
     if (std::FILE* file = _wfopen((log_directory() / "mc3port.log").c_str(), L"r")) {
@@ -1950,7 +1959,10 @@ void report_problem() {
     };
     const std::string url = std::string("https://github.com/") + kRepository +
                             "/issues/new?template=bug_report.yml&version=" + encode(MC3PORT_VERSION) +
-                            "&system=" + encode(system);
+                            "&system=" + encode(std::string(install_kind()) + "; " + system) +
+                            (crash_summary().empty() ? std::string()
+                                                     : "&what=" + encode("The game crashed.") +
+                                                           "&log=" + encode(crash_summary()));
     ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     show_log();
 }
