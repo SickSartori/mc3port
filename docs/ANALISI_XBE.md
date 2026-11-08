@@ -159,7 +159,7 @@ della GPU in `device+0x30`. Confronta `consegnato - obiettivo` con `consegnato -
 ciclo senza pause `0x4166D7`-`0x4166DF` `jb`), e "consegnato" lo legge una volta sola. Se un altro thread consegna altro lavoro
 e la GPU supera la prima lettura, la differenza si riavvolge e il ciclo non finisce più (un core al 100%). Sulla Xbox la finestra
 è di microsecondi; qui, con frame veloci, il gioco si fermava su "Checking saved games". Il confronto ora è con segno (`jge`,
-`jl`, in `hle_patches.cpp`); il watchdog scrive nel log un thread fermo nel ciclo per 6 s. Pista trovata nel progetto
+`jl`, in `hle_patches.cpp`). Pista trovata nel progetto
 mcdub3-nx (MIT), correzione scritta da noi.
 
 ### Schermate di caricamento
