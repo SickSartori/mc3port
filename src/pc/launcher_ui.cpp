@@ -135,7 +135,7 @@ const Texts kEnglish = {
     "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
     "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
     "Sharp pictures", "The radar's map, icons, letters and car stickers enlarged with clean edges",
-    "CHEATS", "With a career loaded: money, and the game's own codes to type in its Options > Cheat Codes.",
+    "CHEATS", "mc3port's own, with a career loaded, from the menu during the game; and the game's codes, to look up.",
     "Money", "Added to the career: it stays once the game saves", "+ $10,000", "The game's codes",
     "Type them in the game's menu, Options > Cheat Codes (as found in the game's own check).",
     "Loading screens", "At least this long, to read them as on the Xbox",
@@ -194,7 +194,7 @@ const Texts kItalian = {
     "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
     "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
     "Immagini nitide", "Mappa del radar, icone, lettere e adesivi delle auto ingranditi con bordi puliti",
-    "CHEAT", "Con una carriera caricata: soldi, e i codici del gioco da scrivere in Opzioni > Codici.",
+    "CHEAT", "Quelli di mc3port, con una carriera caricata, dal menu durante il gioco; e i codici del gioco, da consultare.",
     "Soldi", "Si aggiungono alla carriera: restano quando il gioco salva", "+ 10.000 $", "Codici del gioco",
     "Da scrivere nel menu del gioco, Opzioni > Codici (come li controlla il gioco stesso).",
     "Schermate di caricamento", "Almeno questa durata, per leggerle come sull'Xbox",
@@ -731,8 +731,7 @@ private:
 
     Page page_ = Page::kPlay;
     float page_since_ = 0;
-    int settings_tab_ = 0, controls_tab_ = 0, entered_page_frame_ = -1;
-    bool show_codes_ = false;  // the Cheats page lists the game's codes
+    int settings_tab_ = 0, controls_tab_ = 0, cheats_tab_ = 0, entered_page_frame_ = -1;
     float tab_since_ = 0;                 // the settings tab's content fades in from here
     int hover_item_ = -1;                 // side menu: the item the mouse rests on, selected after a short dwell
     float hover_since_ = 0;
@@ -1745,30 +1744,46 @@ void Launcher::page_cheats() {
     const Texts& t = T();
     title(t.cheats);
     lead(t.cheats_lead);
+    if (!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+        key_pressed({ImGuiKey_GamepadL1, ImGuiKey_GamepadR1, ImGuiKey_Q, ImGuiKey_E, ImGuiKey_PageUp, ImGuiKey_PageDown})) {
+        cheats_tab_ = 1 - cheats_tab_;
+        if (!menu_has_focus_) focus_panel_ = true;
+    }
+    const char* tab_labels[] = {"mc3port", t.game_codes};
+    tabs(tab_labels, 2, &cheats_tab_);
+    if (cheats_tab_ == 1) {  // the game's own codes, to look up
+        text(body_, px(17), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.game_codes_lead, panel_width_);
+        cursor_ += measure(body_, px(17), t.game_codes_lead, panel_width_).y + px(16);
+        for (const CheatCode& c : kCheatCodes) {
+            const float y = origin_.y + cursor_;
+            text(body_bold_, px(18), ImVec2(origin_.x, y), kInk, c.code);
+            text(body_, px(17), ImVec2(origin_.x + px(180), y + px(1)), kInk, italian() ? c.italian : c.english);
+            cursor_ += px(30);
+        }
+        cursor_ += px(12);
+        return;
+    }
+    // mc3port's own cheats, a row each as in Settings: heading and detail on the left, the button flush right, the whole
+    // row lit when selected.
+    const auto button_row = [&](const char* heading, const char* detail, const char* label, const char* id) {
+        row(heading, detail, false, 170);
+        const float top = origin_.y + cursor_;
+        const float x = origin_.x + panel_width_ - measure(body_bold_, px(18), label).x - px(28);
+        const bool pressed = small_button(label, ImVec2(x, top + px(6)), id);
+        focus_frame(ImVec2(origin_.x - px(24), top), ImVec2(origin_.x + panel_width_ + px(14), top + px(52) + row_extra_));
+        cursor_ += px(58) + row_extra_;
+        row_extra_ = 0;
+        list_->AddLine(ImVec2(origin_.x, origin_.y + cursor_ - px(6)), ImVec2(origin_.x + panel_width_, origin_.y + cursor_ - px(6)),
+                       fade(IM_COL32(255, 255, 255, 16)));
+        return pressed;
+    };
     // Money: with a career loaded, in the in-game menu (the game is paused, nothing else writes it meanwhile).
     if (int32_t* money = in_game_ ? career_money() : nullptr) {
         char heading[48];
         std::snprintf(heading, sizeof(heading), "%s: $%d", t.cheat_money, *money);
-        row(heading, t.cheat_money_sub);
-        const ImVec2 at(origin_.x + panel_width_ - px(170), origin_.y + cursor_ + px(6));
         // shortcut: capped at $999,999, the most the game's six-digit counters are sure to show; raise once checked.
-        if (small_button(t.add_money, at, "##add_money")) *money = std::min(*money + 10000, 999999);
-        cursor_ += px(58);
+        if (button_row(heading, t.cheat_money_sub, t.add_money, "##add_money")) *money = std::min(*money + 10000, 999999);
     }
-    if (small_button(t.game_codes, ImVec2(origin_.x, origin_.y + cursor_), "##game_codes")) show_codes_ = !show_codes_;
-    cursor_ += px(52);
-    if (!show_codes_) return;
-    text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.game_codes_lead, panel_width_);
-    cursor_ += px(30);
-    const float row_height = px(28), column = panel_width_ / 2 + px(10);
-    const int count = static_cast<int>(std::size(kCheatCodes));
-    for (int i = 0; i < count; ++i) {
-        const CheatCode& c = kCheatCodes[i];
-        const float x = origin_.x + (i % 2 ? column : 0.0f), y = origin_.y + cursor_ + row_height * static_cast<float>(i / 2);
-        text(body_bold_, px(16), ImVec2(x, y), kInk, c.code);
-        text(body_, px(15), ImVec2(x + px(130), y + px(1)), kInk, italian() ? c.italian : c.english);
-    }
-    cursor_ += row_height * static_cast<float>((count + 1) / 2) + px(12);
 }
 
 void Launcher::page_controls() {
@@ -2899,10 +2914,11 @@ std::optional<GameDisc> Launcher::run() {
     focus_panel_ = wizard_;  // the guide's button already selected: one press of A
     if (disc_) start_art_loader(disc_->path);
     if (setting("check_updates") != 0) update_thread_ = std::thread(check_for_updates, &updates_);
-    char page[16] = {};  // MC3_LAUNCHER_PAGE=settings|controls|cheats|about: test screenshots
+    char page[16] = {};  // MC3_LAUNCHER_PAGE=settings|controls|cheats|codes|about: test screenshots
     if (GetEnvironmentVariableA("MC3_LAUNCHER_PAGE", page, sizeof(page)) && !wizard_) {
+        cheats_tab_ = !std::strcmp(page, "codes") ? 1 : 0;
         page_ = !std::strcmp(page, "settings") ? Page::kSettings : !std::strcmp(page, "controls") ? Page::kControls
-                : !std::strcmp(page, "about") ? Page::kAbout : !std::strcmp(page, "cheats") ? Page::kCheats : Page::kPlay;
+                : !std::strcmp(page, "about") ? Page::kAbout : !std::strcmp(page, "cheats") || cheats_tab_ ? Page::kCheats : Page::kPlay;
     }
     music_ = std::make_unique<LauncherMusic>();
     log_line("launcher: open (%s)", disc_ ? "disc found" : "first-run guide");
