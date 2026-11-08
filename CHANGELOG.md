@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.4 (2026-11-08)
+
+### Improved
+
+- The Cheats page has two tabs: **mc3port** with its own cheats (money, with a career loaded in the menu during the
+  game) and **Game codes** with the game's codes to look up, one per line and easier to read.
+- The log says what the game found in the save folder, one line per listing, for reports of a game stuck on "Checking
+  saved games".
+
+### Fixed
+
+- **Frame limiters and overlays** (RivaTuner Statistics Server, MSI Afterburner) made the menus slow and the game judder
+  at 60 fps: they wait inside the call that shows a frame, which also ran the emulated graphics card. That call now has a
+  thread of its own.
+- **Texts above the dials in 16:9** came apart ("GARA OPZION   ALE") with mc3port's HUD: part of a line was narrowed with
+  the dials, the rest was not. Lines stay whole with both HUDs.
+
 ## 0.3.3 (2026-11-08)
 
 ### Improved
