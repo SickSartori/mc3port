@@ -17,6 +17,8 @@ constexpr int32_t kStereoToMono = -602;  // both channels of a stereo voice into
 // through and which is not emulated here, leaves them louder than their mix bins say: about 10 dB, measured against a
 // reference and confirmed by listening.
 constexpr float kMixInGain = 3.16f;
+// A stream XACT plays without mix bins (the pedestrians' voices): about 7 dB, by ear against another player.
+constexpr float kStreamWithoutBinsGain = 2.24f;
 
 // DSBCAPS flags that start a buffer without headroom: 3D voices and the mix-in and effect-in buffers.
 constexpr uint32_t kNoHeadroomBufferFlags = 0x00000010 | 0x00200000 | 0x00002000 | 0x00080000 | 0x00100000;
@@ -91,7 +93,9 @@ inline void channel_gains(const Voice& voice, float gains[2][2]) {
         return;
     }
     if (voice.mix_bin_count == 0) {
-        const float gain = decibels_to_gain(volume);
+        // A stream XACT plays without mix bins (the pedestrians' voices) also passes the console's effect stage: at
+        // its mix bins' level it was quieter than other sounds.
+        const float gain = (voice.is_stream ? kStreamWithoutBinsGain : 1.0f) * decibels_to_gain(volume);
         if (channels == 1) {
             gains[0][0] = gains[0][1] = gain;
         } else {

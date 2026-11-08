@@ -249,6 +249,7 @@ void finish_release(Voice& voice) {
     voice.playing = false;
     if (!voice.is_stream) return;
     voice.end_of_stream = false;
+    voice.stream_fed = false;
     voice.stopped_by_flush = true;
     for (const StreamPacket& packet : voice.packets) complete_packet(voice, packet, kPacketFlushed);
     voice.packets.clear();
@@ -390,7 +391,7 @@ void mix_stream_voice(Voice& voice, float* out, uint32_t frames) {
             voice.decoded_block = -1;
         }
     }
-    if (voice.packets.empty() && voice.end_of_stream) {
+    if (voice.packets.empty() && voice.end_of_stream && voice.stream_fed) {
         voice.playing = false;
         voice.end_of_stream = false;
     }

@@ -196,14 +196,15 @@ straight away (progress since the last save is lost). The main ones:
 | Sharp pictures | the radar's map, the icons, the letters and the cars' stickers enlarged with clean edges instead of blurred or stepped; on by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 | Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
-| Loading screens | as short as the loading (off, by default), or at least 4, 8 or 12 seconds so you can read them; any other number in `mc3port.ini` (`loading_screen_seconds`) |
+| Loading screens | how long the game waits before loading, with the screen animating: 2 seconds (off, the default), or 4, 8 or 12; any other number in `mc3port.ini` (`loading_screen_seconds`), never less than 2 |
 | `hud_aspect` (ini only) | in 16:9, the HUD keeps its shape (1, the default) or is stretched as on a widescreen TV (0) |
 
 **Replacement pictures**: a PNG or JPG in a folder `textures_replace` next to `mc3port.ini`, named after a 2D
 picture's hash (16 hex digits, for example `83E5DF1E4AC28289.png`), is drawn instead of the game's picture, at any
 size. `MC3_DUMP_2D=1` saves the HUD's pictures with their hash in the name (see `docs/DEVELOPMENT.md`). mc3port
 includes no pictures: the folder does not exist until you make it. The launcher shows `4B08E442017FBC3F.png`, the
-game's logo, too.
+game's logo, too. Pictures in a folder `launcher_backgrounds` next to `mc3port.ini` (PNG, JPG and the other formats
+Windows reads) are the launcher's backgrounds instead of the disc's artwork; the left part goes under the menu.
 
 **Mods**: a file in a folder `mods` next to `mc3port.ini`, with the path it has on the disc (for example
 `mods\flash\bg_main.xbck`), is read instead of the disc's. mc3port includes no such files.

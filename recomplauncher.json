@@ -88,9 +88,9 @@
     {
       "id": "loading_screens",
       "label": "Loading screens",
-      "help": "How long they stay at least, to read them. From a disc image the game loads at once, so without a wait they flash by.",
+      "help": "How long they stay at least, to read them; the shortest is 2 seconds.",
       "choices": [
-        { "label": "No wait", "set": { "loading_screen_seconds": "0" } },
+        { "label": "2 seconds", "set": { "loading_screen_seconds": "0" } },
         { "label": "4 seconds", "set": { "loading_screen_seconds": "4" } },
         { "label": "8 seconds", "set": { "loading_screen_seconds": "8" } },
         { "label": "12 seconds", "set": { "loading_screen_seconds": "12" } }
