@@ -1854,9 +1854,6 @@ bool renderer_start(HWND window) {
         GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor);
         scale = static_cast<float>(monitor.rcMonitor.bottom - monitor.rcMonitor.top) / 480.0f;
     }
-    g_scale = std::clamp(scale, 1.0f, 6.0f);
-    log_line("renderer: internal resolution %.0f lines (%.3gx)%s", 480.0f * g_scale, g_scale,
-             requested <= 0 ? ", automatic" : "");
     // On laptops with two GPUs Windows' default adapter is the integrated one: ask DXGI 1.6 for the fast one instead
     // (the player's choice for mc3.exe in Windows' graphics settings still wins). MC3_GPU_PREFERENCE=0: Windows' default.
     ComPtr<IDXGIAdapter> preferred;
@@ -1878,6 +1875,26 @@ bool renderer_start(HWND window) {
         preferred->GetDesc(&desc);
         log_line("renderer: on %ls", desc.Description);
     }
+    // Automatic also means within the GPU's means: integrated graphics (under 1 GB of their own memory) get 1080
+    // lines at most. The description's size is 32-bit here and large cards wrap, so the 64-bit budget decides for them.
+    if (requested <= 0) {
+        ComPtr<IDXGIDevice> dxgi_device;
+        ComPtr<IDXGIAdapter> adapter;
+        ComPtr<IDXGIAdapter3> adapter3;
+        DXGI_ADAPTER_DESC desc{};
+        DXGI_QUERY_VIDEO_MEMORY_INFO budget{};
+        constexpr uint64_t kGigabyte = 1ull << 30;
+        if (SUCCEEDED(g_device.As(&dxgi_device)) && SUCCEEDED(dxgi_device->GetAdapter(&adapter)) &&
+            SUCCEEDED(adapter->GetDesc(&desc)) && desc.DedicatedVideoMemory < kGigabyte &&
+            (FAILED(adapter.As(&adapter3)) ||
+             FAILED(adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &budget)) ||
+             budget.Budget < kGigabyte)) {
+            scale = std::min(scale, 1080.0f / 480);
+        }
+    }
+    g_scale = std::clamp(scale, 1.0f, 6.0f);
+    log_line("renderer: internal resolution %.0f lines (%.3gx)%s", 480.0f * g_scale, g_scale,
+             requested <= 0 ? ", automatic" : "");
     g_context.As(&g_context1);
     // The present thread uses the immediate context too (one copy per frame): D3D11 then serializes the calls.
     ComPtr<ID3D11Multithread> multithread;

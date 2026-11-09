@@ -9,12 +9,19 @@
 
 ### Improved
 
+- **The USA release** of the Remix is accepted, next to the European one: its code differs by one branch and every
+  patch of the port applies to it. The log names the release.
+- **Automatic internal resolution** stays at 1080 lines on integrated graphics (under 1 GB of its own memory), instead
+  of following a 1440 or 2160 line monitor it cannot fill.
 - **Laptops with two GPUs** render on the fast one. Windows hands programs the integrated GPU unless told otherwise,
   so the game ran on it, at the monitor's resolution, with the dedicated card idle. The log says which GPU draws
   (`renderer: on ...`); a choice made for mc3.exe in Windows' graphics settings still wins.
 
 ### Fixed
 
+- **Frames stuck on a missed vertical blank**: Direct3D retires a flip only when its count of blanks is exactly the
+  flip's target, and on a PC the count can skip one (the game's own poll and the port's interrupt both count the same
+  blank). The flip is now retired at or past its target.
 - **Stuck on "Checking saved games"**, likely: the game's frame step could drop under 1/60 s (a frame shown one blank
   after a late one), a value it never had on the Xbox, and the menu stood still until the F1 menu's pause and resume
   lifted it. The step now never goes under 1/60 s. Please report if the game still stops there (issue #12).

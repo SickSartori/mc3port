@@ -129,7 +129,7 @@ IF SOMETHING GOES WRONG
   starts is the one used.
 - The sound is quiet: check Volume in Settings (100 is the loudest), then
   the Windows volume. The level leaves room for many sounds at once.
-- The disc is refused: only the European release is supported; the
+- The disc is refused: only the European and USA releases are supported; the
   launcher's message says what it found.
 
 To report a problem, press "Report a problem" in the launcher's bottom
@@ -171,7 +171,7 @@ them as above.
 KNOWN ISSUES
 ------------
 
-- Only the European release is supported.
+- Only the European and USA releases of the Remix are supported.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides.
 - The Xbox sound chip's own effects, such as reverb, are not reproduced.
