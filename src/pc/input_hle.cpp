@@ -144,6 +144,7 @@ void load_script() {
             const std::string when = entry.substr(1, colon - 1);
             const size_t plus = when.find('+');
             std::string name = when.substr(0, plus);
+            for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));  // paths are matched lowercase
             const size_t hash = name.find('#');
             if (hash != std::string::npos) {
                 press.occurrence = std::max<size_t>(1, std::strtoul(name.c_str() + hash + 1, nullptr, 10));

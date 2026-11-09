@@ -110,6 +110,7 @@ uint64_t g_draws = 0;
 int g_debug_draws = -1;  // MC3_DEBUG_DRAWS=<n>: describe the first n draws in the log
 bool g_debug_window_open = false;  // inside the MC3_DEBUG_FRAME_AT window (as of the previous draw)
 ULONGLONG g_window_start = 0, g_window_end = 0;
+std::atomic<bool> g_window_requested{false};  // F9
 bool g_draw_dumped = false;  // MC3_DUMP_DRAW done
 int g_probe_x = -1, g_probe_y = -1;
 uint32_t g_last_probe[2] = {0xFFFFFFFF, 0xFFFFFFFF};
@@ -603,6 +604,11 @@ void update_debug_window() {
         g_window_start = set ? now + static_cast<ULONGLONG>(std::atof(value) * 1000) : ~0ull;
         const char* plus = std::strchr(value, '+');
         g_window_end = g_window_start + static_cast<ULONGLONG>((plus ? std::atof(plus + 1) : 1.0) * 1000);
+    }
+    if (g_window_requested.exchange(false)) {
+        g_window_start = now;
+        g_window_end = now + 1000;
+        log_line("debug: F9, one second of draws");
     }
     g_debug_window_open = now >= g_window_start && now < g_window_end;
 }
@@ -1402,5 +1408,7 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
             return false;
     }
 }
+
+void kelvin_request_debug_window() { g_window_requested = true; }
 
 }  // namespace mc3::pc
