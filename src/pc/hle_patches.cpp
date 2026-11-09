@@ -21,8 +21,13 @@ namespace {
 // The game turns the CPU time stamp counter into time assuming the Xbox's 733 MHz: its millisecond clock (0x1A1C00)
 // divides rdtsc by 733333 and XAPI's QueryPerformanceFrequency returns 733333333. The PC's counter runs at several
 // GHz, so everything timed that way went 5-6 times too fast (menu key repeat made the controller "too sensitive").
-// These rdtsc sites read a 733 MHz counter made from the host's performance counter instead, without the time the
-// game spent paused (the in-game menu).
+// These rdtsc sites read a 733 MHz counter made from the game's performance counter instead (game_ticks: from the
+// game's start, without the time it spent paused in the in-game menu).
+//
+// From the start: counted from Windows' start, after days of uptime the menus' float clock ([0x534674]+0x160, read
+// by mcFeMemCard) began at hundreds of thousands of seconds, where a 1/60 s step is under half a float step and is
+// lost: the clock stood still and "Checking saved games" waited for ever for its 0.5 s (issue #12; at 30 fps the
+// 1/30 s step rounded up and it passed).
 
 constexpr uint64_t kXboxCpuHz = 733333333;
 
@@ -32,9 +37,7 @@ uint64_t xbox_time_stamp() {
         QueryPerformanceFrequency(&value);
         return static_cast<uint64_t>(value.QuadPart);
     }();
-    LARGE_INTEGER value;
-    QueryPerformanceCounter(&value);
-    const auto counter = static_cast<uint64_t>(value.QuadPart - game_paused_ticks());
+    const auto counter = static_cast<uint64_t>(game_ticks());
     return counter / frequency * kXboxCpuHz + counter % frequency * kXboxCpuHz / frequency;
 }
 
@@ -251,12 +254,9 @@ void time_frame_shown(uint32_t vblanks) {
     if (shown < 8) return;
     uint32_t total = 0;
     for (const uint32_t v : recent) total += v;
-    // Never under 1/60 s, the shortest step the game had on the Xbox: a frame shown one blank after a late one pulls
-    // the average under it, and the menus' "Checking saved games" step stood still at 0.0156 s until a pause and
-    // resume lifted it (issue #12; the measured path rounds to whole sixtieths for the same reason).
-    // Whole sixtieths, at least one, like the measured path: on a PC whose frames come 2 blanks apart the step is a
-    // steady 1/60 and the menus run; where frames jitter between 1 and 3 blanks the average wandered between 0.0167
-    // and 0.0229 s every frame and the menus' Flash screens stood still until a pause and resume (issue #12).
+    // Whole sixtieths, at least one (1/60 s, the shortest step the game had on the Xbox), like the measured path:
+    // where frames jitter between 1 and 3 blanks the average wandered between 0.0156 and 0.0229 s every frame. (The
+    // menus that stood still at 60 fps, issue #12, were a float clock grown too large: see game_ticks.)
     // MC3_STEP_FLOOR=<seconds> raises the result (diagnostic).
     static const float floor = [] {
         char value[32] = {};

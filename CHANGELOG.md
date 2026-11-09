@@ -38,12 +38,14 @@
 - **Frames stuck on a missed vertical blank**: Direct3D retires a flip only when its count of blanks is exactly the
   flip's target, and on a PC the count can skip one (the game's own poll and the port's interrupt both count the same
   blank). The flip is now retired at or past its target.
-- **Menus stuck or lagging at 60 fps**, "Checking saved games" included: on a PC whose frames come a little unevenly
-  (now 1 blank, now 3) the game's fixed time step followed the average and changed every frame, between 0.0167 and
-  0.0229 s, and the menus' Flash screens then stood still, or moved seconds after a press, until the F1 menu's pause
-  and resume shook them loose. The step is now a whole number of sixtieths, a steady 1/60 s at 60 fps, as on a PC
-  whose frames never waver (where the menus always worked). Reproduced and fixed on a laptop; please report if a
-  menu still stops (issues #6, #12).
+- **"Checking saved games" stuck for good at 60 fps**: the game's clocks counted from Windows' start instead of the
+  game's. After about six days of uptime (three with 0.3.4's step; Windows' fast startup keeps the uptime across a
+  shutdown) the menus' clock, seconds kept as a float, had grown so large that adding 1/60 s no longer changed it: it
+  stood still and the screen waited for ever for its half second. At 30 fps the larger step still got through, which
+  is why it only hit 60 fps, and only some PCs. The clocks now start with the game, as an Xbox's with the console.
+  Reproduced on a laptop up for a week and fixed there, with the European and the USA disc (issues #4, #6, #11, #12).
+- **The fixed time step at 60 fps** is a whole number of sixtieths, a steady 1/60 s: on a PC whose frames come a
+  little unevenly (now 1 blank, now 3) it followed the average and changed every frame, between 0.0156 and 0.0229 s.
 - **Crash leaving the garage, or entering the career, as the music changes**: the game's WMA music decoder reads
   and writes a few bytes past the buffers it works on (reproduced: a 4-byte read at the very end of one). On the
   Xbox the next page is RAM; here it was unmapped and the game closed. The page after a game buffer is now always
