@@ -44,6 +44,9 @@
   stood still and the screen waited for ever for its half second. At 30 fps the larger step still got through, which
   is why it only hit 60 fps, and only some PCs. The clocks now start with the game, as an Xbox's with the console.
   Reproduced on a laptop up for a week and fixed there, with the European and the USA disc (issues #4, #6, #11, #12).
+- **The cars' neon underglow shows**, in the garage, the shop and the city. Its glow is drawn as quads with a colour
+  but no normal while the lighting is still on from the car, and lit with no normal they came out as the scene's
+  ambient, near black. As in Direct3D, vertices without a normal now keep their own colour (issue #14).
 - **Black textures after a long session on integrated graphics**: the port kept every texture it had ever made, and
   for most formats a new copy each time the draws before had used another palette, so after an hour the graphics
   memory ran out and new textures failed to appear. Textures no draw has asked for in a minute are now let go.
