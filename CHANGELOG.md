@@ -9,6 +9,9 @@
 
 ### Improved
 
+- **Less work per draw**: Direct3D's state cache was emptied before almost every draw by a lookup that should not
+  have touched it, so each draw re-set every render state. Lighter on the GPU thread, which was the limit on
+  laptops.
 - **The USA release** of the Remix is accepted, next to the European one: its code differs by one branch and every
   patch of the port applies to it. The log names the release.
 - **Automatic internal resolution** stays at 1080 lines on integrated graphics (under 1 GB of its own memory), instead
@@ -19,6 +22,15 @@
 
 ### Fixed
 
+- **A wait for several objects with a time limit** could spin on one core for good once the limit passed with only
+  some of the objects ready: the game then stopped for good. The limit now ends the wait.
+- **The menu tap of Start or Back** on a controller was lost about half the time: the port's Back+Start menu
+  combination replayed the tap into a read the game never looked at.
+- **mc3port.ini** is written beside itself and renamed over, so a crash while a slider moves cannot leave it empty
+  (disc path, keys and settings lost).
+- **A damaged disc image or default.xbe** with absurd counts or sizes closes the launcher no more: they are checked
+  before anything is read or allocated. A save name with a drive letter or a byte outside ASCII is refused instead
+  of reaching the PC's file system or ending the game.
 - **Frames stuck on a missed vertical blank**: Direct3D retires a flip only when its count of blanks is exactly the
   flip's target, and on a PC the count can skip one (the game's own poll and the port's interrupt both count the same
   blank). The flip is now retired at or past its target.

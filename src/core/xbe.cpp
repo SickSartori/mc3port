@@ -82,6 +82,10 @@ std::optional<Xbe> Xbe::parse(std::vector<uint8_t> file, std::string* error) {
     };
 
     const uint32_t section_count = u32(kSectionCountOffset);
+    if (section_count > xbe.header_size_ / kSectionHeaderSize) {  // before the multiplication can wrap
+        fail(error, "XBE section count is out of range");
+        return std::nullopt;
+    }
     const auto sections = header_offset(u32(kSectionHeadersOffset), section_count * kSectionHeaderSize);
     if (!sections) {
         fail(error, "XBE section headers are out of range");
@@ -104,6 +108,10 @@ std::optional<Xbe> Xbe::parse(std::vector<uint8_t> file, std::string* error) {
     }
 
     const uint32_t library_count = u32(kLibraryCountOffset);
+    if (library_count > xbe.header_size_ / kLibraryEntrySize) {
+        fail(error, "XBE library count is out of range");
+        return std::nullopt;
+    }
     if (const auto libraries = header_offset(u32(kLibrariesOffset), library_count * kLibraryEntrySize)) {
         for (uint32_t i = 0; i < library_count; ++i) {
             const uint8_t* raw = data.data() + *libraries + i * kLibraryEntrySize;

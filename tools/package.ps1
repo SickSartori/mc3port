@@ -62,6 +62,8 @@ $iscc = @($env:ISCC, "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:Pro
 if ($iscc) {
     & $iscc /Q "/DAppVersion=$version" "/DSourceDir=$(Resolve-Path $stage)" "/DOutputDir=$(Resolve-Path dist)" installer/mc3port.iss
     if ($LASTEXITCODE) { throw "installer build failed" }
+} elseif ($env:GITHUB_ACTIONS) {
+    throw "Inno Setup not found: the release needs the installer"
 } else {
     Write-Warning "Inno Setup not found: no installer"
 }

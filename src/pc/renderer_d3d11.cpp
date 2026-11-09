@@ -1765,6 +1765,7 @@ uint32_t g_stretch_width = 0, g_stretch_height = 0;
 void upload_scaled(Target& to, uint32_t x, uint32_t y, uint32_t width, uint32_t height, const uint8_t* pixels,
                    uint32_t pitch) {
     if (!pixels || !g_stretch_pixel_shader) return;
+    const ForgetBound forget;  // binds its own target, shaders, texture and sampler
     if (!g_stretch_source || g_stretch_width != width || g_stretch_height != height) {
         D3D11_TEXTURE2D_DESC desc{};
         desc.Width = width;
@@ -2092,7 +2093,6 @@ bool renderer_start(HWND window) {
 }
 
 bool renderer_over_shown_scene(const SurfaceState& surface) {
-    const ForgetBound forget;
     const auto scene = g_scenes.find(surface.zeta_address);
     return scene != g_scenes.end() && scene->second.drawn && g_shown_surfaces.count(surface.color_address) != 0;
 }
@@ -2125,6 +2125,7 @@ void renderer_clear(const SurfaceState& surface, uint32_t flags, uint32_t color,
         g_context1->ClearView(target->rtv.Get(), rgba, &rect, 1);
     } else if (channels && g_clear_pixel_shader) {
         // Some channels only (the HUD clears alpha alone to reuse it as a mask).
+        const ForgetBound forget;  // binds its own target, blend, scissor and shaders
         float rgba[4];
         unpack_color(color, rgba);
         g_context->UpdateSubresource(g_clear_constants.Get(), 0, nullptr, rgba, 0, 0);

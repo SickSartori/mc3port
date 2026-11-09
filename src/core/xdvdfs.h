@@ -53,6 +53,7 @@ private:
 
     XdvdfsImage() = default;
     bool read_raw(uint64_t offset, void* destination, size_t size) const;
+    bool within_image(const Entry& entry) const;
     bool read_cci_sector(const Part& part, uint64_t sector, uint8_t* destination) const;
 
     std::vector<Part> parts_;

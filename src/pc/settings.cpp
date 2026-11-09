@@ -186,9 +186,19 @@ void save_line(const char* key, const std::string& value, const char* comment) {
         if (comment) lines.insert(lines.end(), {"", std::string("# ") + comment});
         lines.push_back(std::string(key) + " = " + value);
     }
-    std::ofstream out(g_file, std::ios::trunc);
-    for (const std::string& line : lines) out << line << "\n";
-    if (!out) log_line("settings: could not write %s", g_file.string().c_str());
+    // Written beside the file and renamed over it: a crash in between leaves the old file, not an empty one.
+    const std::filesystem::path temporary = g_file.string() + ".tmp";
+    {
+        std::ofstream out(temporary, std::ios::trunc);
+        for (const std::string& line : lines) out << line << "\n";
+        if (!out) {
+            log_line("settings: could not write %s", temporary.string().c_str());
+            return;
+        }
+    }
+    std::error_code error;
+    std::filesystem::rename(temporary, g_file, error);
+    if (error) log_line("settings: could not replace %s: %s", g_file.string().c_str(), error.message().c_str());
 }
 
 }  // namespace

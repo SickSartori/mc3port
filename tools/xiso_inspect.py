@@ -61,7 +61,10 @@ for p, s, sz, d in files:
 xbe_entry = next((x for x in files if x[0].lower() == "default.xbe"), None)
 if not xbe_entry: sys.exit("no default.xbe")
 xbe = read(base + xbe_entry[1] * SECTOR, xbe_entry[2])
-open(sys.argv[2], "wb").write(xbe) if len(sys.argv) > 2 else None
+if len(sys.argv) > 2:
+    if sys.argv[2].startswith("-"):
+        sys.exit("the second argument is the output path for default.xbe, not an option")
+    open(sys.argv[2], "wb").write(xbe)
 assert xbe[:4] == b"XBEH"
 base_addr, hdr_size, img_size, img_hdr_size, ts, cert_addr, nsec, sec_addr, init_flags, entry, tls = struct.unpack_from("<IIIIIIIIIII", xbe, 0x104)
 (stack_commit, heap_reserve, heap_commit, pe_base, pe_size, pe_cksum, pe_ts, dbg_path, dbg_file, dbg_ufile,

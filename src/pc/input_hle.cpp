@@ -360,8 +360,6 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
         g_host_connected[index] = g_xinput_get_state(index, &state) == ERROR_SUCCESS;
         if (!g_host_connected[index]) g_next_scan_ms[index] = now + 1000;
         if (g_host_connected[index]) {
-            combo_track(index, state.Gamepad.wButtons, now);
-            state.Gamepad.wButtons = combo_filter(index, state.Gamepad.wButtons, now);
             pad = from_xinput(state.Gamepad);
             apply_script(pad, index);
             return true;
@@ -455,6 +453,12 @@ uint32_t __stdcall XInputGetState(uint32_t handle, XboxInputState* state) {
     Port* port = port_of(handle);
     XboxGamepad pad{};
     if (!port || !read_host(port->index, pad)) return kErrorDeviceNotConnected;
+    // The Back+Start combo, only on the read the game sees: host_mask's reads threw the replayed tap away.
+    if (g_host_connected[port->index]) {
+        const ULONGLONG now = GetTickCount64();
+        combo_track(port->index, pad.buttons, now);
+        pad.buttons = combo_filter(port->index, pad.buttons, now);
+    }
     if (g_in_garage) pace_garage_directions(port->index, pad);
     if (std::memcmp(&pad, &port->last, sizeof(pad)) != 0) {
         port->last = pad;
