@@ -270,6 +270,8 @@ void write_crash_dump(EXCEPTION_POINTERS* info) {
     log_line(ok ? "crash dump written: %ls" : "crash dump failed: %ls", path.c_str());
 }
 
+constexpr DWORD kMsvcCppException = 0xE06D7363;  // a C++ throw
+
 LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     const EXCEPTION_RECORD* record = info->ExceptionRecord;
     const CONTEXT* context = info->ContextRecord;
@@ -277,7 +279,6 @@ LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     log_line("");
     log_line("unhandled exception %08lX at %08X %s", record->ExceptionCode, address_of(record->ExceptionAddress),
              describe_code_address(address_of(record->ExceptionAddress)).c_str());
-    constexpr DWORD kMsvcCppException = 0xE06D7363;
     if (record->ExceptionCode == kMsvcCppException && record->NumberParameters >= 3) {
         log_cpp_exception(record);
         log_host_backtrace(context);
@@ -412,7 +413,6 @@ void restrict_to_one_core() {
 // The game installs its own exception handlers (its crash screen exits to the dashboard), so faults would
 // never reach on_unhandled_exception. A vectored handler sees them first; it only logs.
 LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
-    constexpr DWORD kMsvcCppException = 0xE06D7363;
     constexpr DWORD kSetThreadName = 0x406D1388;
     static volatile long reported = 0;
     const DWORD code = info->ExceptionRecord->ExceptionCode;

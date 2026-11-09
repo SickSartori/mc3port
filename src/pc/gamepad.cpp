@@ -20,7 +20,7 @@ SDL_Gamepad* g_slots[kSlots] = {};
 
 // Closes the pads that went away and gives free slots to the pads that appeared.
 void refresh_slots() {
-    SDL_UpdateGamepads();
+    SDL_UpdateGamepads();  // with SDL's events off, this is what refreshes the buttons
     for (DWORD slot = 0; slot < kSlots; ++slot) {
         if (g_slots[slot] && !SDL_GamepadConnected(g_slots[slot])) {
             log_line("input: controller %lu unplugged", slot + 1);
@@ -28,6 +28,11 @@ void refresh_slots() {
             g_slots[slot] = nullptr;
         }
     }
+    // New pads once a second: the game reads all four ports every frame, and listing them each time allocated.
+    static ULONGLONG next_scan = 0;
+    const ULONGLONG now = GetTickCount64();
+    if (now < next_scan) return;
+    next_scan = now + 1000;
     int count = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&count);
     for (int i = 0; ids && i < count; ++i) {

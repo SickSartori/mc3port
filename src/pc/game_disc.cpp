@@ -159,7 +159,7 @@ std::filesystem::path ask_for_disc_image(void* owner_window) {
     wchar_t file[MAX_PATH * 4] = {};
     const std::wstring title = wide(text("Choose your Midnight Club 3: DUB Edition Remix disc image (Xbox, Europe or USA)",
                                          "Scegli l'immagine del disco di Midnight Club 3: DUB Edition Remix (Xbox, "
-                                         "Europa)"));
+                                         "Europa o USA)"));
     const std::wstring filter = wide(text("Xbox disc image (*.iso, *.cci)", "Immagine disco Xbox (*.iso, *.cci)")) +
                                 std::wstring(L"\0*.iso;*.cci\0", 13) + wide(text("All files", "Tutti i file")) +
                                 std::wstring(L"\0*.*\0\0", 6);

@@ -964,10 +964,22 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
         for (int t = 0; t < 4; ++t) {
             if (g_k.texture_control0[t] & 0x40000000) {
                 const uint32_t address = dma_address(g_k.texture_format[t] & 3, g_k.texture_offset[t]);
-                uint32_t max_byte = 0;
+                uint32_t max_byte = 0, width = 0, height = 0, bytes = 0;
                 uint64_t sum = 0;
-                if (const uint8_t* texels = physical_pointer(address)) {
-                    for (uint32_t b = 0; b < 640 * 480 * 4; b += 4 * 97) {
+                // Only the texture's own bytes: reading on past it touched memory the game never committed. (g_k.draw
+                // still holds the previous draw here: prepare_draw_state comes later.)
+                TextureDescriptor descriptor{};
+                descriptor.address = address;
+                descriptor.format = g_k.texture_format[t];
+                descriptor.pitch = g_k.texture_control1[t] >> 16;
+                descriptor.rect = g_k.texture_rect[t];
+                const uint8_t* texels =
+                    texture_extent(descriptor, &width, &height, &bytes) && bytes &&
+                            physical_pointer(address + bytes - 1)
+                        ? physical_pointer(address)
+                        : nullptr;
+                if (texels) {
+                    for (uint32_t b = 0; b < bytes; b += 4 * 97) {
                         max_byte = std::max<uint32_t>(max_byte, texels[b]);
                         sum += texels[b];
                     }

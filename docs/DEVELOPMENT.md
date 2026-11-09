@@ -32,7 +32,7 @@ cmake --preset pc-x86
 cmake --build --preset pc-x86-debug
 ```
 
-Pacchetto della release (zip e SHA256SUMS in `dist/`): `powershell -File tools/package.ps1`.
+Pacchetto della release (zip e SHA256SUMS in `dist/`): `pwsh -File tools/package.ps1`.
 
 ## Branch e rilasci
 

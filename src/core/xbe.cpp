@@ -15,7 +15,6 @@ constexpr uint32_t kImageSizeOffset = 0x10C;
 constexpr uint32_t kCertificateOffset = 0x118;
 constexpr uint32_t kSectionCountOffset = 0x11C;
 constexpr uint32_t kSectionHeadersOffset = 0x120;
-constexpr uint32_t kInitFlagsOffset = 0x124;
 constexpr uint32_t kEntryPointOffset = 0x128;
 constexpr uint32_t kTlsAddressOffset = 0x12C;
 constexpr uint32_t kStackCommitOffset = 0x130;
@@ -57,7 +56,6 @@ std::optional<Xbe> Xbe::parse(std::vector<uint8_t> file, std::string* error) {
     xbe.base_address_ = u32(kBaseAddressOffset);
     xbe.header_size_ = u32(kHeaderSizeOffset);
     xbe.image_size_ = u32(kImageSizeOffset);
-    xbe.init_flags_ = u32(kInitFlagsOffset);
     xbe.tls_address_ = u32(kTlsAddressOffset);
     xbe.stack_commit_ = u32(kStackCommitOffset);
     if (xbe.header_size_ < kMinimumHeaderSize || xbe.header_size_ > data.size()) {

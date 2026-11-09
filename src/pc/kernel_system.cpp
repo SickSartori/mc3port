@@ -273,7 +273,6 @@ void register_ntdll(uint32_t ordinal, const char* name) {
 }  // namespace
 
 void set_kernel_xbe(const Xbe* xbe) { g_xbe = xbe; }
-const Xbe* kernel_xbe() { return g_xbe; }
 
 void register_system_functions() {
     register_kernel(126, &KeQueryPerformanceCounter);

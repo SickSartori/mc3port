@@ -44,6 +44,9 @@
   stood still and the screen waited for ever for its half second. At 30 fps the larger step still got through, which
   is why it only hit 60 fps, and only some PCs. The clocks now start with the game, as an Xbox's with the console.
   Reproduced on a laptop up for a week and fixed there, with the European and the USA disc (issues #4, #6, #11, #12).
+- **Black textures after a long session on integrated graphics**: the port kept every texture it had ever made, and
+  for most formats a new copy each time the draws before had used another palette, so after an hour the graphics
+  memory ran out and new textures failed to appear. Textures no draw has asked for in a minute are now let go.
 - **The fixed time step at 60 fps** is a whole number of sixtieths, a steady 1/60 s: on a PC whose frames come a
   little unevenly (now 1 blank, now 3) it followed the average and changed every frame, between 0.0156 and 0.0229 s.
 - **Crash leaving the garage, or entering the career, as the music changes**: the game's WMA music decoder reads

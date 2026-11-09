@@ -172,6 +172,8 @@ bool texture_is_linear(const TextureDescriptor& texture) {
     return info && info->kind == kLinear;
 }
 
+bool texture_is_paletted(const TextureDescriptor& texture) { return color_code(texture) == 0x0B; }
+
 uint32_t texture_levels(const TextureDescriptor& texture) {
     const FormatInfo* info = format_info(color_code(texture));
     if (!info || info->kind == kLinear || (texture.format & 0x4)) return 1;  // linear and cube maps: top level only
@@ -237,7 +239,7 @@ TextureImage decode_texture(const TextureDescriptor& texture) {
     image.layout = TextureLayout::Bgra8;
     image.row_pitch = width * 4;
     image.data.resize(static_cast<size_t>(width) * height * 4);
-    const uint8_t* palette = code == 0x0B ? physical_pointer(texture.palette) : nullptr;
+    const uint8_t* palette = texture_is_paletted(texture) ? physical_pointer(texture.palette) : nullptr;
 
     if (code == 0x24 || code == 0x25) {
         for (uint32_t y = 0; y < height; ++y) {

@@ -46,6 +46,7 @@
 #include "pc/renderer_d3d11.h"
 #include "pc/launcher_style.h"
 #include "pc/settings.h"
+#include "pc/update_check.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 
@@ -329,21 +330,6 @@ struct UpdateCheck {
     std::filesystem::path setup_file;
 };
 
-std::vector<int> version_numbers(const std::string& text) {
-    std::vector<int> numbers;
-    for (size_t i = 0; i < text.size();) {
-        if (std::isdigit(static_cast<unsigned char>(text[i]))) {
-            size_t end = i;
-            while (end < text.size() && std::isdigit(static_cast<unsigned char>(text[end]))) ++end;
-            numbers.push_back(std::atoi(text.substr(i, end - i).c_str()));
-            i = end;
-        } else {
-            ++i;
-        }
-    }
-    return numbers;
-}
-
 std::string json_string(const std::string& json, const char* key) {
     const std::string marker = std::string("\"") + key + "\":\"";
     const size_t at = json.find(marker);
@@ -406,11 +392,12 @@ void check_for_updates(UpdateCheck* check) {
     const bool newer = version_numbers(tag) > version_numbers(MC3PORT_VERSION);
     check->state = newer ? 2 : 1;
     check->version = tag;
-    check->url = url;
+    check->url = release_link(url, kRepository, "tag/") ? url : std::string("https://github.com/") + kRepository + "/releases";
     const std::string marker = "\"browser_download_url\":\"";
     for (size_t at = body.find(marker); at != std::string::npos; at = body.find(marker, at + 1)) {
         const size_t start = at + marker.size(), end = body.find('"', start);
         const std::string asset = body.substr(start, end - start);
+        if (!release_link(asset, kRepository, "download/")) continue;
         if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "-setup.exe") == 0) check->setup_url = asset;
         if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "SHA256SUMS") == 0) check->sums_url = asset;
     }

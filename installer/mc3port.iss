@@ -22,7 +22,7 @@ AppPublisher=SickSartori
 AppPublisherURL=https://github.com/SickSartori/mc3port
 AppSupportURL=https://github.com/SickSartori/mc3port/issues
 AppUpdatesURL=https://github.com/SickSartori/mc3port/releases
-AppComments=Unofficial native Windows port of Midnight Club 3: DUB Edition Remix (Xbox, PAL). No game files included.
+AppComments=Unofficial native Windows port of Midnight Club 3: DUB Edition Remix (Xbox, Europe or USA). No game files included.
 AppCopyright=MIT licence. Not affiliated with Rockstar Games, Take-Two Interactive or Microsoft.
 VersionInfoVersion={#AppVersion}
 VersionInfoDescription=mc3port setup
@@ -54,8 +54,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
 
 [Messages]
-english.WelcomeLabel2=This will install [name/ver], an unofficial native Windows port of Midnight Club 3: DUB Edition Remix.%n%nNo game files are included: on the first start you choose the disc image (ISO) of your own European Xbox copy.%n%nYour settings and saves are kept in your user folder and stay when you update or uninstall.
-italian.WelcomeLabel2=Verrà installato [name/ver], un port nativo non ufficiale per Windows di Midnight Club 3: DUB Edition Remix.%n%nNessun file del gioco è incluso: al primo avvio scegli l'immagine del disco (ISO) della tua copia Xbox europea.%n%nImpostazioni e salvataggi restano nella tua cartella utente e non si perdono con aggiornamenti o disinstallazione.
+english.WelcomeLabel2=This will install [name/ver], an unofficial native Windows port of Midnight Club 3: DUB Edition Remix.%n%nNo game files are included: on the first start you choose the disc image (ISO) of your own European or USA Xbox copy.%n%nYour settings and saves are kept in your user folder and stay when you update or uninstall.
+italian.WelcomeLabel2=Verrà installato [name/ver], un port nativo non ufficiale per Windows di Midnight Club 3: DUB Edition Remix.%n%nNessun file del gioco è incluso: al primo avvio scegli l'immagine del disco (ISO) della tua copia Xbox europea o americana.%n%nImpostazioni e salvataggi restano nella tua cartella utente e non si perdono con aggiornamenti o disinstallazione.
 
 [CustomMessages]
 english.DesktopShortcut=Create a desktop shortcut

@@ -392,6 +392,7 @@ struct CachedTexture {
     uint32_t checked_generation = 0;  // memory unchanged since this write-tracking generation
     TexturePageHashes page_hashes;
     bool waiting = false;            // sharp_2d: the enlarged version is being made (Enlarger)
+    uint64_t last_used = 0;          // g_texture_clock when a draw last asked for it
 };
 
 // By address, format, pitch, rectangle, palette and whether it is enlarged for 2D (setting sharp_2d).
@@ -420,6 +421,12 @@ public:
         if (current) levels = std::move(found->second.second);
         done_.erase(found);
         return current;
+    }
+    // Drops the finished results nobody will take (`wanted` false), such as those for textures forgotten meanwhile.
+    template <typename Wanted>
+    void drop_unwanted(Wanted wanted) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto it = done_.begin(); it != done_.end();) it = wanted(it->first) ? std::next(it) : done_.erase(it);
     }
 
 private:
@@ -523,6 +530,22 @@ std::unordered_map<uint32_t, Target> g_targets;
 std::unordered_map<uint64_t, DepthTarget> g_depth_targets;
 std::unordered_map<uint64_t, ComPtr<ID3D11PixelShader>> g_pixel_shaders;
 std::map<TextureKey, CachedTexture> g_textures;
+uint64_t g_texture_clock = 0;  // frames shown, for forgetting the textures no draw asks for any more
+
+// Every 10 s of frames: the textures unused for a minute are forgotten (the game reuses its memory for new ones, and
+// each kept its GPU copy for ever). Called while presenting, when no CachedTexture& is held and the bound state is
+// forgotten anyway (ForgetBound).
+void forget_unused_textures() {
+    constexpr uint64_t kSweepFrames = 600, kUnusedFrames = 3600;
+    if (++g_texture_clock % kSweepFrames) return;
+    for (auto it = g_textures.begin(); it != g_textures.end();) {
+        it = g_texture_clock - it->second.last_used > kUnusedFrames ? g_textures.erase(it) : std::next(it);
+    }
+    g_enlarger.drop_unwanted([](const TextureKey& key) {
+        const auto found = g_textures.find(key);
+        return found != g_textures.end() && found->second.waiting;
+    });
+}
 std::map<std::tuple<bool, uint32_t, uint32_t, uint32_t, uint32_t>, ComPtr<ID3D11BlendState>> g_blend_states;
 std::map<std::tuple<bool, uint32_t, bool, bool, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t>,
          ComPtr<ID3D11DepthStencilState>>
@@ -561,12 +584,12 @@ void log_statistics() {
     if (now - g_stats_since < 10000) return;
     const double seconds = (now - g_stats_since) / 1000.0;
     log_line("renderer: %.1f fps, %.0f draws/s, %.0f vertices/s | per second: vertices %.0f ms, texture hash %.0f ms "
-             "(%.1f MB), %.0f uploads %.0f ms, D3D %.0f ms; on CPU %lu",
+             "(%.1f MB), %.0f uploads %.0f ms, D3D %.0f ms; %zu textures kept; on CPU %lu",
              g_stats.presents / seconds, g_stats.draws / seconds, g_stats.vertices / seconds,
              milliseconds(g_stats.vertex_ticks) / seconds, milliseconds(g_stats.hash_ticks) / seconds,
              g_stats.hashed_bytes / seconds / 1048576.0, g_stats.uploads / seconds,
              milliseconds(g_stats.upload_ticks) / seconds, milliseconds(g_stats.draw_ticks) / seconds,
-             GetCurrentProcessorNumber());  // hybrid CPUs: which core this thread got
+             g_textures.size(), GetCurrentProcessorNumber());  // hybrid CPUs: which core this thread got
     log_line("renderer: D3D parts per second: setup %.0f ms, vertex upload %.0f ms, state and textures %.0f ms, "
              "draw %.0f ms; Present %.0f ms",
              milliseconds(g_stats.part_ticks[0]) / seconds, milliseconds(g_stats.part_ticks[1]) / seconds,
@@ -1269,8 +1292,16 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     }
     const uint8_t* memory = physical_pointer(d.address);
     if (!memory || !physical_pointer(d.address + bytes - 1)) return nullptr;
-    const TextureKey key = std::make_tuple(d.address, d.format, d.pitch, d.rect, d.palette, enlarge);
+    // The palette only where the format reads it: for the others its address changes with the draws before, and a
+    // new cache entry each time made the cache grow without end.
+    const uint32_t palette = texture_is_paletted(d) ? d.palette : 0;
+    const TextureKey key = std::make_tuple(d.address, d.format, d.pitch, d.rect, palette, enlarge);
     CachedTexture& cached = g_textures[key];
+    // On the way out: the entry may be rebuilt (cached = CachedTexture{}) on the way.
+    struct Touch {
+        CachedTexture& cached;
+        ~Touch() { cached.last_used = g_texture_clock; }
+    } touch{cached};
     std::vector<TextureImage> larger;
     if (cached.waiting && g_enlarger.take(key, cached.content_hash, larger)) {
         cached.waiting = false;
@@ -1298,7 +1329,7 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     }
     // Unchanged memory needs no look at all; written memory is hashed, and decoded again only if it differs.
     uint32_t written = physical_write_generation(d.address, bytes);
-    if (d.palette) written = std::max(written, physical_write_generation(d.palette, 1024));
+    if (palette) written = std::max(written, physical_write_generation(palette, 1024));
     if (cached.srv && written <= cached.checked_generation) return cached.srv.Get();
 
     const uint64_t hash_start = ticks();
@@ -1310,7 +1341,7 @@ ID3D11ShaderResourceView* texture_view(const TextureStage& stage, bool flat) {
     };
     const uint64_t hash = hash_written_pages(cached.page_hashes, memory, d.address & 0x7FFFFFFF, bytes, cached.checked_generation,
                                              [](uint32_t address) { return physical_write_generation(address, 1); }, hash_piece) ^
-                          (d.palette ? hash_piece(physical_pointer(d.palette), 1024) : 0);
+                          (palette ? hash_piece(physical_pointer(palette), 1024) : 0);
     g_stats.hash_ticks += ticks() - hash_start;
     cached.checked_generation = g_write_generation;
     if (cached.srv && cached.content_hash == hash) return cached.srv.Get();
@@ -2390,8 +2421,9 @@ struct RingBuffer {
     uint32_t capacity = 0, used = 0;
 };
 
+constexpr uint32_t kMinimumRing = 8u << 20;  // vertex ring buffers start at this size
+
 uint32_t ring_append(RingBuffer& ring, const void* data, uint32_t bytes, UINT bind, uint32_t element) {
-    constexpr uint32_t kMinimumRing = 8u << 20;
     if (bytes > ring.capacity) {
         ring.capacity = std::max({bytes, ring.capacity * 2, kMinimumRing});
         ring.capacity -= ring.capacity % element;
@@ -2405,6 +2437,7 @@ uint32_t ring_append(RingBuffer& ring, const void* data, uint32_t bytes, UINT bi
         ring.view.Reset();
         if (const HRESULT hr = g_device->CreateBuffer(&desc, nullptr, &ring.buffer); FAILED(hr)) {
             log_resource_failure("a vertex ring buffer", hr, desc);
+            ring.capacity = 0;  // tried again by the next append, never mapped while missing
             return ~0u;
         }
         if (bind & D3D11_BIND_SHADER_RESOURCE) {
@@ -2413,7 +2446,10 @@ uint32_t ring_append(RingBuffer& ring, const void* data, uint32_t bytes, UINT bi
             view.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
             view.BufferEx.NumElements = ring.capacity / 4;
             view.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
-            if (FAILED(g_device->CreateShaderResourceView(ring.buffer.Get(), &view, &ring.view))) return ~0u;
+            if (FAILED(g_device->CreateShaderResourceView(ring.buffer.Get(), &view, &ring.view))) {
+                ring.capacity = 0;
+                return ~0u;
+            }
         }
         ring.used = ring.capacity;  // forces a DISCARD below
     }
@@ -2590,7 +2626,6 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
     // Vertices go into a ring buffer: appended without waiting (NO_OVERWRITE), and the buffer is renamed (DISCARD)
     // only when it is full, instead of once per draw.
     const uint32_t bytes = static_cast<uint32_t>(triangles.size() * sizeof(RenderVertex));
-    constexpr uint32_t kMinimumRing = 8u << 20;
     if (bytes > g_vertex_capacity) {
         g_vertex_capacity = std::max({bytes, g_vertex_capacity * 2, kMinimumRing});
         g_vertex_capacity -= g_vertex_capacity % sizeof(RenderVertex);
@@ -2600,7 +2635,11 @@ void renderer_draw(const SurfaceState& surface, const DrawState& state, const st
         desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
         g_vertex_buffer.Reset();
-        g_device->CreateBuffer(&desc, nullptr, &g_vertex_buffer);
+        if (const HRESULT hr = g_device->CreateBuffer(&desc, nullptr, &g_vertex_buffer); FAILED(hr)) {
+            log_resource_failure("the vertex buffer", hr, desc);
+            g_vertex_capacity = 0;  // the draw is skipped and the next one tries again
+            return;
+        }
         g_vertex_used = g_vertex_capacity;  // forces a DISCARD below
     }
     const bool wrap = g_vertex_used + bytes > g_vertex_capacity;
@@ -2828,6 +2867,7 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     hud_frame_shown();
     ++g_presented;
     ++g_stats.presents;
+    forget_unused_textures();
     log_statistics();
     const uint64_t overlay_start = ticks();
     if (const RendererOverlay overlay = g_overlay.load(); overlay && g_final_rtv) {

@@ -271,8 +271,10 @@ void clock_thread() {
         g_tick_count = static_cast<uint32_t>(GetTickCount64() - start - paused * 1000 / frequency.QuadPart);
         LARGE_INTEGER counter;
         QueryPerformanceCounter(&counter);
+        // Seconds and the rest apart: ticks * 10^7 overflowed after 25.6 h at a 10 MHz counter.
+        const int64_t elapsed = counter.QuadPart - paused - start_counter.QuadPart;
         const int64_t interrupt_time =
-            (counter.QuadPart - paused - start_counter.QuadPart) * 10000000 / frequency.QuadPart;
+            elapsed / frequency.QuadPart * 10000000 + elapsed % frequency.QuadPart * 10000000 / frequency.QuadPart;
         store_system_time(g_interrupt_time, interrupt_time);
         store_system_time(g_system_time, current_file_time());
         Sleep(1);

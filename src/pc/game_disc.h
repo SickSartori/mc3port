@@ -17,7 +17,7 @@ struct GameDisc {
     Xbe xbe;
 };
 
-// Opens `path` if it holds the supported game: the PAL Midnight Club 3: DUB Edition Remix, whose code the port's
+// Opens `path` if it holds the supported game: Midnight Club 3: DUB Edition Remix (Europe or USA), whose code the port's
 // patches are made for (MC3_ANY_VERSION=1 accepts any). Otherwise `problem` says why, for the player.
 std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::string& problem);
 

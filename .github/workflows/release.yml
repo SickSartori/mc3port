@@ -18,35 +18,38 @@ jobs:
   windows:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - name: Install Inno Setup (for the installer)
-        run: choco install innosetup --no-progress -y
-
-      - name: Build and package
-        shell: pwsh
-        run: ./tools/package.ps1
-
+      # Before the build: a tag that does not match the version, or a version without its CHANGELOG section, fails in
+      # seconds instead of after the package is made.
       - name: Check the tag matches the version
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
           $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(mc3port VERSION ([0-9.]+)').Matches[0].Groups[1].Value
           if ("${{ github.ref_name }}" -ne "v$version") { throw "tag ${{ github.ref_name }} but CMakeLists.txt says $version" }
+          ./tools/release_notes.ps1 -Version $version -Out notes.md
+
+      - name: Install Inno Setup (for the installer)
+        run: choco install innosetup --version=6.7.1 --allow-downgrade --no-progress -y
+
+      - name: Build and package
+        shell: pwsh
+        run: ./tools/package.ps1
 
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        # The notes: the version's section of CHANGELOG.md (tools/release_notes.ps1), then GitHub's compare link.
+        # The notes: the version's section of CHANGELOG.md (notes.md, made in the first check), then GitHub's
+        # compare link.
         run: |
-          ./tools/release_notes.ps1 -Version ("${{ github.ref_name }}".TrimStart("v")) -Out notes.md
           gh release create "${{ github.ref_name }}" (Get-ChildItem dist -File).FullName --title "mc3port ${{ github.ref_name }}" --notes-file notes.md --generate-notes
 
       - name: Keep the package
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: mc3port-windows
           path: |
