@@ -1,7 +1,14 @@
 # Handoff 0.3.5 — stato, prove e cose aperte (9 novembre 2026)
 
 Scritto per riprendere il lavoro da un'altra sessione o da un altro PC. Tutto il codice citato è su `develop`
-(`39e61cd` e precedenti), CI verde fino a `493d82b`; `39e61cd` da controllare. Nessun merge in `main`, nessun tag.
+(`39e61cd` e precedenti), CI verde fino a `493d82b`. Le run di `39e61cd` e di questo handoff sono fallite all'avvio
+senza job ("Internal server error" di GitHub, workflow invariato dal 4/11): da rilanciare (`gh run rerun 42672908610`).
+Nessun merge in `main`, nessun tag.
+
+**Non committato** (verifica del 9/11 sera): in `time_frame_shown` (`hle_patches.cpp`) un'isteresi di 0,75 sui
+sessantesimi, perché una media a metà fra due sessantesimi faceva cambiare il passo a ogni frame. Il `mc3runtime.dll`
+in `build/pc-x86/Release` (19:19) la contiene già, quindi le prove dopo le 19:19 girano su codice non in `develop`:
+committarla o scartarla. Non tracciata anche `docs/lacune/` (10 note del 5/11).
 
 ## 1. Commit della 0.3.5 su develop, in ordine
 
@@ -58,7 +65,9 @@ Scritto per riprendere il lavoro da un'altra sessione o da un altro PC. Tutto il
   ferma a 60 fps con passo 0,0167 costante e nessuna riga `saves:` nel log, nessun tasto premuto. Gli avvii con lo
   script (che preme A a +8/+12/+16 s) la passano sempre. Ipotesi da verificare: quella schermata aspetta un input o un
   evento che la pressione sblocca, oppure il passo conta ancora. La prova `stall1` (watchdog ogni 2 s, `MC3_TRACE_SAVES=1`)
-  era in corso al momento di questo handoff: leggere `watchdog:` per il thread a priorità 0 con frame `mc3_run+199C6C`.
+  era in corso al momento di questo handoff. Nei due log con il watchdog rimasti (`mc3port.1.log` fino alle 19:19,
+  `mc3port.log` 19:19-19:27, il secondo con l'isteresi non committata) ci sono righe `saves:` (42 e 95) e nessun frame
+  `mc3_run+199C6C`: lì la schermata non si è fermata, il blocco non è riprodotto.
 - Dal disassemblato (`tools/xbe_to_pe.py` + `dumpbin`, file `xbe/game.asm`): l'interfaccia Flash avanza per conteggio di
   frame (`0x4B13B0` = 1 o 2 game frame per fotogramma Flash; vale 2 quando la modalità video `0x4B4E8C` == 1; la
   modalità la scrive `0x2D27C0` e `0x2D239E` la traduce nell'intervallo di presentazione D3D). I lettori di
@@ -85,7 +94,8 @@ Scritto per riprendere il lavoro da un'altra sessione o da un altro PC. Tutto il
   pagina dopo un buffer anche se libera (solo se segue memoria committata). Il dump del crash sta in
   `scratchpad/cityB/mc3port-crash-report.zip` di questa sessione e in `Documenti\mc3port\logs`.
 - **Da fare**: ripetere il percorso di cityB più volte con la build nuova (lo script di §2 senza `@tnavsys`); cercare
-  `memory: read/write past committed memory` nel log in corrispondenza dei cambi di musica.
+  `memory: read/write past committed memory` nel log in corrispondenza dei cambi di musica. Attenzione: la riga è
+  scritta solo le prime 10 volte per sessione (`kernel_memory.cpp`), in una sessione lunga può mancare.
 
 ## 6. Audit (rapporto completo in chat del 9/11, 20 punti)
 
@@ -96,9 +106,10 @@ parser XBE/XDVDFS, combo Back+Start solo in `XInputGetState`, `mc3port.ini` scri
 
 Da fare (punti 9-20): URL dell'aggiornamento vincolati a `github.com/<repo>/releases/download/`; cache texture che cresce
 (`g_textures` senza `erase`, chiave con palette per formati non paletted, `Enlarger::done_`); `CreateBuffer` senza
-controllo (`renderer_d3d11.cpp` ~2580); overflow di `KeInterruptTime` dopo 25,6 h; azioni CI fissate per SHA e
-`choco install innosetup --version`; testi "solo versione europea" residui (`installer/mc3port.iss`, `recomplauncher.json`,
-`tools/release_notes.ps1`, `README.md` ~66-70, `tools/package_readme.txt`, `docs/DEVELOPMENT.md:38` → `pwsh`); test
+controllo (`renderer_d3d11.cpp:2603`, `g_vertex_buffer`); overflow di `KeInterruptTime` dopo 25,6 h; azioni CI fissate
+per SHA e `choco install innosetup --version`; testi "solo versione europea" residui (`installer/mc3port.iss:25,57,58`,
+`recomplauncher.json:7,118`, `tools/release_notes.ps1:21`; `README.md` e `tools/package_readme.txt` già a posto);
+`docs/DEVELOPMENT.md:35` `powershell -File` → `pwsh`; test
 mancanti (parser ini, combo, confronto versioni, `gather_vertex_data`, `wait_unpaused`); ordine dei controlli di rilascio;
 scansione SDL ogni lettura (`gamepad.cpp`); ciclo di debug che legge 1,2 MB oltre una texture (`nv2a_kelvin.cpp` ~964);
 pulizie (`tools/debug_run.py`, `kernel_xbe()`, `init_flags`, doppioni di costanti e helper).
