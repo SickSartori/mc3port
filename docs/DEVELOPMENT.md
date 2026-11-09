@@ -32,7 +32,7 @@ cmake --preset pc-x86
 cmake --build --preset pc-x86-debug
 ```
 
-Pacchetto della release (zip e SHA256SUMS in `dist/`): `powershell -File tools/package.ps1`.
+Pacchetto della release (zip e SHA256SUMS in `dist/`): `pwsh -File tools/package.ps1`.
 
 ## Branch e rilasci
 
@@ -53,7 +53,7 @@ pubblica la release con le note prese dal CHANGELOG (`tools/release_notes.ps1`).
 |---|---|
 | `src/core` | parti portabili: lettura ISO (XDVDFS), parser XBE, tabella export del kernel |
 | `src/pc` | runtime Windows x86: kernel emulato, GPU NV2A su D3D11, audio, input, launcher |
-| `third_party` | Dear ImGui e i font Barlow, con le loro licenze |
+| `third_party` | Dear ImGui e i font Barlow, con le loro licenze; la licenza di SDL3, che CMake scarica alla configurazione |
 | `res` | risorse Win32: icona, musica del launcher |
 | `installer` | script Inno Setup |
 | `tools` | script di build, pacchetto, note di rilascio e analisi dell'XBE |
@@ -73,7 +73,7 @@ dati del titolo in `TDATA`, cache `Z:`) è la cartella `xbox_hdd`, il log di ogn
 stanno anche `mc3port.ini` e `shader_cache`. Se accanto a `mc3.exe` c'è un file `portable.txt` o un `mc3port.ini`,
 tutto resta invece accanto a `mc3.exe` (modalità portatile): è il caso delle build in `build\pc-x86\<config>`.
 
-Controlli: i controller XInput (Xbox 360/One/Series) sono le porte 1-4; Bianco e Nero diventano LB e RB. Senza
+Controlli: i controller (Xbox, PlayStation, Switch e la maggior parte degli altri, tramite SDL3) sono le porte 1-4; Bianco e Nero diventano LB e RB. Senza
 controller, la porta 1 è la tastiera (solo quando la finestra del gioco è in primo piano):
 
 | Tasto | Pulsante Xbox |
@@ -117,6 +117,7 @@ Variabili d'ambiente:
 | `MC3_DUMP_WINDOW=1` | con `MC3_DUMP_FRAMES`, salva anche l'immagine della finestra con gli effetti (`window-NNNNN.bmp`) |
 | `MC3_AO_VIEW=1` | mostra solo l'ombreggiatura ambientale, in grigio, al posto della scena (per regolarla) |
 | `MC3_LANGUAGE` | lingua del gioco: 1 inglese, 3 tedesco, 4 francese, 5 spagnolo, 6 italiano (altrimenti `game_language`, poi la lingua di Windows) |
+| `MC3_GPU_PREFERENCE=0` | usa la GPU predefinita di Windows invece di quella ad alte prestazioni (portatili con due schede) |
 | `MC3_MULTICORE=1` | usa tutti i core; per default il gioco gira su un core solo, come sull'Xbox |
 | `MC3_NO_DIALOG=1` | niente finestre di dialogo e niente launcher (per i test automatici) |
 | `MC3_SKIP_LAUNCHER=1` | parte direttamente il gioco |
@@ -126,7 +127,7 @@ Variabili d'ambiente:
 | `MC3_DUMP_FRAMES=<n>` | salva un frame presentato ogni `n` come `frame-NNNNN.bmp` nella cartella di lavoro |
 | `MC3_DEBUG_DRAWS=<n>` | descrive nel log i primi `n` draw (vertici, combiner, texture, stati); con `MC3_DEBUG_DRAWS_FF=1` solo quelli fixed-function |
 | `MC3_DUMP_TARGET=<indirizzo hex>` | con ogni frame salvato, anche la render target a quell'indirizzo fisico (`target-NNNNN.bmp`) |
-| `MC3_DEBUG_FRAME_AT=<s>[+<durata>]` | una riga per draw (e per clear) durante 1 s, o `durata` secondi, a partire da `s` secondi dopo il primo draw (rettangolo a schermo, coordinate di texture, stati) |
+| `MC3_DEBUG_FRAME_AT=<s>[+<durata>]` | una riga per draw (e per clear) durante 1 s, o `durata` secondi, a partire da `s` secondi dopo il primo draw (rettangolo a schermo, coordinate di texture, stati); il tasto F9 nel gioco apre la stessa finestra per 1 s da quel momento |
 | `MC3_DEBUG_PROBE=<x>,<y>` | con il precedente, registra il pixel (x, y) ogni volta che un draw lo cambia |
 | `MC3_DEBUG_FULLSCREEN=1` | con `MC3_DEBUG_FRAME_AT`, solo i draw che coprono quasi tutta la superficie (gli effetti a schermo intero), così la finestra può durare a lungo |
 | `MC3_DEBUG_ADDITIVE=1` | con `MC3_DEBUG_FRAME_AT`, solo i draw che aggiungono luce (fusione con destinazione ONE: aloni, scie, bagliori) |

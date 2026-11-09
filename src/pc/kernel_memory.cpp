@@ -38,7 +38,8 @@ NTSTATUS status_from_last_error() {
 
 // A new region gets this much more reserved after it: Windows leaves unusable gaps between regions (64 KB
 // granularity) where the Xbox has the next pages, and the game reads a little past some buffers (zlib reads
-// ahead of its input). Reads there commit a zero page (commit_reserved_page).
+// ahead of its input) and writes a byte past one (the WMA music decoder, at a song change: issue #13). Reads and
+// writes there commit a zero page (commit_reserved_page).
 constexpr uint32_t kTailReserve = 64 * 1024;
 
 // Pages the game decommitted stay committed with their contents: XACT reads the next cue from one it has just freed
@@ -98,8 +99,17 @@ NTSTATUS __stdcall NtAllocateVirtualMemory(uint32_t* base_address, uint32_t /*ze
         if (reserved) VirtualFree(reserved, 0, MEM_RELEASE);
     }
     const bool recommit = (type & MEM_COMMIT) && *base_address && zero_kept_pages(*base_address, *region_size);
-    void* result = VirtualAlloc(reinterpret_cast<void*>(static_cast<uintptr_t>(*base_address)), *region_size,
-                                type, windows_protection(protect));
+    // A reservation at an address of the game's choosing fills its 64 KB granules: Windows gives nobody the rest of
+    // a granule anyway, and reserved (not free) the pages past the game's size can be committed when the game reads
+    // or writes a byte past a buffer (commit_reserved_page; the WMA decoder does, issue #13).
+    uint32_t size = *region_size;
+    if ((type & MEM_RESERVE) && *base_address) {
+        constexpr uint32_t kGranule = 64 * 1024;
+        const uint32_t end = (*base_address + size + kGranule - 1) & ~(kGranule - 1);
+        size = end - *base_address;
+    }
+    void* result = VirtualAlloc(reinterpret_cast<void*>(static_cast<uintptr_t>(*base_address)), size, type,
+                                windows_protection(protect));
     if (!result) {
         log_line("NtAllocateVirtualMemory(%08X, %08X, type %08X, protect %08X) failed: error %lu", *base_address,
                  *region_size, allocation_type, protect, GetLastError());
@@ -107,7 +117,7 @@ NTSTATUS __stdcall NtAllocateVirtualMemory(uint32_t* base_address, uint32_t /*ze
     }
     MEMORY_BASIC_INFORMATION info;
     VirtualQuery(result, &info, sizeof(info));
-    if (recommit) {  // the kept pages around it are committed too: report only what was asked for, as the Xbox does
+    if (recommit || size != *region_size) {  // kept pages or the granule's rest: report only what was asked for
         info.RegionSize = ((*base_address + *region_size + 0xFFF) & ~0xFFFu) - address_of(result);
     }
     *base_address = address_of(result);
@@ -270,17 +280,28 @@ bool memory_self_test() {
 
 }  // namespace
 
-bool commit_reserved_page(uint32_t address) {
+bool commit_reserved_page(uint32_t address, bool write) {
     MEMORY_BASIC_INFORMATION info;
     if (!VirtualQuery(reinterpret_cast<void*>(static_cast<uintptr_t>(address)), &info, sizeof(info)) ||
-        info.State != MEM_RESERVE) {
+        (info.State != MEM_RESERVE && info.State != MEM_FREE)) {
         return false;
     }
-    void* page = reinterpret_cast<void*>(static_cast<uintptr_t>(address & ~0xFFFu));
-    if (!VirtualAlloc(page, 4096, MEM_COMMIT, PAGE_READWRITE)) return false;
+    const uintptr_t page = address & ~0xFFFu;
+    // A write, or a page nobody reserved: only right after committed memory, where the Xbox had RAM. A free page is
+    // taken as its own one-page allocation, which works at the start of a 64 KB granule, where a buffer that fills
+    // its granule ends (the WMA decoder reads and writes a few bytes past its buffers, issue #13).
+    if (write || info.State == MEM_FREE) {
+        MEMORY_BASIC_INFORMATION before;
+        if (page < 4096 || !VirtualQuery(reinterpret_cast<void*>(page - 1), &before, sizeof(before)) ||
+            before.State != MEM_COMMIT || (info.State == MEM_RESERVE && before.AllocationBase != info.AllocationBase)) {
+            return false;
+        }
+    }
+    const DWORD type = info.State == MEM_FREE ? MEM_RESERVE | MEM_COMMIT : MEM_COMMIT;
+    if (!VirtualAlloc(reinterpret_cast<void*>(page), 4096, type, PAGE_READWRITE)) return false;
     static volatile long logged = 0;
     if (InterlockedIncrement(&logged) <= 10) {
-        log_line("memory: read past committed memory at %08X: page committed (zeros)", address);
+        log_line("memory: %s past committed memory at %08X: page committed (zeros)", write ? "write" : "read", address);
     }
     return true;
 }

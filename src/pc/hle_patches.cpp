@@ -21,8 +21,13 @@ namespace {
 // The game turns the CPU time stamp counter into time assuming the Xbox's 733 MHz: its millisecond clock (0x1A1C00)
 // divides rdtsc by 733333 and XAPI's QueryPerformanceFrequency returns 733333333. The PC's counter runs at several
 // GHz, so everything timed that way went 5-6 times too fast (menu key repeat made the controller "too sensitive").
-// These rdtsc sites read a 733 MHz counter made from the host's performance counter instead, without the time the
-// game spent paused (the in-game menu).
+// These rdtsc sites read a 733 MHz counter made from the game's performance counter instead (game_ticks: from the
+// game's start, without the time it spent paused in the in-game menu).
+//
+// From the start: counted from Windows' start, after days of uptime the menus' float clock ([0x534674]+0x160, read
+// by mcFeMemCard) began at hundreds of thousands of seconds, where a 1/60 s step is under half a float step and is
+// lost: the clock stood still and "Checking saved games" waited for ever for its 0.5 s (issue #12; at 30 fps the
+// 1/30 s step rounded up and it passed).
 
 constexpr uint64_t kXboxCpuHz = 733333333;
 
@@ -32,9 +37,7 @@ uint64_t xbox_time_stamp() {
         QueryPerformanceFrequency(&value);
         return static_cast<uint64_t>(value.QuadPart);
     }();
-    LARGE_INTEGER value;
-    QueryPerformanceCounter(&value);
-    const auto counter = static_cast<uint64_t>(value.QuadPart - game_paused_ticks());
+    const auto counter = static_cast<uint64_t>(game_ticks());
     return counter / frequency * kXboxCpuHz + counter % frequency * kXboxCpuHz / frequency;
 }
 
@@ -185,6 +188,40 @@ __declspec(naked) void read_get_without_trap() {
     }
 }
 
+// The WMA music decoder's overlap-add (WMADEC, 0x42CDCC and 0x42D12C) runs its loop of 16 samples as a do-while: with
+// fewer than 16 samples left (the rest goes to the code after it) the count is 0, the first "dec eax" makes it -1,
+// and the loop ran on for 4 billion turns, reading and writing past its buffers until a page was missing: the crash
+// at a song change (issue #13; at 0x42D351 eax was -2231). On the Xbox it evidently never came to that; here, with
+// the port's timing, it did. A count of 0 now goes straight past the loop, its registers as they were.
+__declspec(naked) void wma_overlap_first() {
+    __asm {
+        movd mm0, dword ptr [ebp - 1Ch]
+        movd mm1, dword ptr [ebp - 24h]
+        mov eax, dword ptr [ebp - 30h]
+        test eax, eax
+        jz none
+        push 0042CDCCh
+        ret
+    none:
+        push 0042D0A8h
+        ret
+    }
+}
+__declspec(naked) void wma_overlap_second() {
+    __asm {
+        movd mm0, dword ptr [ebp - 1Ch]
+        movd mm1, dword ptr [ebp - 24h]
+        mov eax, dword ptr [ebp - 40h]
+        test eax, eax
+        jz none
+        push 0042D12Ch
+        ret
+    none:
+        push 0042D428h
+        ret
+    }
+}
+
 struct JumpPatch {
     const char* name;
     uint32_t address;
@@ -193,6 +230,10 @@ struct JumpPatch {
 };
 
 const JumpPatch kJumpPatches[] = {
+    {"WMA overlap-add, first loop", 0x0042CDC1, {0x0F, 0x6E, 0x45, 0xE4, 0x0F, 0x6E, 0x4D, 0xDC, 0x8B, 0x45, 0xD0},
+     reinterpret_cast<const void*>(&wma_overlap_first)},
+    {"WMA overlap-add, second loop", 0x0042D121, {0x0F, 0x6E, 0x45, 0xE4, 0x0F, 0x6E, 0x4D, 0xDC, 0x8B, 0x45, 0xC0},
+     reinterpret_cast<const void*>(&wma_overlap_second)},
     {"game rdtsc", 0x001A1BF0, {0x0F, 0x31, 0xC3, 0xCC, 0xCC}, reinterpret_cast<const void*>(&rdtsc_function)},
     {"game rdtsc (low half)", 0x0020E140, {0x52, 0x0F, 0x31, 0x5A, 0xC3},
      reinterpret_cast<const void*>(&rdtsc_low_function)},
@@ -230,6 +271,11 @@ const Patch kPatches[] = {
     // with fast frames here it froze the game at "Checking saved games". Signed: jge and jl instead of jae and jb.
     {"D3D fence wait, first check", 0x004165BC, {0x3B, 0xCA, 0x0F, 0x83, 0x1F, 0x01, 0x00, 0x00}, {0x3B, 0xCA, 0x0F, 0x8D}},
     {"D3D fence wait, loop", 0x004166DD, {0x3B, 0xC7, 0x72, 0xF6}, {0x3B, 0xC7, 0x7C}},
+    // D3D's vertical blank work (0x41B170) retires a queued flip only when its count of blanks equals the flip's
+    // target (cmp count, target; jne). The count moves on the game's own poll of the interrupt registers as well as on
+    // the interrupt, two threads here where the Xbox had one, so a blank can be counted twice and skip the target: the
+    // flip then waits for the count to come round. Retire at or past the target (jl: not yet while count < target).
+    {"D3D flip retirement at or past the target", 0x0041B1B4, {0x75, 0x7F, 0xC7, 0x01, 0x00, 0x00}, {0x7C, 0x7F}},
     {"XACT reads in flight", 0x0040B5B0,
      {0xFF, 0x76, 0x40, 0x8B, 0x0D, 0xA8, 0x0F, 0x41, 0x00, 0xE8, 0x7E, 0xAA, 0xFF, 0xFF, 0x85, 0xC0, 0x75, 0x03, 0x80, 0x26, 0xF7},
      {0x83, 0x7E, 0x4C, 0x00, 0x74, 0x0F, 0x80, 0x26, 0xF7, 0xEB, 0x0A}},  // cmp; je 40B5C5; and; jmp 40B5C5
@@ -246,8 +292,17 @@ void time_frame_shown(uint32_t vblanks) {
     if (shown < 8) return;
     uint32_t total = 0;
     for (const uint32_t v : recent) total += v;
-    const float period = static_cast<float>(total) / 8.0f / static_cast<float>(nv2a_vblank_hz());
-    if (period <= 0) return;
+    // Whole sixtieths, at least one (1/60 s, the shortest step the game had on the Xbox), like the measured path:
+    // where frames jitter between 1 and 3 blanks the average wandered between 0.0156 and 0.0229 s every frame. (The
+    // menus that stood still at 60 fps, issue #12, were a float clock grown too large: see game_ticks.)
+    // MC3_STEP_FLOOR=<seconds> raises the result (diagnostic).
+    static const float floor = [] {
+        char value[32] = {};
+        return GetEnvironmentVariableA("MC3_STEP_FLOOR", value, sizeof(value)) ? static_cast<float>(std::atof(value)) : 0.0f;
+    }();
+    const float average = static_cast<float>(total) / 8.0f / static_cast<float>(nv2a_vblank_hz());
+    const float sixtieths = std::max(1.0f, std::round(average * 60.0f));
+    const float period = std::max(sixtieths / 60.0f, floor);
     g_frame_period = period;
     if (*g_fixed_mode == 1) use_fixed_step(period);
 }

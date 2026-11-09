@@ -171,9 +171,16 @@ XdvdfsImage::~XdvdfsImage() {
     }
 }
 
+// Sizes come from the image: checked against the image's end before anything that size is allocated.
+bool XdvdfsImage::within_image(const Entry& entry) const {
+    const uint64_t end = parts_.back().start + parts_.back().size;  // parts_ is never empty after open()
+    const uint64_t begin = partition_offset_ + entry.sector * kSectorSize;
+    return begin <= end && entry.size <= end - begin;
+}
+
 std::vector<XdvdfsImage::Entry> XdvdfsImage::list(const Entry& directory) const {
     std::vector<Entry> entries;
-    if (!directory.is_directory || directory.size == 0) return entries;
+    if (!directory.is_directory || directory.size == 0 || !within_image(directory)) return entries;
     std::vector<uint8_t> table(directory.size);
     if (!read_raw(partition_offset_ + directory.sector * kSectorSize, table.data(), table.size())) return entries;
 
@@ -231,6 +238,7 @@ size_t XdvdfsImage::read(const Entry& file, uint64_t offset, void* destination, 
 }
 
 std::vector<uint8_t> XdvdfsImage::read_all(const Entry& file) const {
+    if (!within_image(file)) return {};
     std::vector<uint8_t> data(file.size);
     if (read(file, 0, data.data(), data.size()) != data.size()) data.clear();
     return data;

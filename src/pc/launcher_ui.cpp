@@ -34,6 +34,7 @@
 #include "imgui_internal.h"
 #include "pc/crash_report.h"
 #include "pc/game_pause.h"
+#include "pc/gamepad.h"
 #include "pc/hle_patches.h"
 #include "pc/input_hle.h"
 #include "pc/keyboard_bindings.h"
@@ -45,6 +46,7 @@
 #include "pc/renderer_d3d11.h"
 #include "pc/launcher_style.h"
 #include "pc/settings.h"
+#include "pc/update_check.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 
@@ -95,8 +97,8 @@ struct Texts {
 const Texts kEnglish = {
     "PLAY", "SETTINGS", "CONTROLS", "ABOUT", "QUIT",
     "READY TO RACE", "The streets of San Diego, Atlanta, Detroit and Tokyo are waiting.", "Disc verified",
-    "No disc chosen", "Choose the disc image (ISO) of your European Xbox copy.", "Change", "Choose the ISO",
-    "Controller connected", "Xbox and compatible controllers", "No controller", "The keyboard works too", "Edit",
+    "No disc chosen", "Choose the disc image (ISO) of your Xbox copy (Europe or USA).", "Change", "Choose the ISO",
+    "Controller connected", "Xbox, PlayStation and other pads", "No controller", "The keyboard works too", "Edit",
     "Picture", "Effects", "Game", "Audio",
     "Game language", "The game's text and speech", "Like Windows", "Frames per second", "60 is smoother; 30 like the Xbox",
     "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
@@ -109,9 +111,9 @@ const Texts kEnglish = {
     "Modern effects", "Bloom, sharpening, colour and shading (F10 while playing)", "On", "Off",
     "Sharpening", "Light glow", "Glow threshold", "Saturation", "Contrast", "Vignette", "Ambient occlusion",
     "Occlusion size",
-    "Game keys", "Xbox controllers work as they are. Choose the keyboard keys here.", "Key? Esc cancels",
+    "Game keys", "Controllers work as they are. Choose the keyboard keys here.", "Key? Esc cancels",
     "Restore keys", "PC keys", "Full screen on and off", "Modern effects on and off", "Menus: move, select, back",
-    "PlayStation and other pads: through Steam Input or DS4Windows, which present them as Xbox controllers.",
+    "PlayStation, Switch and most other pads work too, with the buttons in the Xbox positions.",
     "Unofficial native Windows port. No game files included: you need your own copy.", "Looking for updates...",
     "This is the latest version", "Version %s is available", "Opens the release page; nothing downloads by itself",
     "Open", "Log folder", "For bug reports, attach mc3port.log", "Report a problem",
@@ -120,10 +122,10 @@ const Texts kEnglish = {
     "MIT licence \xC2\xB7 Dear ImGui (MIT) \xC2\xB7 Barlow Semi Condensed (OFL)",
     "Update", "Downloads and checks the installer, then shows it to you to start", "Downloading the update...",
     "The update could not be downloaded or checked",
-    "WELCOME", "You need your own copy: a disc image (ISO) of the European Xbox Midnight Club 3: DUB Edition Remix.",
+    "WELCOME", "You need your own copy: a disc image (ISO) of the Xbox Midnight Club 3: DUB Edition Remix, Europe or USA.",
     "NEXT", "STYLE", "Original is the game as it was on the Xbox, Enhanced the best this port can show. You can change it any time in the settings.", "ALL SET",
     "Disc verified. Connect a controller or use the keyboard.",
-    "Disc", "Xbox \xC2\xB7 Europe", "none", "Controller", "connected", "not connected", "Version", "Select", "Back",
+    "Disc", "Xbox \xC2\xB7 Europe or USA", "none", "Controller", "connected", "not connected", "Version", "Select", "Back",
     "RESUME", "BACK TO GAME", "PAUSED", "The game is paused. F1 or Esc takes you back.", "EXIT GAME",
     "Progress since the last save will be lost.", "EXIT", "Applies the next time the game starts", "In-game menu",
     "Frame counter", "In a corner while playing", "Pause in the background",
@@ -150,8 +152,8 @@ const Texts kEnglish = {
 const Texts kItalian = {
     "GIOCA", "IMPOSTAZIONI", "CONTROLLI", "INFO", "ESCI",
     "PRONTO A CORRERE", "Le strade di San Diego, Atlanta, Detroit e Tokyo ti aspettano.", "Disco verificato",
-    "Nessun disco scelto", "Scegli l'immagine del disco (ISO) della tua copia Xbox europea.", "Cambia", "Scegli l'ISO",
-    "Controller collegato", "Controller Xbox e compatibili", "Nessun controller", "Anche la tastiera funziona", "Modifica",
+    "Nessun disco scelto", "Scegli l'immagine del disco (ISO) della tua copia Xbox (Europa o USA).", "Cambia", "Scegli l'ISO",
+    "Controller collegato", "Controller Xbox, PlayStation e altri", "Nessun controller", "Anche la tastiera funziona", "Modifica",
     "Immagine", "Effetti", "Gioco", "Audio",
     "Lingua del gioco", "Testi e voci del gioco", "Come Windows", "Fotogrammi al secondo",
     "60 \xC3\xA8 pi\xC3\xB9 fluido; 30 come l'Xbox", "Volume del gioco", "Musica del launcher",
@@ -164,10 +166,10 @@ const Texts kItalian = {
     "Effetti moderni", "Bagliore, nitidezza, colori e ombreggiatura (F10 durante il gioco)", "S\xC3\xAC", "No",
     "Nitidezza", "Bagliore delle luci", "Soglia del bagliore", "Saturazione", "Contrasto", "Vignettatura",
     "Ombreggiatura ambientale", "Ampiezza dell'ombreggiatura",
-    "Tasti di gioco", "I controller Xbox funzionano cos\xC3\xAC come sono. Qui scegli i tasti della tastiera.",
+    "Tasti di gioco", "I controller funzionano cos\xC3\xAC come sono. Qui scegli i tasti della tastiera.",
     "Tasto? Esc annulla", "Tasti predefiniti", "Tasti del PC", "Schermo intero s\xC3\xAC/no", "Effetti moderni s\xC3\xAC/no",
     "Menu: muoversi, scegliere, tornare",
-    "Controller PlayStation e altri: tramite Steam Input o DS4Windows, che li presentano come controller Xbox.",
+    "Controller PlayStation, Switch e quasi tutti gli altri funzionano, con i tasti nelle posizioni Xbox.",
     "Port nativo non ufficiale per Windows. Nessun file del gioco incluso: serve la tua copia.",
     "Cerco aggiornamenti...", "Questa \xC3\xA8 l'ultima versione", "\xC3\x88 disponibile la versione %s",
     "Apre la pagina della versione; niente si scarica da solo", "Apri", "Cartella dei log",
@@ -178,7 +180,7 @@ const Texts kItalian = {
     "Aggiorna", "Scarica e verifica l'installer, poi te lo mostra da avviare", "Scarico l'aggiornamento...",
     "Non \xC3\xA8 stato possibile scaricare o verificare l'aggiornamento",
     "BENVENUTO",
-    "Per giocare serve la tua copia: l'immagine ISO del disco Xbox europeo di Midnight Club 3: DUB Edition Remix.",
+    "Per giocare serve la tua copia: l'immagine ISO del disco Xbox di Midnight Club 3: DUB Edition Remix, Europa o USA.",
     "AVANTI", "STILE", "Originale \xC3\xA8 il gioco com'era sull'Xbox, Migliorata il meglio che questo port sa mostrare. Potrai cambiarlo quando vuoi nelle impostazioni.", "TUTTO PRONTO",
     "Disco verificato. Collega un controller o usa la tastiera.",
     "Disco", "Xbox \xC2\xB7 Europa", "nessuno", "Controller", "collegato", "non collegato", "Versione", "Seleziona",
@@ -328,21 +330,6 @@ struct UpdateCheck {
     std::filesystem::path setup_file;
 };
 
-std::vector<int> version_numbers(const std::string& text) {
-    std::vector<int> numbers;
-    for (size_t i = 0; i < text.size();) {
-        if (std::isdigit(static_cast<unsigned char>(text[i]))) {
-            size_t end = i;
-            while (end < text.size() && std::isdigit(static_cast<unsigned char>(text[end]))) ++end;
-            numbers.push_back(std::atoi(text.substr(i, end - i).c_str()));
-            i = end;
-        } else {
-            ++i;
-        }
-    }
-    return numbers;
-}
-
 std::string json_string(const std::string& json, const char* key) {
     const std::string marker = std::string("\"") + key + "\":\"";
     const size_t at = json.find(marker);
@@ -405,11 +392,12 @@ void check_for_updates(UpdateCheck* check) {
     const bool newer = version_numbers(tag) > version_numbers(MC3PORT_VERSION);
     check->state = newer ? 2 : 1;
     check->version = tag;
-    check->url = url;
+    check->url = release_link(url, kRepository, "tag/") ? url : std::string("https://github.com/") + kRepository + "/releases";
     const std::string marker = "\"browser_download_url\":\"";
     for (size_t at = body.find(marker); at != std::string::npos; at = body.find(marker, at + 1)) {
         const size_t start = at + marker.size(), end = body.find('"', start);
         const std::string asset = body.substr(start, end - start);
+        if (!release_link(asset, kRepository, "download/")) continue;
         if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "-setup.exe") == 0) check->setup_url = asset;
         if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "SHA256SUMS") == 0) check->sums_url = asset;
     }
@@ -613,7 +601,7 @@ private:
     void bottom_bar(float since);
     void resume();
     void stop_rumble();
-    void poll_gamepads(float now);  // every XInput port into ImGui's keys, the left stick as a d-pad
+    void poll_gamepads(float now);  // every controller slot into ImGui's keys, the left stick as a d-pad
     void focus_ring();              // the launcher's focus look on a standard ImGui widget
     // The selection of keys and controller: one lit row with a leaning mark, drawn under the page's widgets.
     bool nav_selected() const;
@@ -720,7 +708,6 @@ private:
     std::unique_ptr<LauncherMusic> music_;
     UpdateCheck updates_;
     std::thread update_thread_, download_thread_;
-    HMODULE xinput_ = nullptr;
     decltype(&XInputGetState) xinput_get_state_ = nullptr;
     bool pad_connected_ = false;
     bool pad_present_[4] = {};
@@ -809,7 +796,7 @@ bool Launcher::start_graphics() {
     return true;
 }
 
-// ImGui on device_ and context_, with the launcher's fonts and colours, and XInput for the controller status.
+// ImGui on device_ and context_, with the launcher's fonts and colours, and SDL for the controller status.
 void Launcher::start_imgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -843,11 +830,9 @@ void Launcher::start_imgui() {
     colours[ImGuiCol_NavCursor] = ImVec4(0, 0, 0, 0);  // the widgets draw their own focus (anim, focus_ring)
     colours[ImGuiCol_Border] = ImVec4(1, 1, 1, 0.1f);
 
-    xinput_ = LoadLibraryW(L"xinput1_4.dll");
-    if (!xinput_) xinput_ = LoadLibraryW(L"xinput9_1_0.dll");
-    if (xinput_) {
-        xinput_get_state_ = reinterpret_cast<decltype(&XInputGetState)>(GetProcAddress(xinput_, "XInputGetState"));
-        xinput_set_state_ = reinterpret_cast<decltype(&XInputSetState)>(GetProcAddress(xinput_, "XInputSetState"));
+    if (gamepad_init()) {
+        xinput_get_state_ = gamepad_get_state;
+        xinput_set_state_ = gamepad_set_state;
     }
 }
 
@@ -903,7 +888,6 @@ void Launcher::stop_graphics() {
     sampler_.Reset();
     context_.Reset();
     device_.Reset();
-    if (xinput_) FreeLibrary(xinput_);
 }
 
 void Launcher::resize_if_needed() {

@@ -160,6 +160,7 @@ void profile_register_access(uint32_t offset, uint32_t eip) {
 }
 
 void profile_privileged_instruction() { g_privileged.fetch_add(1, std::memory_order_relaxed); }
+bool profile_detailed() { return g_detailed; }
 
 void profile_exclusion_break(const char* site, uint32_t caller, uint32_t owner) {
     static std::atomic<uint32_t> total{0};

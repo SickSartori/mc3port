@@ -51,6 +51,9 @@ void test_xbe() {
     bad = make_xbe();
     put_le32(bad, 0x128, 0);  // entry point nowhere
     CHECK(refused(bad));
+    bad = make_xbe();
+    put_le32(bad, 0x11C, 0x04924925);  // a section count whose size wraps to 0x14 in 32 bits
+    CHECK(refused(bad));
 }
 
 std::vector<uint8_t> sample_data() {

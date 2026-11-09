@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.3.5 (2026-11-09)
+
+### New
+
+- **PlayStation, Switch and other controllers** work directly, through SDL3, with the buttons in the Xbox positions:
+  no more Steam Input or DS4Windows. Xbox controllers work as before.
+
+### Improved
+
+- **Frames are presented without waiting for the display**, where DXGI allows it (Windows 10 1607 and later). A frame
+  that took a little longer than the display's refresh used to wait for the next one: on a laptop whose dedicated GPU
+  draws into a display wired to the integrated one, the city sat at exactly 30 fps with the GPU half idle, and the
+  frame rate dips on other PCs came from the same wait. The city now runs at 60 fps there.
+- **Less work per draw**: Direct3D's state cache was emptied before almost every draw by a lookup that should not
+  have touched it, so each draw re-set every render state. Lighter on the GPU thread, which was the limit on
+  laptops.
+- **The USA release** of the Remix is accepted, next to the European one: its code differs by one branch and every
+  patch of the port applies to it. The log names the release.
+- **Automatic internal resolution** stays at 1080 lines on integrated graphics (under 1 GB of its own memory), instead
+  of following a 1440 or 2160 line monitor it cannot fill.
+- **Laptops with two GPUs** render on the fast one. Windows hands programs the integrated GPU unless told otherwise,
+  so the game ran on it, at the monitor's resolution, with the dedicated card idle. The log says which GPU draws
+  (`renderer: on ...`); a choice made for mc3.exe in Windows' graphics settings still wins.
+
+### Fixed
+
+- **A wait for several objects with a time limit** could spin on one core for good once the limit passed with only
+  some of the objects ready: the game then stopped for good. The limit now ends the wait.
+- **The menu tap of Start or Back** on a controller was lost about half the time: the port's Back+Start menu
+  combination replayed the tap into a read the game never looked at.
+- **mc3port.ini** is written beside itself and renamed over, so a crash while a slider moves cannot leave it empty
+  (disc path, keys and settings lost).
+- **A damaged disc image or default.xbe** with absurd counts or sizes closes the launcher no more: they are checked
+  before anything is read or allocated. A save name with a drive letter or a byte outside ASCII is refused instead
+  of reaching the PC's file system or ending the game.
+- **Frames stuck on a missed vertical blank**: Direct3D retires a flip only when its count of blanks is exactly the
+  flip's target, and on a PC the count can skip one (the game's own poll and the port's interrupt both count the same
+  blank). The flip is now retired at or past its target.
+- **"Checking saved games" stuck for good at 60 fps**: the game's clocks counted from Windows' start instead of the
+  game's. After about six days of uptime (three with 0.3.4's step; Windows' fast startup keeps the uptime across a
+  shutdown) the menus' clock, seconds kept as a float, had grown so large that adding 1/60 s no longer changed it: it
+  stood still and the screen waited for ever for its half second. At 30 fps the larger step still got through, which
+  is why it only hit 60 fps, and only some PCs. The clocks now start with the game, as an Xbox's with the console.
+  Reproduced on a laptop up for a week and fixed there, with the European and the USA disc (issues #4, #6, #11, #12).
+- **The cars' neon underglow shows**, in the garage, the shop and the city. Its glow is drawn as quads with a colour
+  but no normal while the lighting is still on from the car, and lit with no normal they came out as the scene's
+  ambient, near black. As in Direct3D, vertices without a normal now keep their own colour (issue #14).
+- **Black textures after a long session on integrated graphics**: the port kept every texture it had ever made, and
+  for most formats a new copy each time the draws before had used another palette, so after an hour the graphics
+  memory ran out and new textures failed to appear. Textures no draw has asked for in a minute are now let go.
+- **The fixed time step at 60 fps** is a whole number of sixtieths, a steady 1/60 s: on a PC whose frames come a
+  little unevenly (now 1 blank, now 3) it followed the average and changed every frame, between 0.0156 and 0.0229 s.
+- **Crash leaving the garage, or entering the career, as the music changes**: the game's WMA music decoder blends
+  its blocks in a loop of 16 samples at a time that runs at least once. Asked for fewer than 16 samples (the rest
+  has code of its own), it counted down from zero and ran on through memory, reading and writing past its buffers
+  until a page was missing. Reproduced with a crash dump (the loop's counter at -2231); the loop is now skipped when
+  it has nothing to do, with the European and the USA disc (issues #13, #15). The page after a game buffer is also
+  always there now, as on the Xbox: reservations the game places itself fill their 64 KB granule, and a read or write
+  just past a buffer gets a fresh page, the log saying so.
+
 ## 0.3.4 (2026-11-08)
 
 ### Improved

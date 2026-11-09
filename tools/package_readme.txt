@@ -28,10 +28,9 @@ WHAT YOU NEED
   releases (for example the North American one) are not supported: the
   launcher checks the game's executable and tells you if the disc is a
   different version.
-- Optional: an Xbox controller (Xbox 360, One, Series or any XInput
-  controller), up to four. Without one, the keyboard is controller 1.
-  PlayStation and other controllers work through Steam Input or
-  DS4Windows.
+- Optional: a controller (Xbox, PlayStation, Switch or most other USB
+  and Bluetooth pads), up to four. Without one, the keyboard is
+  controller 1.
 - Optional: an internet connection, only for the update check (it can be
   switched off in Settings).
 - An audio output device is not required: without one the game runs
@@ -130,7 +129,7 @@ IF SOMETHING GOES WRONG
   starts is the one used.
 - The sound is quiet: check Volume in Settings (100 is the loudest), then
   the Windows volume. The level leaves room for many sounds at once.
-- The disc is refused: only the European release is supported; the
+- The disc is refused: only the European and USA releases are supported; the
   launcher's message says what it found.
 
 To report a problem, press "Report a problem" in the launcher's bottom
@@ -172,7 +171,7 @@ them as above.
 KNOWN ISSUES
 ------------
 
-- Only the European release is supported.
+- Only the European and USA releases of the Remix are supported.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides.
 - The Xbox sound chip's own effects, such as reverb, are not reproduced.

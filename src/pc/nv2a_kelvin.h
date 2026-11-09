@@ -9,6 +9,8 @@ namespace mc3::pc {
 using DmaResolver = uint32_t (*)(uint32_t handle);
 
 void kelvin_initialise(DmaResolver resolver);
+// F9: one second of MC3_DEBUG_FRAME_AT's draw lines from now (any thread).
+void kelvin_request_debug_window();
 
 // Executes one Kelvin method; false if the method is not handled (the caller logs it).
 bool kelvin_method(uint32_t method, uint32_t argument);

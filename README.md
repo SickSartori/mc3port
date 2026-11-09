@@ -11,7 +11,8 @@
   </a>
 </p>
 
-An unofficial native Windows port of **Midnight Club 3: DUB Edition Remix** for the original Xbox (European release).
+An unofficial native Windows port of **Midnight Club 3: DUB Edition Remix** for the original Xbox (European and USA
+releases).
 It runs the game from **your own disc image**, with 16:9 widescreen, up to 60 fps, a higher internal resolution and
 optional modern effects.
 
@@ -39,7 +40,7 @@ pictures are read from the player's disc. The game content in the screenshots be
 
 mc3port is a port, not a remaster. It runs the original 2005 game, with its own cars, cities, physics and soundtrack.
 The game's x86 code runs natively on your PC; mc3port replaces the Xbox around it: its kernel, the NV2A graphics chip
-(on Direct3D 11), the sound chip (on XAudio2) and the controllers (on XInput).
+(on Direct3D 11), the sound chip (on XAudio2) and the controllers (on SDL3).
 
 Compared with the console:
 
@@ -66,7 +67,8 @@ Compared with the console:
   Feature Pack (Settings, Apps, Optional features), or `mc3runtime.dll` will not load.
 - **A graphics card and driver with Direct3D 11** (feature level 11_0). The processor counts more than the
   graphics card: see [Performance](#performance).
-- **A disc image** (`.iso` or `.cci`) of **Midnight Club 3: DUB Edition Remix, Xbox, Europe (En, Fr, De, Es, It)**.
+- **A disc image** (`.iso` or `.cci`) of **Midnight Club 3: DUB Edition Remix, Xbox**, the **Europe (En, Fr, De, Es, It)**
+  or the **USA** release.
   XISO and full Redump dumps both work, in one file or split in parts (`name.1.iso`, `name.2.iso`: choose any part),
   and so does the compressed CCI format (`.cci`, also split). Other releases (for example the North American one) are
   not supported: mc3port checks the game's executable (`default.xbe`, SHA-256 `29d866afda9c54590a854fdfa98cf6e69d871dd3fc02da20bbbf76c3582c7b09`)
@@ -142,8 +144,8 @@ game.
 
 ## Controls
 
-Xbox controllers (Xbox 360, One and Series, or anything XInput) work as on the console, on ports 1 to 4. PlayStation
-and other controllers work through Steam Input or DS4Windows, which present them as Xbox controllers.
+Xbox controllers (360, One and Series) work as on the console, on ports 1 to 4. PlayStation, Switch and most other
+USB or Bluetooth pads work too, through SDL3, with the buttons in the Xbox positions (the bottom face button is A).
 
 Without a controller, the keyboard is controller 1. Every key can be changed in the launcher's **Controls** page.
 
@@ -222,7 +224,7 @@ on entering a city; the results are kept in the `shader_cache` folder, so later 
 
 ## Known issues
 
-- Only the European release is supported.
+- Only the European and USA releases of the Remix are supported.
 - Online play (Xbox Live) is not available. Split screen works.
 - On monitors wider than 16:9 there are thin black bars at the sides (full screen on a 16:9 monitor has none).
 - The Xbox sound chip's own effects, such as reverb, are not reproduced (the game loads them, mc3port leaves them
@@ -245,7 +247,8 @@ on entering a city; the results are kept in the `shader_cache` folder, so later 
 - **No sound**: the game uses the output device that is the Windows default when it starts.
 - **The sound is quiet**: check Volume in Settings (100 is the loudest), then the Windows volume. The level leaves room
   for the moments when many sounds play at once, in the city, so that they do not distort.
-- **The disc is refused**: only the European release is supported; the launcher's message says what it found.
+- **The disc is refused**: only the European and USA releases of the Remix are supported; the launcher's message says
+  what it found.
 - **An antivirus flags the download**: a few engines mistake mc3.exe for a packed program (it loads the game's code
   from your disc image at start). Check the file against `SHA256SUMS` on the release page; if it matches, it is the
   one built from this repository, and you can restore it from quarantine.

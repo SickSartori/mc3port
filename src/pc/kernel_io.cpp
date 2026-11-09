@@ -299,6 +299,14 @@ std::optional<Location> resolve_path(std::string path) {
     }
     if (!rest.empty() && rest[0] != '\\') return std::nullopt;
     location.components = split_path(rest);
+    // FATX names have none of these: a component with a colon ("E:x") would replace the whole host path in
+    // host_path_of, wildcards reach the Win32 calls, and bytes over 0x7F are not UTF-8 (fs::path would throw).
+    for (const std::string& component : location.components) {
+        if (component.find_first_of(":\"<>|*?") != std::string::npos) return std::nullopt;
+        for (const char c : component) {
+            if (static_cast<unsigned char>(c) >= 0x80) return std::nullopt;
+        }
+    }
     location.xbox_path = join_xbox(device, location.components);
     return location;
 }
@@ -1068,7 +1076,8 @@ NTSTATUS __stdcall NtDeleteFile(const XObjectAttributes* attributes) {
     if (!location) return kStatusObjectPathNotFound;
     if (location->device != Device::Partition) return kStatusCannotDelete;
     const fs::path path = host_path_of(*location);
-    const BOOL done = fs::is_directory(path) ? RemoveDirectoryW(path.c_str()) : DeleteFileW(path.c_str());
+    std::error_code ignored;
+    const BOOL done = fs::is_directory(path, ignored) ? RemoveDirectoryW(path.c_str()) : DeleteFileW(path.c_str());
     return done ? kStatusSuccess : status_from_win32(GetLastError());
 }
 

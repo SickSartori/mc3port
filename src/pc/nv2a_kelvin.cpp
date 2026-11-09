@@ -110,6 +110,7 @@ uint64_t g_draws = 0;
 int g_debug_draws = -1;  // MC3_DEBUG_DRAWS=<n>: describe the first n draws in the log
 bool g_debug_window_open = false;  // inside the MC3_DEBUG_FRAME_AT window (as of the previous draw)
 ULONGLONG g_window_start = 0, g_window_end = 0;
+std::atomic<bool> g_window_requested{false};  // F9
 bool g_draw_dumped = false;  // MC3_DUMP_DRAW done
 int g_probe_x = -1, g_probe_y = -1;
 uint32_t g_last_probe[2] = {0xFFFFFFFF, 0xFFFFFFFF};
@@ -393,6 +394,16 @@ constexpr uint32_t kSourceMaterial = 0, kSourceDiffuse = 1;
 constexpr uint32_t kLightControlSeparateSpecular = 1, kLightControlLocalEye = 1u << 16;
 constexpr uint32_t kLightInfinite = 1, kLightLocal = 2, kLightSpot = 3;
 
+// Lighting as D3D8 has it: only vertices with a normal are lit. A draw without one (no array, the normal's own value
+// still zero) while lighting is left on from a lit draw keeps its vertex colours: the cars' neon glow (quads of
+// position, colour and texture coordinates) came out as the bare scene ambient, near black (issue #14).
+bool lighting_on() {
+    if (!g_k.lighting) return false;
+    if ((g_k.array_format[kInNormal] >> 4) & 0xF) return true;
+    const Vec4& normal = g_k.attribute[kInNormal];
+    return normal[0] != 0 || normal[1] != 0 || normal[2] != 0;
+}
+
 // Fixed-function lighting. `eye` is the eye-space position. Writes the front colours (back faces are not lit:
 // they keep their vertex colours).
 void light_vertex(const Vec4* in, const Vec4& eye, Vec4* out) {
@@ -526,7 +537,7 @@ void transform_fixed_function(const Vec4* in, Vec4* out) {
 
     out[kOutBackDiffuse] = in[kInBackDiffuse];
     out[kOutBackSpecular] = g_k.specular ? in[kInBackSpecular] : Vec4{0, 0, 0, 1};
-    if (g_k.lighting) {
+    if (lighting_on()) {
         light_vertex(in, eye, out);
     } else {
         out[kOutDiffuse] = in[kInDiffuse];
@@ -603,6 +614,11 @@ void update_debug_window() {
         g_window_start = set ? now + static_cast<ULONGLONG>(std::atof(value) * 1000) : ~0ull;
         const char* plus = std::strchr(value, '+');
         g_window_end = g_window_start + static_cast<ULONGLONG>((plus ? std::atof(plus + 1) : 1.0) * 1000);
+    }
+    if (g_window_requested.exchange(false)) {
+        g_window_start = now;
+        g_window_end = now + 1000;
+        log_line("debug: F9, one second of draws");
     }
     g_debug_window_open = now >= g_window_start && now < g_window_end;
 }
@@ -755,7 +771,7 @@ bool draw_fixed_function_on_gpu(const SurfaceState& target, uint32_t count, cons
     std::memcpy(c.specular_params, g_k.specular_params, sizeof(g_k.specular_params));
     std::memcpy(c.fog_plane, g_k.fog_plane, 16);
     std::memcpy(c.fog_params, g_k.fog_params, sizeof(g_k.fog_params));
-    c.flags = (g_k.lighting ? kFixedFunctionLighting : 0) | (g_k.specular ? kFixedFunctionSpecular : 0) |
+    c.flags = (lighting_on() ? kFixedFunctionLighting : 0) | (g_k.specular ? kFixedFunctionSpecular : 0) |
               (g_k.fog ? kFixedFunctionFog : 0) | (g_k.normalization ? kFixedFunctionNormalize : 0) |
               ((g_k.light_control & kLightControlSeparateSpecular) ? kFixedFunctionSeparateSpecular : 0) |
               ((g_k.light_control & kLightControlLocalEye) ? kFixedFunctionLocalEye : 0);
@@ -958,10 +974,22 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
         for (int t = 0; t < 4; ++t) {
             if (g_k.texture_control0[t] & 0x40000000) {
                 const uint32_t address = dma_address(g_k.texture_format[t] & 3, g_k.texture_offset[t]);
-                uint32_t max_byte = 0;
+                uint32_t max_byte = 0, width = 0, height = 0, bytes = 0;
                 uint64_t sum = 0;
-                if (const uint8_t* texels = physical_pointer(address)) {
-                    for (uint32_t b = 0; b < 640 * 480 * 4; b += 4 * 97) {
+                // Only the texture's own bytes: reading on past it touched memory the game never committed. (g_k.draw
+                // still holds the previous draw here: prepare_draw_state comes later.)
+                TextureDescriptor descriptor{};
+                descriptor.address = address;
+                descriptor.format = g_k.texture_format[t];
+                descriptor.pitch = g_k.texture_control1[t] >> 16;
+                descriptor.rect = g_k.texture_rect[t];
+                const uint8_t* texels =
+                    texture_extent(descriptor, &width, &height, &bytes) && bytes &&
+                            physical_pointer(address + bytes - 1)
+                        ? physical_pointer(address)
+                        : nullptr;
+                if (texels) {
+                    for (uint32_t b = 0; b < bytes; b += 4 * 97) {
                         max_byte = std::max<uint32_t>(max_byte, texels[b]);
                         sum += texels[b];
                     }
@@ -1078,6 +1106,28 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
                  static_cast<unsigned long long>(g_draws), x0, y0, x1, y1, u0, v0, u1, v1,
                  g_k.texture_matrix_enable[0], g_k.texgen[0][0], g_k.draw.textures[0].address_mode,
                  g_k.draw.textures[0].filter);
+        if (fixed_function && lighting_on() && g_k.light_enable_mask) {  // the lights on this draw, for missing glows
+            char lights[512];
+            const Vec4& normal = g_k.attribute[kInNormal];
+            int at = std::snprintf(lights, sizeof(lights),
+                                   "frame lights %llu: mask %04X colour material %X emission %.2f %.2f %.2f ambient %.2f %.2f "
+                                   "%.2f normal %s(%.2f %.2f %.2f)",
+                                   static_cast<unsigned long long>(g_draws), g_k.light_enable_mask, g_k.color_material,
+                                   g_k.material_emission[0], g_k.material_emission[1], g_k.material_emission[2],
+                                   g_k.scene_ambient[0], g_k.scene_ambient[1], g_k.scene_ambient[2],
+                                   (g_k.array_format[kInNormal] >> 4) & 0xF ? "array " : "", normal[0], normal[1], normal[2]);
+            for (int i = 0; i < 8 && at > 0 && at < static_cast<int>(sizeof(lights)) - 100; ++i) {
+                const uint32_t type = (g_k.light_enable_mask >> (i * 2)) & 3;
+                if (!type) continue;
+                const float* l = g_k.light[i];
+                at += std::snprintf(lights + at, sizeof(lights) - at,
+                                    " | %d: type %u diffuse %.2f %.2f %.2f pos %.0f %.0f %.0f dir %.2f %.2f %.2f range %.0f",
+                                    i, type, l[kLightDiffuse], l[kLightDiffuse + 1], l[kLightDiffuse + 2],
+                                    l[kLightPosition], l[kLightPosition + 1], l[kLightPosition + 2], l[kLightDirection],
+                                    l[kLightDirection + 1], l[kLightDirection + 2], l[kLightRange]);
+            }
+            log_line("%s", lights);
+        }
         log_line("frame draw %llu: %s prim %u n %u surf %08X | tex0 %s %08X fmt %08X | blend %d %X %X | z %d %X w %d | "
                  "atest %d %X ref %02X | mask %08X | clip (%.3g %.3g %.3g %.3g) d0 (%.2f %.2f %.2f %.2f) | comb %08X %08X %08X"
                  " | stages %05X ctl %08X | alpha %08X %08X out %08X | stencil %d %X ref %02X rm %02X wm %02X ops %X %X %X"
@@ -1402,5 +1452,7 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
             return false;
     }
 }
+
+void kelvin_request_debug_window() { g_window_requested = true; }
 
 }  // namespace mc3::pc

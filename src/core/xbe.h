@@ -51,7 +51,6 @@ public:
     uint32_t kernel_thunk_address() const { return kernel_thunk_address_; }
     uint32_t tls_address() const { return tls_address_; }
     uint32_t stack_commit() const { return stack_commit_; }
-    uint32_t init_flags() const { return init_flags_; }
     uint32_t title_id() const { return title_id_; }
     const std::string& title() const { return title_; }
     bool is_retail() const { return retail_; }
@@ -73,7 +72,6 @@ private:
     uint32_t kernel_thunk_address_ = 0;
     uint32_t tls_address_ = 0;
     uint32_t stack_commit_ = 0;
-    uint32_t init_flags_ = 0;
     uint32_t title_id_ = 0;
     std::string title_;
     bool retail_ = false;

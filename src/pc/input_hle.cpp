@@ -2,7 +2,7 @@
 //
 // The game talks to its controllers only through a handful of XPP functions (found from its input code at 0x84B40
 // and 0x84C00, see docs/ANALISI_XBE.md). XInitDevices is skipped (hle_patches.cpp), so there is no USB stack; these
-// functions are redirected here and served from XInput. A device type ("XPP_DEVICE_TYPE") is three port masks:
+// functions are redirected here and served from SDL3 (gamepad.cpp). A device type ("XPP_DEVICE_TYPE") is three port masks:
 // connected now, ports that changed since the last query, connected at the last query. XGetDevices and
 // XGetDeviceChanges keep the original logic on those masks, refreshing the gamepad masks from the host first.
 
@@ -19,6 +19,7 @@
 
 #include "pc/direction_pace.h"
 #include "pc/exec_memory.h"
+#include "pc/gamepad.h"
 #include "pc/keyboard_bindings.h"
 #include "pc/launcher_ui.h"
 #include "pc/log.h"
@@ -114,14 +115,12 @@ uint32_t g_script_ports = 0;  // controllers the script presses on (a virtual pa
 ULONGLONG g_start_ms = 0;
 
 void load_xinput() {
-    HMODULE module = LoadLibraryW(L"xinput1_4.dll");
-    if (!module) module = LoadLibraryW(L"xinput9_1_0.dll");
-    if (!module) {
-        log_line("input: XInput not available, only the keyboard works");
+    if (!gamepad_init()) {
+        log_line("input: SDL not available, only the keyboard works");
         return;
     }
-    g_xinput_get_state = reinterpret_cast<XInputGetStateFunction>(GetProcAddress(module, "XInputGetState"));
-    g_xinput_set_state = reinterpret_cast<XInputSetStateFunction>(GetProcAddress(module, "XInputSetState"));
+    g_xinput_get_state = gamepad_get_state;
+    g_xinput_set_state = gamepad_set_state;
 }
 
 void load_script() {
@@ -145,6 +144,7 @@ void load_script() {
             const std::string when = entry.substr(1, colon - 1);
             const size_t plus = when.find('+');
             std::string name = when.substr(0, plus);
+            for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));  // paths are matched lowercase
             const size_t hash = name.find('#');
             if (hash != std::string::npos) {
                 press.occurrence = std::max<size_t>(1, std::strtoul(name.c_str() + hash + 1, nullptr, 10));
@@ -360,8 +360,6 @@ bool read_host(uint32_t index, XboxGamepad& pad) {
         g_host_connected[index] = g_xinput_get_state(index, &state) == ERROR_SUCCESS;
         if (!g_host_connected[index]) g_next_scan_ms[index] = now + 1000;
         if (g_host_connected[index]) {
-            combo_track(index, state.Gamepad.wButtons, now);
-            state.Gamepad.wButtons = combo_filter(index, state.Gamepad.wButtons, now);
             pad = from_xinput(state.Gamepad);
             apply_script(pad, index);
             return true;
@@ -455,6 +453,12 @@ uint32_t __stdcall XInputGetState(uint32_t handle, XboxInputState* state) {
     Port* port = port_of(handle);
     XboxGamepad pad{};
     if (!port || !read_host(port->index, pad)) return kErrorDeviceNotConnected;
+    // The Back+Start combo, only on the read the game sees: host_mask's reads threw the replayed tap away.
+    if (g_host_connected[port->index]) {
+        const ULONGLONG now = GetTickCount64();
+        combo_track(port->index, pad.buttons, now);
+        pad.buttons = combo_filter(port->index, pad.buttons, now);
+    }
     if (g_in_garage) pace_garage_directions(port->index, pad);
     if (std::memcmp(&pad, &port->last, sizeof(pad)) != 0) {
         port->last = pad;
@@ -548,7 +552,7 @@ void install_input_hle(const Xbe& xbe) {
         const uint32_t relative = address_of(redirect.function) - (redirect.address + 5);
         std::memcpy(code + 1, &relative, sizeof(relative));
     }
-    log_line("input: %u XPP entry points redirected to XInput and the keyboard",
+    log_line("input: %u XPP entry points redirected to SDL and the keyboard",
              static_cast<uint32_t>(sizeof(kRedirects) / sizeof(kRedirects[0])));
 }
 

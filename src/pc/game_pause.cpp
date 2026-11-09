@@ -23,6 +23,8 @@ int64_t now_ticks() {
     return counter.QuadPart;
 }
 
+const int64_t g_process_start = now_ticks();
+
 }  // namespace
 
 void game_pause(bool paused) {
@@ -52,5 +54,7 @@ int64_t game_paused_ticks() {
     std::lock_guard<std::mutex> lock(g_mutex);
     return g_paused_total + (g_paused ? now_ticks() - g_pause_start : 0);
 }
+
+int64_t game_ticks() { return now_ticks() - g_process_start - game_paused_ticks(); }
 
 }  // namespace mc3::pc

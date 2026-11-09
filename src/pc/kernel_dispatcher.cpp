@@ -271,8 +271,10 @@ void clock_thread() {
         g_tick_count = static_cast<uint32_t>(GetTickCount64() - start - paused * 1000 / frequency.QuadPart);
         LARGE_INTEGER counter;
         QueryPerformanceCounter(&counter);
+        // Seconds and the rest apart: ticks * 10^7 overflowed after 25.6 h at a 10 MHz counter.
+        const int64_t elapsed = counter.QuadPart - paused - start_counter.QuadPart;
         const int64_t interrupt_time =
-            (counter.QuadPart - paused - start_counter.QuadPart) * 10000000 / frequency.QuadPart;
+            elapsed / frequency.QuadPart * 10000000 + elapsed % frequency.QuadPart * 10000000 / frequency.QuadPart;
         store_system_time(g_interrupt_time, interrupt_time);
         store_system_time(g_system_time, current_file_time());
         Sleep(1);
@@ -586,6 +588,7 @@ NTSTATUS wait_unpaused(uint32_t count, const uint32_t* objects, bool wait_all, c
 
     GameLock guard(g_mutex);
     std::unique_lock<std::mutex>& lock = guard.get();
+    bool timed_out = false;
     for (;;) {
         if (wait_all) {
             bool all = true;
@@ -602,6 +605,9 @@ NTSTATUS wait_unpaused(uint32_t count, const uint32_t* objects, bool wait_all, c
                 }
             }
         }
+        // The checks above ran once more after the deadline: a timeout is final. (Checking "any object signaled"
+        // here instead spun forever on a wait-all with a partial set: the loop restarted, the wait returned at once.)
+        if (timed_out) return kStatusTimeout;
         if (infinite) {
             // A wait that lasts is logged once with what it waits for and the events set lately: hangs show up
             // as "waiting on X, but Y was set".
@@ -611,10 +617,7 @@ NTSTATUS wait_unpaused(uint32_t count, const uint32_t* objects, bool wait_all, c
                 log_long_wait(count, objects);
             }
         } else if (g_object_changed.wait_until(lock, deadline) == std::cv_status::timeout) {
-            // One last check happens on the next loop turn only if something changed; a timeout is final.
-            bool signaled = false;
-            for (uint32_t i = 0; i < count && !signaled; ++i) signaled = is_signaled(objects[i], me);
-            if (!signaled) return kStatusTimeout;
+            timed_out = true;
         }
     }
 }

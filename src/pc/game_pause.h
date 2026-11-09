@@ -18,4 +18,9 @@ void game_pause_point();
 // Performance-counter ticks the game has spent paused, the current pause included: the game's clocks subtract them.
 int64_t game_paused_ticks();
 
+// The game's performance counter: ticks since the process started, the paused time left out. From the start like an
+// Xbox's counter from power on: the host's counts from Windows' start, and after days of uptime the game's float
+// clocks began at hundreds of thousands of seconds, where a 1/60 s step is lost (issue #12).
+int64_t game_ticks();
+
 }  // namespace mc3::pc

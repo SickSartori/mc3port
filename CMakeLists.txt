@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(mc3port VERSION 0.3.4 LANGUAGES C CXX)
+project(mc3port VERSION 0.3.5 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -44,12 +44,29 @@ if(WIN32)
     # The launcher polls the controllers itself (every port, not only the first): see Launcher::poll_gamepads.
     target_compile_definitions(imgui PRIVATE NOMINMAX IMGUI_IMPL_WIN32_DISABLE_GAMEPAD)
 
+    # SDL3 (zlib): only its gamepad side, for Xbox, PlayStation, Switch and other controllers (src/pc/gamepad.cpp).
+    # Downloaded at configure time, pinned by version and hash, linked statically.
+    include(FetchContent)
+    FetchContent_Declare(SDL3
+        URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
+        URL_HASH SHA256=f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
+    )
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+    foreach(subsystem AUDIO VIDEO HAPTIC POWER SENSOR DIALOG)
+        set(SDL_${subsystem} OFF CACHE BOOL "" FORCE)
+    endforeach()
+    FetchContent_MakeAvailable(SDL3)
+
     # Runtime: maps the XBE, emulates the Xbox kernel and hosts the game's threads.
     add_library(mc3runtime SHARED
         src/pc/audio_mixer.cpp
         src/pc/dsound_hle.cpp
         src/pc/exec_memory.cpp
         src/pc/fs_patch.cpp
+        src/pc/gamepad.cpp
         src/pc/game_disc.cpp
         src/pc/game_pause.cpp
         src/pc/handles.cpp
@@ -86,7 +103,7 @@ if(WIN32)
         src/pc/xbox_thread.cpp
         res/launcher.rc
     )
-    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp windowscodecs imgui mfplat mfreadwrite mfuuid shlwapi)
+    target_link_libraries(mc3runtime PRIVATE mc3core shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp windowscodecs imgui mfplat mfreadwrite mfuuid shlwapi SDL3::SDL3-static)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
                                MC3PORT_VERSION="${PROJECT_VERSION}" ${MC3_VERSION_DEFINES})
     target_compile_options(mc3runtime PRIVATE /utf-8)
@@ -124,6 +141,8 @@ if(WIN32)
         mc3_test(test_direction_pace)
         mc3_test(test_audio_gains)
         mc3_test(test_launcher_style src/pc/settings.cpp src/pc/log.cpp)
+        mc3_test(test_settings src/pc/settings.cpp src/pc/log.cpp)
+        mc3_test(test_update_check)
         mc3_test(test_texture_pages)
         mc3_test(test_log src/pc/log.cpp)
         mc3_test(test_data_folder src/pc/paths.cpp)

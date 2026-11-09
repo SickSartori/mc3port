@@ -24,12 +24,8 @@ const Xbe* g_xbe = nullptr;
 
 // --- time ---
 
-// The game's counter stands still while it is paused (the in-game menu).
-uint64_t __stdcall KeQueryPerformanceCounter() {
-    LARGE_INTEGER counter;
-    QueryPerformanceCounter(&counter);
-    return static_cast<uint64_t>(counter.QuadPart - game_paused_ticks());
-}
+// The game's counter: from the game's start, standing still while it is paused (game_ticks).
+uint64_t __stdcall KeQueryPerformanceCounter() { return static_cast<uint64_t>(game_ticks()); }
 
 uint64_t __stdcall KeQueryPerformanceFrequency() {
     LARGE_INTEGER frequency;
@@ -277,7 +273,6 @@ void register_ntdll(uint32_t ordinal, const char* name) {
 }  // namespace
 
 void set_kernel_xbe(const Xbe* xbe) { g_xbe = xbe; }
-const Xbe* kernel_xbe() { return g_xbe; }
 
 void register_system_functions() {
     register_kernel(126, &KeQueryPerformanceCounter);
