@@ -9,6 +9,10 @@
 
 ### Improved
 
+- **Frames are presented without waiting for the display**, where DXGI allows it (Windows 10 1607 and later). A frame
+  that took a little longer than the display's refresh used to wait for the next one: on a laptop whose dedicated GPU
+  draws into a display wired to the integrated one, the city sat at exactly 30 fps with the GPU half idle, and the
+  frame rate dips on other PCs came from the same wait. The city now runs at 60 fps there.
 - **Less work per draw**: Direct3D's state cache was emptied before almost every draw by a lookup that should not
   have touched it, so each draw re-set every render state. Lighter on the GPU thread, which was the limit on
   laptops.
@@ -40,9 +44,11 @@
   and resume shook them loose. The step is now a whole number of sixtieths, a steady 1/60 s at 60 fps, as on a PC
   whose frames never waver (where the menus always worked). Reproduced and fixed on a laptop; please report if a
   menu still stops (issues #6, #12).
-- **Crash leaving the garage as the music changes**, likely: the game's WMA music decoder writes one byte past the
-  buffer it has just filled. On the Xbox the next page is RAM; here it was unmapped and the game closed. A write just
-  past a buffer now lands in a fresh page, as reads already did, and the log says so (issue #13).
+- **Crash leaving the garage, or entering the career, as the music changes**: the game's WMA music decoder reads
+  and writes a few bytes past the buffers it works on (reproduced: a 4-byte read at the very end of one). On the
+  Xbox the next page is RAM; here it was unmapped and the game closed. The page after a game buffer is now always
+  there to take it: reservations the game places itself fill their 64 KB granule, and a read or write just past a
+  buffer gets a fresh page, the log saying so (issue #13).
 
 ## 0.3.4 (2026-11-08)
 

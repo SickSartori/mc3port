@@ -454,6 +454,7 @@ ComPtr<ID3D11Device> g_device;
 ComPtr<ID3D11DeviceContext> g_context;
 ComPtr<ID3D11DeviceContext1> g_context1;
 ComPtr<IDXGISwapChain1> g_swap_chain;
+UINT g_swap_flags = 0;  // DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING where DXGI offers it: Present never waits for the display
 uint32_t g_swap_width = 0, g_swap_height = 0;
 ComPtr<ID3D11VertexShader> g_vertex_shader;
 ComPtr<ID3D11InputLayout> g_input_layout;
@@ -1527,7 +1528,7 @@ void ensure_swap_chain_size() {
     g_final_rtv.Reset();
     g_final_texture.Reset();
     g_back_buffer.Reset();
-    g_swap_chain->ResizeBuffers(2, width, height, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+    g_swap_chain->ResizeBuffers(2, width, height, DXGI_FORMAT_B8G8R8A8_UNORM, g_swap_flags);
     g_swap_width = width;
     g_swap_height = height;
     g_swap_chain->GetBuffer(0, IID_PPV_ARGS(&g_back_buffer));
@@ -1818,7 +1819,7 @@ void present_now() {
         g_context->CopyResource(g_back_buffer.Get(), g_final_texture.Get());
     }
     const uint64_t start = ticks();
-    const HRESULT presented = g_swap_chain->Present(0, 0);
+    const HRESULT presented = g_swap_chain->Present(0, g_swap_flags ? DXGI_PRESENT_ALLOW_TEARING : 0);
     if (presented == DXGI_ERROR_DEVICE_REMOVED || presented == DXGI_ERROR_DEVICE_RESET) device_lost(presented);
     const uint64_t taken = ticks() - start;
     {
@@ -1921,6 +1922,18 @@ bool renderer_start(HWND window) {
     desc.BufferCount = 2;
     desc.Scaling = DXGI_SCALING_STRETCH;
     desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    // Without it a flip-model Present(0) in a window still waits for the display's next refresh when the frame took
+    // longer than one: a frame of 17 ms became 33 ms and the game sat at 30 fps with every thread idle (seen on a
+    // laptop whose dedicated GPU draws into a display wired to the integrated one). The port paces frames itself.
+    ComPtr<IDXGIFactory5> factory5;
+    BOOL tearing = FALSE;
+    if (SUCCEEDED(factory.As(&factory5)) &&
+        SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearing, sizeof(tearing))) &&
+        tearing) {
+        g_swap_flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+    }
+    desc.Flags = g_swap_flags;
+    log_line("renderer: present %s", g_swap_flags ? "without waiting for the display" : "in step with the display");
     if (FAILED(factory->CreateSwapChainForHwnd(g_device.Get(), window, &desc, nullptr, nullptr, &g_swap_chain))) {
         log_line("renderer: cannot create the swap chain");
         return false;

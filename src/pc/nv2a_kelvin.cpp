@@ -1084,6 +1084,22 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
                  static_cast<unsigned long long>(g_draws), x0, y0, x1, y1, u0, v0, u1, v1,
                  g_k.texture_matrix_enable[0], g_k.texgen[0][0], g_k.draw.textures[0].address_mode,
                  g_k.draw.textures[0].filter);
+        if (fixed_function && g_k.lighting && g_k.light_enable_mask) {  // the lights on this draw, for missing glows
+            char lights[512];
+            int at = std::snprintf(lights, sizeof(lights), "frame lights %llu: mask %04X",
+                                   static_cast<unsigned long long>(g_draws), g_k.light_enable_mask);
+            for (int i = 0; i < 8 && at > 0 && at < static_cast<int>(sizeof(lights)) - 100; ++i) {
+                const uint32_t type = (g_k.light_enable_mask >> (i * 2)) & 3;
+                if (!type) continue;
+                const float* l = g_k.light[i];
+                at += std::snprintf(lights + at, sizeof(lights) - at,
+                                    " | %d: type %u diffuse %.2f %.2f %.2f pos %.0f %.0f %.0f dir %.2f %.2f %.2f range %.0f",
+                                    i, type, l[kLightDiffuse], l[kLightDiffuse + 1], l[kLightDiffuse + 2],
+                                    l[kLightPosition], l[kLightPosition + 1], l[kLightPosition + 2], l[kLightDirection],
+                                    l[kLightDirection + 1], l[kLightDirection + 2], l[kLightRange]);
+            }
+            log_line("%s", lights);
+        }
         log_line("frame draw %llu: %s prim %u n %u surf %08X | tex0 %s %08X fmt %08X | blend %d %X %X | z %d %X w %d | "
                  "atest %d %X ref %02X | mask %08X | clip (%.3g %.3g %.3g %.3g) d0 (%.2f %.2f %.2f %.2f) | comb %08X %08X %08X"
                  " | stages %05X ctl %08X | alpha %08X %08X out %08X | stencil %d %X ref %02X rm %02X wm %02X ops %X %X %X"
