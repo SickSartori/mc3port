@@ -246,8 +246,10 @@ void time_frame_shown(uint32_t vblanks) {
     if (shown < 8) return;
     uint32_t total = 0;
     for (const uint32_t v : recent) total += v;
-    const float period = static_cast<float>(total) / 8.0f / static_cast<float>(nv2a_vblank_hz());
-    if (period <= 0) return;
+    // Never under 1/60 s, the shortest step the game had on the Xbox: a frame shown one blank after a late one pulls
+    // the average under it, and the menus' "Checking saved games" step stood still at 0.0156 s until a pause and
+    // resume lifted it (issue #12; the measured path rounds to whole sixtieths for the same reason).
+    const float period = std::max(static_cast<float>(total) / 8.0f / static_cast<float>(nv2a_vblank_hz()), 1.0f / 60);
     g_frame_period = period;
     if (*g_fixed_mode == 1) use_fixed_step(period);
 }

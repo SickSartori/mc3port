@@ -7,6 +7,12 @@
 - **PlayStation, Switch and other controllers** work directly, through SDL3, with the buttons in the Xbox positions:
   no more Steam Input or DS4Windows. Xbox controllers work as before.
 
+### Fixed
+
+- **Stuck on "Checking saved games"**, likely: the game's frame step could drop under 1/60 s (a frame shown one blank
+  after a late one), a value it never had on the Xbox, and the menu stood still until the F1 menu's pause and resume
+  lifted it. The step now never goes under 1/60 s. Please report if the game still stops there (issue #12).
+
 ## 0.3.4 (2026-11-08)
 
 ### Improved
