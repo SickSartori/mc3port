@@ -52,11 +52,13 @@
   memory ran out and new textures failed to appear. Textures no draw has asked for in a minute are now let go.
 - **The fixed time step at 60 fps** is a whole number of sixtieths, a steady 1/60 s: on a PC whose frames come a
   little unevenly (now 1 blank, now 3) it followed the average and changed every frame, between 0.0156 and 0.0229 s.
-- **Crash leaving the garage, or entering the career, as the music changes**: the game's WMA music decoder reads
-  and writes a few bytes past the buffers it works on (reproduced: a 4-byte read at the very end of one). On the
-  Xbox the next page is RAM; here it was unmapped and the game closed. The page after a game buffer is now always
-  there to take it: reservations the game places itself fill their 64 KB granule, and a read or write just past a
-  buffer gets a fresh page, the log saying so (issue #13).
+- **Crash leaving the garage, or entering the career, as the music changes**: the game's WMA music decoder blends
+  its blocks in a loop of 16 samples at a time that runs at least once. Asked for fewer than 16 samples (the rest
+  has code of its own), it counted down from zero and ran on through memory, reading and writing past its buffers
+  until a page was missing. Reproduced with a crash dump (the loop's counter at -2231); the loop is now skipped when
+  it has nothing to do, with the European and the USA disc (issues #13, #15). The page after a game buffer is also
+  always there now, as on the Xbox: reservations the game places itself fill their 64 KB granule, and a read or write
+  just past a buffer gets a fresh page, the log saying so.
 
 ## 0.3.4 (2026-11-08)
 

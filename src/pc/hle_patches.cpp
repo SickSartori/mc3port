@@ -188,6 +188,40 @@ __declspec(naked) void read_get_without_trap() {
     }
 }
 
+// The WMA music decoder's overlap-add (WMADEC, 0x42CDCC and 0x42D12C) runs its loop of 16 samples as a do-while: with
+// fewer than 16 samples left (the rest goes to the code after it) the count is 0, the first "dec eax" makes it -1,
+// and the loop ran on for 4 billion turns, reading and writing past its buffers until a page was missing: the crash
+// at a song change (issue #13; at 0x42D351 eax was -2231). On the Xbox it evidently never came to that; here, with
+// the port's timing, it did. A count of 0 now goes straight past the loop, its registers as they were.
+__declspec(naked) void wma_overlap_first() {
+    __asm {
+        movd mm0, dword ptr [ebp - 1Ch]
+        movd mm1, dword ptr [ebp - 24h]
+        mov eax, dword ptr [ebp - 30h]
+        test eax, eax
+        jz none
+        push 0042CDCCh
+        ret
+    none:
+        push 0042D0A8h
+        ret
+    }
+}
+__declspec(naked) void wma_overlap_second() {
+    __asm {
+        movd mm0, dword ptr [ebp - 1Ch]
+        movd mm1, dword ptr [ebp - 24h]
+        mov eax, dword ptr [ebp - 40h]
+        test eax, eax
+        jz none
+        push 0042D12Ch
+        ret
+    none:
+        push 0042D428h
+        ret
+    }
+}
+
 struct JumpPatch {
     const char* name;
     uint32_t address;
@@ -196,6 +230,10 @@ struct JumpPatch {
 };
 
 const JumpPatch kJumpPatches[] = {
+    {"WMA overlap-add, first loop", 0x0042CDC1, {0x0F, 0x6E, 0x45, 0xE4, 0x0F, 0x6E, 0x4D, 0xDC, 0x8B, 0x45, 0xD0},
+     reinterpret_cast<const void*>(&wma_overlap_first)},
+    {"WMA overlap-add, second loop", 0x0042D121, {0x0F, 0x6E, 0x45, 0xE4, 0x0F, 0x6E, 0x4D, 0xDC, 0x8B, 0x45, 0xC0},
+     reinterpret_cast<const void*>(&wma_overlap_second)},
     {"game rdtsc", 0x001A1BF0, {0x0F, 0x31, 0xC3, 0xCC, 0xCC}, reinterpret_cast<const void*>(&rdtsc_function)},
     {"game rdtsc (low half)", 0x0020E140, {0x52, 0x0F, 0x31, 0x5A, 0xC3},
      reinterpret_cast<const void*>(&rdtsc_low_function)},
