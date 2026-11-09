@@ -254,11 +254,17 @@ void time_frame_shown(uint32_t vblanks) {
     // Never under 1/60 s, the shortest step the game had on the Xbox: a frame shown one blank after a late one pulls
     // the average under it, and the menus' "Checking saved games" step stood still at 0.0156 s until a pause and
     // resume lifted it (issue #12; the measured path rounds to whole sixtieths for the same reason).
-    static const float floor = [] {  // MC3_STEP_FLOOR=<seconds>: to find the step the menus need (diagnostic)
+    // Whole sixtieths, at least one, like the measured path: on a PC whose frames come 2 blanks apart the step is a
+    // steady 1/60 and the menus run; where frames jitter between 1 and 3 blanks the average wandered between 0.0167
+    // and 0.0229 s every frame and the menus' Flash screens stood still until a pause and resume (issue #12).
+    // MC3_STEP_FLOOR=<seconds> raises the result (diagnostic).
+    static const float floor = [] {
         char value[32] = {};
-        return GetEnvironmentVariableA("MC3_STEP_FLOOR", value, sizeof(value)) ? static_cast<float>(std::atof(value)) : 1.0f / 60;
+        return GetEnvironmentVariableA("MC3_STEP_FLOOR", value, sizeof(value)) ? static_cast<float>(std::atof(value)) : 0.0f;
     }();
-    const float period = std::max(static_cast<float>(total) / 8.0f / static_cast<float>(nv2a_vblank_hz()), floor);
+    const float average = static_cast<float>(total) / 8.0f / static_cast<float>(nv2a_vblank_hz());
+    const float sixtieths = std::max(1.0f, std::round(average * 60.0f));
+    const float period = std::max(sixtieths / 60.0f, floor);
     g_frame_period = period;
     if (*g_fixed_mode == 1) use_fixed_step(period);
 }

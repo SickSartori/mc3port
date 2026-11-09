@@ -34,9 +34,12 @@
 - **Frames stuck on a missed vertical blank**: Direct3D retires a flip only when its count of blanks is exactly the
   flip's target, and on a PC the count can skip one (the game's own poll and the port's interrupt both count the same
   blank). The flip is now retired at or past its target.
-- **Stuck on "Checking saved games"**, likely: the game's frame step could drop under 1/60 s (a frame shown one blank
-  after a late one), a value it never had on the Xbox, and the menu stood still until the F1 menu's pause and resume
-  lifted it. The step now never goes under 1/60 s. Please report if the game still stops there (issue #12).
+- **Menus stuck or lagging at 60 fps**, "Checking saved games" included: on a PC whose frames come a little unevenly
+  (now 1 blank, now 3) the game's fixed time step followed the average and changed every frame, between 0.0167 and
+  0.0229 s, and the menus' Flash screens then stood still, or moved seconds after a press, until the F1 menu's pause
+  and resume shook them loose. The step is now a whole number of sixtieths, a steady 1/60 s at 60 fps, as on a PC
+  whose frames never waver (where the menus always worked). Reproduced and fixed on a laptop; please report if a
+  menu still stops (issues #6, #12).
 - **Crash leaving the garage as the music changes**, likely: the game's WMA music decoder writes one byte past the
   buffer it has just filled. On the Xbox the next page is RAM; here it was unmapped and the game closed. A write just
   past a buffer now lands in a fresh page, as reads already did, and the log says so (issue #13).
