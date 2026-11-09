@@ -12,6 +12,9 @@
 - **Stuck on "Checking saved games"**, likely: the game's frame step could drop under 1/60 s (a frame shown one blank
   after a late one), a value it never had on the Xbox, and the menu stood still until the F1 menu's pause and resume
   lifted it. The step now never goes under 1/60 s. Please report if the game still stops there (issue #12).
+- **Crash leaving the garage as the music changes**, likely: the game's WMA music decoder writes one byte past the
+  buffer it has just filled. On the Xbox the next page is RAM; here it was unmapped and the game closed. A write just
+  past a buffer now lands in a fresh page, as reads already did, and the log says so (issue #13).
 
 ## 0.3.4 (2026-11-08)
 

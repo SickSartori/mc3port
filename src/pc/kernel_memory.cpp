@@ -38,7 +38,8 @@ NTSTATUS status_from_last_error() {
 
 // A new region gets this much more reserved after it: Windows leaves unusable gaps between regions (64 KB
 // granularity) where the Xbox has the next pages, and the game reads a little past some buffers (zlib reads
-// ahead of its input). Reads there commit a zero page (commit_reserved_page).
+// ahead of its input) and writes a byte past one (the WMA music decoder, at a song change: issue #13). Reads and
+// writes there commit a zero page (commit_reserved_page).
 constexpr uint32_t kTailReserve = 64 * 1024;
 
 // Pages the game decommitted stay committed with their contents: XACT reads the next cue from one it has just freed
@@ -270,17 +271,24 @@ bool memory_self_test() {
 
 }  // namespace
 
-bool commit_reserved_page(uint32_t address) {
+bool commit_reserved_page(uint32_t address, bool write) {
     MEMORY_BASIC_INFORMATION info;
     if (!VirtualQuery(reinterpret_cast<void*>(static_cast<uintptr_t>(address)), &info, sizeof(info)) ||
         info.State != MEM_RESERVE) {
         return false;
     }
-    void* page = reinterpret_cast<void*>(static_cast<uintptr_t>(address & ~0xFFFu));
-    if (!VirtualAlloc(page, 4096, MEM_COMMIT, PAGE_READWRITE)) return false;
+    const uintptr_t page = address & ~0xFFFu;
+    if (write) {  // only the page right after committed memory of the same allocation, where the Xbox had RAM
+        MEMORY_BASIC_INFORMATION before;
+        if (page < 4096 || !VirtualQuery(reinterpret_cast<void*>(page - 1), &before, sizeof(before)) ||
+            before.State != MEM_COMMIT || before.AllocationBase != info.AllocationBase) {
+            return false;
+        }
+    }
+    if (!VirtualAlloc(reinterpret_cast<void*>(page), 4096, MEM_COMMIT, PAGE_READWRITE)) return false;
     static volatile long logged = 0;
     if (InterlockedIncrement(&logged) <= 10) {
-        log_line("memory: read past committed memory at %08X: page committed (zeros)", address);
+        log_line("memory: %s past committed memory at %08X: page committed (zeros)", write ? "write" : "read", address);
     }
     return true;
 }

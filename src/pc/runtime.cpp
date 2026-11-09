@@ -433,10 +433,11 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
                                      static_cast<uint32_t>(info->ExceptionRecord->ExceptionInformation[1]))) {
         return EXCEPTION_CONTINUE_EXECUTION;
     }
-    constexpr ULONG_PTR kReadFault = 0;
+    constexpr ULONG_PTR kWriteFault = 1;  // 0 is a read, 8 an execution
     if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2 &&
-        info->ExceptionRecord->ExceptionInformation[0] == kReadFault &&
-        commit_reserved_page(static_cast<uint32_t>(info->ExceptionRecord->ExceptionInformation[1]))) {
+        info->ExceptionRecord->ExceptionInformation[0] <= kWriteFault &&
+        commit_reserved_page(static_cast<uint32_t>(info->ExceptionRecord->ExceptionInformation[1]),
+                             info->ExceptionRecord->ExceptionInformation[0] == kWriteFault)) {
         return EXCEPTION_CONTINUE_EXECUTION;
     }
     if (code == kMsvcCppException || code == kSetThreadName || code == DBG_PRINTEXCEPTION_C ||
