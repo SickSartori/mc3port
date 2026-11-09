@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- **PlayStation, Switch and other controllers** work directly, through SDL3, with the buttons in the Xbox positions:
+  no more Steam Input or DS4Windows. Xbox controllers work as before.
+
 ## 0.3.4 (2026-11-08)
 
 ### Improved

@@ -53,7 +53,7 @@ pubblica la release con le note prese dal CHANGELOG (`tools/release_notes.ps1`).
 |---|---|
 | `src/core` | parti portabili: lettura ISO (XDVDFS), parser XBE, tabella export del kernel |
 | `src/pc` | runtime Windows x86: kernel emulato, GPU NV2A su D3D11, audio, input, launcher |
-| `third_party` | Dear ImGui e i font Barlow, con le loro licenze |
+| `third_party` | Dear ImGui e i font Barlow, con le loro licenze; la licenza di SDL3, che CMake scarica alla configurazione |
 | `res` | risorse Win32: icona, musica del launcher |
 | `installer` | script Inno Setup |
 | `tools` | script di build, pacchetto, note di rilascio e analisi dell'XBE |
@@ -73,7 +73,7 @@ dati del titolo in `TDATA`, cache `Z:`) è la cartella `xbox_hdd`, il log di ogn
 stanno anche `mc3port.ini` e `shader_cache`. Se accanto a `mc3.exe` c'è un file `portable.txt` o un `mc3port.ini`,
 tutto resta invece accanto a `mc3.exe` (modalità portatile): è il caso delle build in `build\pc-x86\<config>`.
 
-Controlli: i controller XInput (Xbox 360/One/Series) sono le porte 1-4; Bianco e Nero diventano LB e RB. Senza
+Controlli: i controller (Xbox, PlayStation, Switch e la maggior parte degli altri, tramite SDL3) sono le porte 1-4; Bianco e Nero diventano LB e RB. Senza
 controller, la porta 1 è la tastiera (solo quando la finestra del gioco è in primo piano):
 
 | Tasto | Pulsante Xbox |

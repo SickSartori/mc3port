@@ -34,6 +34,7 @@
 #include "imgui_internal.h"
 #include "pc/crash_report.h"
 #include "pc/game_pause.h"
+#include "pc/gamepad.h"
 #include "pc/hle_patches.h"
 #include "pc/input_hle.h"
 #include "pc/keyboard_bindings.h"
@@ -96,7 +97,7 @@ const Texts kEnglish = {
     "PLAY", "SETTINGS", "CONTROLS", "ABOUT", "QUIT",
     "READY TO RACE", "The streets of San Diego, Atlanta, Detroit and Tokyo are waiting.", "Disc verified",
     "No disc chosen", "Choose the disc image (ISO) of your European Xbox copy.", "Change", "Choose the ISO",
-    "Controller connected", "Xbox and compatible controllers", "No controller", "The keyboard works too", "Edit",
+    "Controller connected", "Xbox, PlayStation and other pads", "No controller", "The keyboard works too", "Edit",
     "Picture", "Effects", "Game", "Audio",
     "Game language", "The game's text and speech", "Like Windows", "Frames per second", "60 is smoother; 30 like the Xbox",
     "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
@@ -109,9 +110,9 @@ const Texts kEnglish = {
     "Modern effects", "Bloom, sharpening, colour and shading (F10 while playing)", "On", "Off",
     "Sharpening", "Light glow", "Glow threshold", "Saturation", "Contrast", "Vignette", "Ambient occlusion",
     "Occlusion size",
-    "Game keys", "Xbox controllers work as they are. Choose the keyboard keys here.", "Key? Esc cancels",
+    "Game keys", "Controllers work as they are. Choose the keyboard keys here.", "Key? Esc cancels",
     "Restore keys", "PC keys", "Full screen on and off", "Modern effects on and off", "Menus: move, select, back",
-    "PlayStation and other pads: through Steam Input or DS4Windows, which present them as Xbox controllers.",
+    "PlayStation, Switch and most other pads work too, with the buttons in the Xbox positions.",
     "Unofficial native Windows port. No game files included: you need your own copy.", "Looking for updates...",
     "This is the latest version", "Version %s is available", "Opens the release page; nothing downloads by itself",
     "Open", "Log folder", "For bug reports, attach mc3port.log", "Report a problem",
@@ -151,7 +152,7 @@ const Texts kItalian = {
     "GIOCA", "IMPOSTAZIONI", "CONTROLLI", "INFO", "ESCI",
     "PRONTO A CORRERE", "Le strade di San Diego, Atlanta, Detroit e Tokyo ti aspettano.", "Disco verificato",
     "Nessun disco scelto", "Scegli l'immagine del disco (ISO) della tua copia Xbox europea.", "Cambia", "Scegli l'ISO",
-    "Controller collegato", "Controller Xbox e compatibili", "Nessun controller", "Anche la tastiera funziona", "Modifica",
+    "Controller collegato", "Controller Xbox, PlayStation e altri", "Nessun controller", "Anche la tastiera funziona", "Modifica",
     "Immagine", "Effetti", "Gioco", "Audio",
     "Lingua del gioco", "Testi e voci del gioco", "Come Windows", "Fotogrammi al secondo",
     "60 \xC3\xA8 pi\xC3\xB9 fluido; 30 come l'Xbox", "Volume del gioco", "Musica del launcher",
@@ -164,10 +165,10 @@ const Texts kItalian = {
     "Effetti moderni", "Bagliore, nitidezza, colori e ombreggiatura (F10 durante il gioco)", "S\xC3\xAC", "No",
     "Nitidezza", "Bagliore delle luci", "Soglia del bagliore", "Saturazione", "Contrasto", "Vignettatura",
     "Ombreggiatura ambientale", "Ampiezza dell'ombreggiatura",
-    "Tasti di gioco", "I controller Xbox funzionano cos\xC3\xAC come sono. Qui scegli i tasti della tastiera.",
+    "Tasti di gioco", "I controller funzionano cos\xC3\xAC come sono. Qui scegli i tasti della tastiera.",
     "Tasto? Esc annulla", "Tasti predefiniti", "Tasti del PC", "Schermo intero s\xC3\xAC/no", "Effetti moderni s\xC3\xAC/no",
     "Menu: muoversi, scegliere, tornare",
-    "Controller PlayStation e altri: tramite Steam Input o DS4Windows, che li presentano come controller Xbox.",
+    "Controller PlayStation, Switch e quasi tutti gli altri funzionano, con i tasti nelle posizioni Xbox.",
     "Port nativo non ufficiale per Windows. Nessun file del gioco incluso: serve la tua copia.",
     "Cerco aggiornamenti...", "Questa \xC3\xA8 l'ultima versione", "\xC3\x88 disponibile la versione %s",
     "Apre la pagina della versione; niente si scarica da solo", "Apri", "Cartella dei log",
@@ -613,7 +614,7 @@ private:
     void bottom_bar(float since);
     void resume();
     void stop_rumble();
-    void poll_gamepads(float now);  // every XInput port into ImGui's keys, the left stick as a d-pad
+    void poll_gamepads(float now);  // every controller slot into ImGui's keys, the left stick as a d-pad
     void focus_ring();              // the launcher's focus look on a standard ImGui widget
     // The selection of keys and controller: one lit row with a leaning mark, drawn under the page's widgets.
     bool nav_selected() const;
@@ -720,7 +721,6 @@ private:
     std::unique_ptr<LauncherMusic> music_;
     UpdateCheck updates_;
     std::thread update_thread_, download_thread_;
-    HMODULE xinput_ = nullptr;
     decltype(&XInputGetState) xinput_get_state_ = nullptr;
     bool pad_connected_ = false;
     bool pad_present_[4] = {};
@@ -809,7 +809,7 @@ bool Launcher::start_graphics() {
     return true;
 }
 
-// ImGui on device_ and context_, with the launcher's fonts and colours, and XInput for the controller status.
+// ImGui on device_ and context_, with the launcher's fonts and colours, and SDL for the controller status.
 void Launcher::start_imgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -843,11 +843,9 @@ void Launcher::start_imgui() {
     colours[ImGuiCol_NavCursor] = ImVec4(0, 0, 0, 0);  // the widgets draw their own focus (anim, focus_ring)
     colours[ImGuiCol_Border] = ImVec4(1, 1, 1, 0.1f);
 
-    xinput_ = LoadLibraryW(L"xinput1_4.dll");
-    if (!xinput_) xinput_ = LoadLibraryW(L"xinput9_1_0.dll");
-    if (xinput_) {
-        xinput_get_state_ = reinterpret_cast<decltype(&XInputGetState)>(GetProcAddress(xinput_, "XInputGetState"));
-        xinput_set_state_ = reinterpret_cast<decltype(&XInputSetState)>(GetProcAddress(xinput_, "XInputSetState"));
+    if (gamepad_init()) {
+        xinput_get_state_ = gamepad_get_state;
+        xinput_set_state_ = gamepad_set_state;
     }
 }
 
@@ -903,7 +901,6 @@ void Launcher::stop_graphics() {
     sampler_.Reset();
     context_.Reset();
     device_.Reset();
-    if (xinput_) FreeLibrary(xinput_);
 }
 
 void Launcher::resize_if_needed() {

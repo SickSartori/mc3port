@@ -2,7 +2,7 @@
 //
 // The game talks to its controllers only through a handful of XPP functions (found from its input code at 0x84B40
 // and 0x84C00, see docs/ANALISI_XBE.md). XInitDevices is skipped (hle_patches.cpp), so there is no USB stack; these
-// functions are redirected here and served from XInput. A device type ("XPP_DEVICE_TYPE") is three port masks:
+// functions are redirected here and served from SDL3 (gamepad.cpp). A device type ("XPP_DEVICE_TYPE") is three port masks:
 // connected now, ports that changed since the last query, connected at the last query. XGetDevices and
 // XGetDeviceChanges keep the original logic on those masks, refreshing the gamepad masks from the host first.
 
@@ -19,6 +19,7 @@
 
 #include "pc/direction_pace.h"
 #include "pc/exec_memory.h"
+#include "pc/gamepad.h"
 #include "pc/keyboard_bindings.h"
 #include "pc/launcher_ui.h"
 #include "pc/log.h"
@@ -114,14 +115,12 @@ uint32_t g_script_ports = 0;  // controllers the script presses on (a virtual pa
 ULONGLONG g_start_ms = 0;
 
 void load_xinput() {
-    HMODULE module = LoadLibraryW(L"xinput1_4.dll");
-    if (!module) module = LoadLibraryW(L"xinput9_1_0.dll");
-    if (!module) {
-        log_line("input: XInput not available, only the keyboard works");
+    if (!gamepad_init()) {
+        log_line("input: SDL not available, only the keyboard works");
         return;
     }
-    g_xinput_get_state = reinterpret_cast<XInputGetStateFunction>(GetProcAddress(module, "XInputGetState"));
-    g_xinput_set_state = reinterpret_cast<XInputSetStateFunction>(GetProcAddress(module, "XInputSetState"));
+    g_xinput_get_state = gamepad_get_state;
+    g_xinput_set_state = gamepad_set_state;
 }
 
 void load_script() {
@@ -548,7 +547,7 @@ void install_input_hle(const Xbe& xbe) {
         const uint32_t relative = address_of(redirect.function) - (redirect.address + 5);
         std::memcpy(code + 1, &relative, sizeof(relative));
     }
-    log_line("input: %u XPP entry points redirected to XInput and the keyboard",
+    log_line("input: %u XPP entry points redirected to SDL and the keyboard",
              static_cast<uint32_t>(sizeof(kRedirects) / sizeof(kRedirects[0])));
 }
 

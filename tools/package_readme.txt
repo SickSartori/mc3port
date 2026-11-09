@@ -28,10 +28,9 @@ WHAT YOU NEED
   releases (for example the North American one) are not supported: the
   launcher checks the game's executable and tells you if the disc is a
   different version.
-- Optional: an Xbox controller (Xbox 360, One, Series or any XInput
-  controller), up to four. Without one, the keyboard is controller 1.
-  PlayStation and other controllers work through Steam Input or
-  DS4Windows.
+- Optional: a controller (Xbox, PlayStation, Switch or most other USB
+  and Bluetooth pads), up to four. Without one, the keyboard is
+  controller 1.
 - Optional: an internet connection, only for the update check (it can be
   switched off in Settings).
 - An audio output device is not required: without one the game runs
