@@ -7,6 +7,12 @@
 - **PlayStation, Switch and other controllers** work directly, through SDL3, with the buttons in the Xbox positions:
   no more Steam Input or DS4Windows. Xbox controllers work as before.
 
+### Improved
+
+- **Laptops with two GPUs** render on the fast one. Windows hands programs the integrated GPU unless told otherwise,
+  so the game ran on it, at the monitor's resolution, with the dedicated card idle. The log says which GPU draws
+  (`renderer: on ...`); a choice made for mc3.exe in Windows' graphics settings still wins.
+
 ### Fixed
 
 - **Stuck on "Checking saved games"**, likely: the game's frame step could drop under 1/60 s (a frame shown one blank

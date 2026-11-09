@@ -33,6 +33,7 @@ void profile_add(ProfileTime kind, uint64_t ticks);  // for the calling thread
 void profile_frame_shown(uint32_t vblanks);          // GPU thread
 void profile_register_access(uint32_t offset, uint32_t eip);
 void profile_privileged_instruction();
+bool profile_detailed();  // MC3_PROFILE=1
 // A game thread at PASSIVE_LEVEL reached `site` (called from game code at `caller`) while thread `owner` was at
 // DISPATCH_LEVEL: something the single-processor Xbox never allows. Always counted; the first few are logged.
 void profile_exclusion_break(const char* site, uint32_t caller, uint32_t owner);

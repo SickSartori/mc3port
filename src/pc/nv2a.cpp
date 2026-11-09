@@ -920,6 +920,20 @@ void interrupt_thread() {
             log_line("nv2a: %llu vblanks, push buffer GET %08X, front buffer %08X",
                      static_cast<unsigned long long>(g_frames.load()), g_push.get.load(), reg(kPcrtcStart));
         }
+        // MC3_PROFILE=1, once a second: Direct3D's own count of vertical blanks and its flip targets (its interrupt
+        // object at device [0x422D78] + 0x1C28: count +0x1C0, next target +0x1C4, last target +0x1C8) against the
+        // port's blanks. The game paces its frames on them: a count behind the blanks shows as frames of many blanks
+        // with every thread idle.
+        if (profile_detailed() && g_frames % nv2a_vblank_hz() == 0) {
+            if (const uint32_t device = *reinterpret_cast<volatile uint32_t*>(0x00422D78)) {
+                const auto* d3d = reinterpret_cast<volatile uint32_t*>(device + 0x1C28);
+                // The two queued flips: pending flag +0x174/+0x180, target +0x178/+0x184; the one retired next +0x1BC.
+                log_line("d3d: vblanks %u (port %llu), flip target %u, next %u, frames shown %u, queue [%u:%u %u:%u] head %u",
+                         d3d[0x1C0 / 4], static_cast<unsigned long long>(g_frames.load()), d3d[0x1C8 / 4],
+                         d3d[0x1C4 / 4], g_frames_shown.load(), d3d[0x174 / 4], d3d[0x178 / 4], d3d[0x180 / 4],
+                         d3d[0x184 / 4], d3d[0x1BC / 4] & 1);
+            }
+        }
         // Hang detector without an extra thread (which changes the scheduling): the push buffer has not moved for
         // 10 s, so log once where the game threads are.
         static uint32_t last_get = 0;

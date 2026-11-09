@@ -5,6 +5,7 @@
 #include <d3dcompiler.h>
 #include <wincodec.h>
 #include <dxgi1_2.h>
+#include <dxgi1_6.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -559,11 +560,12 @@ void log_statistics() {
     if (now - g_stats_since < 10000) return;
     const double seconds = (now - g_stats_since) / 1000.0;
     log_line("renderer: %.1f fps, %.0f draws/s, %.0f vertices/s | per second: vertices %.0f ms, texture hash %.0f ms "
-             "(%.1f MB), %.0f uploads %.0f ms, D3D %.0f ms",
+             "(%.1f MB), %.0f uploads %.0f ms, D3D %.0f ms; on CPU %lu",
              g_stats.presents / seconds, g_stats.draws / seconds, g_stats.vertices / seconds,
              milliseconds(g_stats.vertex_ticks) / seconds, milliseconds(g_stats.hash_ticks) / seconds,
              g_stats.hashed_bytes / seconds / 1048576.0, g_stats.uploads / seconds,
-             milliseconds(g_stats.upload_ticks) / seconds, milliseconds(g_stats.draw_ticks) / seconds);
+             milliseconds(g_stats.upload_ticks) / seconds, milliseconds(g_stats.draw_ticks) / seconds,
+             GetCurrentProcessorNumber());  // hybrid CPUs: which core this thread got
     log_line("renderer: D3D parts per second: setup %.0f ms, vertex upload %.0f ms, state and textures %.0f ms, "
              "draw %.0f ms; Present %.0f ms",
              milliseconds(g_stats.part_ticks[0]) / seconds, milliseconds(g_stats.part_ticks[1]) / seconds,
@@ -1855,11 +1857,26 @@ bool renderer_start(HWND window) {
     g_scale = std::clamp(scale, 1.0f, 6.0f);
     log_line("renderer: internal resolution %.0f lines (%.3gx)%s", 480.0f * g_scale, g_scale,
              requested <= 0 ? ", automatic" : "");
+    // On laptops with two GPUs Windows' default adapter is the integrated one: ask DXGI 1.6 for the fast one instead
+    // (the player's choice for mc3.exe in Windows' graphics settings still wins). MC3_GPU_PREFERENCE=0: Windows' default.
+    ComPtr<IDXGIAdapter> preferred;
+    ComPtr<IDXGIFactory6> factory6;
+    wchar_t preference[8] = {};
+    GetEnvironmentVariableW(L"MC3_GPU_PREFERENCE", preference, 8);
+    if (preference[0] != L'0' && SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory6)))) {
+        factory6->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&preferred));
+    }
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0};
-    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 1,
-                                 D3D11_SDK_VERSION, &g_device, nullptr, &g_context))) {
+    if (FAILED(D3D11CreateDevice(preferred.Get(), preferred ? D3D_DRIVER_TYPE_UNKNOWN : D3D_DRIVER_TYPE_HARDWARE,
+                                 nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 1, D3D11_SDK_VERSION, &g_device,
+                                 nullptr, &g_context))) {
         log_line("renderer: no Direct3D 11 device");
         return false;
+    }
+    if (preferred) {
+        DXGI_ADAPTER_DESC desc{};
+        preferred->GetDesc(&desc);
+        log_line("renderer: on %ls", desc.Description);
     }
     g_context.As(&g_context1);
     // The present thread uses the immediate context too (one copy per frame): D3D11 then serializes the calls.

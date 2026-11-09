@@ -117,6 +117,7 @@ Variabili d'ambiente:
 | `MC3_DUMP_WINDOW=1` | con `MC3_DUMP_FRAMES`, salva anche l'immagine della finestra con gli effetti (`window-NNNNN.bmp`) |
 | `MC3_AO_VIEW=1` | mostra solo l'ombreggiatura ambientale, in grigio, al posto della scena (per regolarla) |
 | `MC3_LANGUAGE` | lingua del gioco: 1 inglese, 3 tedesco, 4 francese, 5 spagnolo, 6 italiano (altrimenti `game_language`, poi la lingua di Windows) |
+| `MC3_GPU_PREFERENCE=0` | usa la GPU predefinita di Windows invece di quella ad alte prestazioni (portatili con due schede) |
 | `MC3_MULTICORE=1` | usa tutti i core; per default il gioco gira su un core solo, come sull'Xbox |
 | `MC3_NO_DIALOG=1` | niente finestre di dialogo e niente launcher (per i test automatici) |
 | `MC3_SKIP_LAUNCHER=1` | parte direttamente il gioco |
