@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace mc3::pc {
+namespace xport::pc {
 
 using DmaResolver = uint32_t (*)(uint32_t handle);
 
@@ -22,4 +22,4 @@ void kelvin_array_elements16(const uint32_t* words, uint32_t count);
 // none. The framebuffer can be wider than the picture (widescreen: 720 pixels in a 768-pixel pitch).
 uint32_t kelvin_drawn_width(uint32_t address);
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

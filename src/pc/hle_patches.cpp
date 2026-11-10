@@ -13,7 +13,7 @@
 #include "pc/log.h"
 #include "pc/nv2a.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 // --- time stamp counter ---
@@ -349,4 +349,4 @@ void apply_hle_patches(const Xbe& /*xbe*/) {
     }
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

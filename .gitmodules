@@ -1,0 +1,3 @@
+[submodule "external/sick-xport"]
+	path = external/sick-xport
+	url = ../sick-xport.git

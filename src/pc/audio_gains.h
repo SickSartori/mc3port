@@ -9,7 +9,7 @@
 
 #include "pc/audio_mixer.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 
 constexpr int32_t kSilentVolume = -10000;
 constexpr int32_t kStereoToMono = -602;  // both channels of a stereo voice into a mono mix-in: 1/2 each
@@ -126,4 +126,4 @@ inline bool valid_output(const Voice& voice, const Voice* output) {
     return true;
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

@@ -14,7 +14,7 @@
 #include "pc/renderer_d3d11.h"
 #include "pc/settings.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 constexpr float kPi = 3.14159265f;
@@ -441,7 +441,7 @@ void dial(ImDrawList* list, const HudFonts& fonts, ImVec2 c, float radius, float
 
 void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     if (!hud_enabled() || g_players.empty()) return;
-    const HudPicture pic = renderer_hud_picture();
+    const ShownPicture pic = renderer_shown_picture();
     if (pic.surface_width <= 0 || pic.window_width <= 0) return;
     const float scale_x = pic.window_width / pic.surface_width, scale_y = pic.window_height / pic.surface_height;
     // Where a surface pixel shows: with hud_aspect the game's HUD is narrowed towards the right (renderer_d3d11.cpp).
@@ -515,4 +515,4 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     }
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

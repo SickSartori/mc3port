@@ -5,7 +5,7 @@
 #include "pc/settings.h"
 #include "test.h"
 
-using namespace mc3::pc;
+using namespace xport::pc;
 
 int main() {
     std::map<std::string, float> values;

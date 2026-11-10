@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.6 (2026-11-10)
+
+### New
+
+- **VSync** (Settings > Picture, off by default). Since 0.3.5 frames are shown without waiting for the screen, for
+  the frame rate, and the picture can tear in turns and fast camera moves. With VSync on it never tears, but a PC
+  that cannot keep up may drop to 30 fps. It takes effect at the next start.
+
+### Improved
+
+- Textures follow the sharpness the game asks for (the texture filter's level-of-detail bias), as on the Xbox.
+- mc3port now shares its game-independent runtime and its Direct3D 11 renderer with sm2port (the Spider-Man 2 port),
+  so fixes to either reach both. Nothing changes in how the game plays.
+- The launcher names the chosen disc's release (Europe or USA) instead of always "PAL", and the package's readme no
+  longer says the USA release is unsupported.
+- A refused disc image now names its region (North America, Japan, Europe and the rest of the world) in the message.
+- The crash log also shows the caller's stack frame, to make crash reports easier to trace.
+
+### Fixed
+
+- **Textures broken and flickering with RTSS** (issue #6), and with any overlay that draws inside Present (Steam,
+  Discord, MSI Afterburner). Since 0.3.4 frames are presented on a thread of their own, and the overlay drew with the
+  game's own Direct3D device while the game was drawing: it swapped render targets and textures under the game's
+  draws, and the road and buildings came and went. The window now has a Direct3D device of its own for presenting,
+  so an overlay never touches the game's. `MC3_TEST_PRESENT_HOOK=1` acts as such an overlay, to check it without one.
+
+- **Grainy neon glow** (issue #14). The ambient occlusion darkened the road under the car with a fine per-pixel
+  pattern, which showed through the bright glow. It now uses the same directions for every pixel and comes out smooth.
+
 ## 0.3.5 (2026-11-09)
 
 ### New

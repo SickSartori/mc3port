@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace mc3::pc {
+namespace xport::pc {
 
 constexpr uint16_t kDpadUp = 0x01, kDpadDown = 0x02, kDpadLeft = 0x04, kDpadRight = 0x08;
 
@@ -42,4 +42,4 @@ inline void pace_directions(DirectionPace& pace, uint64_t now_ms, uint16_t& butt
     if (direction >= 0 && now_ms < pace.pulse_until) buttons |= kDirections[direction];
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

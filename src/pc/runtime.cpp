@@ -46,7 +46,7 @@
 
 static_assert(sizeof(void*) == 4, "the PC runtime runs the game's x86 code natively and must be 32-bit");
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 constexpr uint32_t kMainThreadStackSize = 1024 * 1024;
@@ -344,6 +344,12 @@ LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     if (readable(context->Esp, 32)) {
         log_line("  stack: %08X %08X %08X %08X %08X %08X %08X %08X", stack[0], stack[1], stack[2], stack[3], stack[4],
                  stack[5], stack[6], stack[7]);
+        if (readable(context->Esp, 0xA0)) {  // the caller's frame too
+            for (int row = 8; row < 40; row += 8) {
+                log_line("  stack+%02X: %08X %08X %08X %08X %08X %08X %08X %08X", row * 4, stack[row], stack[row + 1],
+                         stack[row + 2], stack[row + 3], stack[row + 4], stack[row + 5], stack[row + 6], stack[row + 7]);
+            }
+        }
         log_game_return_addresses(stack);
     } else {
         log_line("  stack pointer %08lX is not readable", context->Esp);
@@ -546,12 +552,12 @@ DWORD WINAPI xbox_main_thread(void* parameter) {
 }
 
 }  // namespace
-}  // namespace mc3::pc
+}  // namespace xport::pc
 
 // Called by the launcher; never returns, because the launcher's code no longer exists once the XBE is mapped.
 extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void* reserved, unsigned long reserved_size) {
-    using namespace mc3;
-    using namespace mc3::pc;
+    using namespace xport;
+    using namespace xport::pc;
 
     const HostImage host = host_image();
     const std::filesystem::path exe_directory = program_directory();

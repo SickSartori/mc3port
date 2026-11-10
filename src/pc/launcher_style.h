@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <string>
 
-namespace mc3::pc {
+namespace xport::pc {
 
 struct StyleValue {
     const char* key;
@@ -73,4 +73,4 @@ void style_restore(const std::string& snapshot, Set set) {
     }
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

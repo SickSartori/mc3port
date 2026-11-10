@@ -8,7 +8,7 @@
 
 #include "pc/log.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 // An .xbck file is the image of the Flash movie as loaded at the address in its first dword; its textures are
@@ -98,4 +98,4 @@ LauncherArt load_launcher_art(const XdvdfsImage& disc) {
     return art;
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

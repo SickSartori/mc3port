@@ -28,6 +28,7 @@
 
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
+#include "pc/loading_screen.h"
 #include "pc/log.h"
 #include "pc/profile.h"
 #include "pc/input_hle.h"
@@ -35,7 +36,7 @@
 #include "pc/physical_memory.h"
 #include "pc/settings.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 
 namespace fs = std::filesystem;
 
@@ -1259,6 +1260,11 @@ void configure_file_system(const XdvdfsImage* disc, const wchar_t* host_data_dir
     g_symbolic_links[lower("\\??\\D:")] = "\\Device\\CdRom0";
 }
 
+// The library's dispatcher calls this where a thread waits, delays or yields. mc3port runs I/O APCs inside the call
+// that finished the request (finish_request), so there is never one pending. (sm2port queues them: the Xbox
+// delivers them after the call returns.)
+void deliver_pending_apcs() {}
+
 void register_io_functions() {
     register_kernel(190, &NtCreateFile);
     register_kernel(202, &NtOpenFile);
@@ -1281,4 +1287,4 @@ void register_io_functions() {
     register_kernel(65, &IoCreateDevice);
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

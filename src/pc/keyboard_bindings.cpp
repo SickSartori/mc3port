@@ -11,7 +11,7 @@
 
 #include "pc/settings.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 const KeyBinding kBindings[kPadInputs] = {
@@ -85,4 +85,4 @@ void load_key_bindings() {
     }
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

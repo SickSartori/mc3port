@@ -10,7 +10,7 @@
 struct ImDrawList;
 struct ImFont;
 
-namespace mc3::pc {
+namespace xport::pc {
 
 // A flat four-vertex draw in the lower right of a frame (nv2a_kelvin.cpp): positions in surface pixels, the first
 // texture's coordinates, the diffuse colour of the first vertex.
@@ -36,15 +36,10 @@ const std::vector<HudBox>& hud_boxes();
 // renderer_present: what this frame's draws showed becomes what the HUD draws.
 void hud_frame_shown();
 
-// Where the game's picture is in the window (renderer_d3d11.cpp), in surface pixels and window pixels.
-struct HudPicture {
-    float surface_left, surface_top, surface_width, surface_height;
-    float window_left, window_top, window_width, window_height;
-};
 struct HudFonts {
     ImFont* numbers;  // dial numbers, the gear
     ImFont* labels;   // units and captions
 };
 void hud_draw(ImDrawList* list, const HudFonts& fonts);
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

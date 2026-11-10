@@ -218,6 +218,7 @@ The quickest choice is the **style**, above the tabs:
 |---|---|
 | Game language | English, French, German, Spanish or Italian; by default like Windows |
 | Frames per second | 60, or 30 like the Xbox |
+| VSync | off by default: more frames per second, but the picture can tear (a horizontal line where two frames meet). On: it never tears, but a PC that cannot keep up may drop to 30 fps |
 | Aspect ratio | 16:9 (the game's widescreen mode) or 4:3 |
 | Texture filter | anisotropic filtering, 1x to 16x |
 | Internal resolution | Auto (as many lines as your screen; at most 1080 on integrated graphics), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p, 4K 2160p or 5K 2880p |
@@ -318,8 +319,12 @@ name in its paths. On Linux, please also give the distribution, the Wine or Prot
 
 ## Building from source
 
-Visual Studio 2022 or newer with "Desktop development with C++" (MSVC x86 tools, Windows SDK, CMake tools). From a
-Developer PowerShell in the project folder:
+mc3port's game-specific code is here; the shared runtime it builds on (the Xbox kernel, memory and threads, the
+graphics chip's registers and textures, disc reading) is a private library, `external/sick-xport`, so this repository
+alone does not build. The releases include it, compiled, in `mc3runtime.dll`.
+
+With access to the library: Visual Studio 2022 or newer with "Desktop development with C++" (MSVC x86 tools, Windows
+SDK, CMake tools), `git submodule update --init`, then from a Developer PowerShell in the project folder:
 
 ```
 cmake -S . -B build/pc-x86 -A Win32
@@ -348,5 +353,7 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 
 ## Licence
 
-mc3port's code is released under the [MIT licence](LICENSE). Third-party parts keep their own licences, listed in
+mc3port's code in this repository is released under the [MIT licence](LICENSE). The shared runtime
+(`external/sick-xport`) is not: it is private, and its compiled form in `mc3runtime.dll` may be used and passed on
+unchanged as part of mc3port's releases. Third-party parts keep their own licences, listed in
 [THIRD_PARTY.md](THIRD_PARTY.md). The game itself, and everything read from your disc, belongs to its owners.

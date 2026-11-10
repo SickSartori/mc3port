@@ -26,7 +26,7 @@
 #include "pc/xbox_thread.h"
 #include "pc/xbox_types.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 using HRESULT32 = int32_t;
@@ -870,4 +870,4 @@ void install_dsound_hle(const Xbe& xbe) {
              static_cast<uint32_t>(sizeof(kRedirects) / sizeof(kRedirects[0])));
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc
