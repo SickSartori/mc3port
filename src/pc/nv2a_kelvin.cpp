@@ -874,7 +874,7 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
         }
         // Setting hud_style: the game's dials are read here and left out (hud.cpp).
         if (flat && count == 4 && hud_reading()) {
-            const HudPicture picture = renderer_hud_picture();
+            const ShownPicture picture = renderer_shown_picture();
             if (left >= (picture.surface_width + 2 * picture.surface_left) / 2) {
                 HudQuad quad{};
                 quad.program = !fixed_function;

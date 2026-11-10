@@ -36,11 +36,6 @@ const std::vector<HudBox>& hud_boxes();
 // renderer_present: what this frame's draws showed becomes what the HUD draws.
 void hud_frame_shown();
 
-// Where the game's picture is in the window (renderer_d3d11.cpp), in surface pixels and window pixels.
-struct HudPicture {
-    float surface_left, surface_top, surface_width, surface_height;
-    float window_left, window_top, window_width, window_height;
-};
 struct HudFonts {
     ImFont* numbers;  // dial numbers, the gear
     ImFont* labels;   // units and captions

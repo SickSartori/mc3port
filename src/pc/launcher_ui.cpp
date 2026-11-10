@@ -43,6 +43,7 @@
 #include "pc/log.h"
 #include "pc/nv2a.h"
 #include "pc/paths.h"
+#include "pc/hud.h"
 #include "pc/renderer_d3d11.h"
 #include "pc/launcher_style.h"
 #include "pc/settings.h"

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Improved
+
+- Textures follow the sharpness the game asks for (the texture filter's level-of-detail bias), as on the Xbox.
+- mc3port now shares its game-independent runtime and its Direct3D 11 renderer with sm2port (the Spider-Man 2 port),
+  so fixes to either reach both. Nothing changes in how the game plays.
+
 ### Fixed
 
 - **Textures broken and flickering with RTSS** (issue #6), and with any overlay that draws inside Present (Steam,
