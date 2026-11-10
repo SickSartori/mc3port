@@ -25,6 +25,7 @@ struct Setting {
 const Setting kSettings[] = {
     {"game_language", 0, "Game language: 0 = like Windows, 1 = English, 3 = German, 4 = French, 5 = Spanish, 6 = Italian."},
     {"frame_rate", 60, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work)."},
+    {"vsync", 0, "Wait for the screen before showing a frame: 1 = the picture never tears (on a slow PC the game may drop to 30 fps), 0 = more frames per second."},
     {"widescreen", 1, "16:9 widescreen: 1 = the game's own widescreen mode (wider view, no black bars), 0 = 4:3 like a classic TV."},
     {"hud_aspect", 1, "In 16:9, keep the HUD's round shapes round (radar, dials): 1 = yes, 0 = stretched as on the Xbox."},
     {"sharp_2d", 1, "The HUD's pictures (radar map, icons, letters) and the cars' stickers enlarged with their edges kept: 1 = sharper at high resolutions, 0 = as the game's."},

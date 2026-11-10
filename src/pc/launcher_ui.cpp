@@ -93,6 +93,7 @@ struct Texts {
     const char *rtss_heading, *rtss_sub, *saves, *saves_sub;
     const char *move_heading, *move_sub, *move_failed, *move_button;
     const char *move_title, *move_lead, *move_now, *move_later;
+    const char *vsync, *vsync_sub;
 };
 
 const Texts kEnglish = {
@@ -148,6 +149,7 @@ const Texts kEnglish = {
     "You have files from an earlier version", "Move your saves and settings to Documents\\mc3port",
     "Could not move them: close what uses them, then try again", "Move",
     "Move your files", "Your saves and settings from an earlier version are in a hidden folder. Move them to Documents\\mc3port, where they are easy to find and copy. Until you do, the game keeps using them where they are.", "Move now", "Later",
+    "VSync", "On: the picture never tears, but a slow PC may drop to 30 fps",
 };
 
 const Texts kItalian = {
@@ -207,6 +209,7 @@ const Texts kItalian = {
     "Hai file di una versione precedente", "Sposta salvataggi e impostazioni in Documenti\\mc3port",
     "Spostamento non riuscito: chiudi ci\xC3\xB2 che li usa e riprova", "Sposta",
     "Sposta i tuoi file", "I salvataggi e le impostazioni di una versione precedente sono in una cartella nascosta. Spostali in Documenti\\mc3port, dove sono facili da trovare e copiare. Finch\xC3\xA9 non lo fai, il gioco continua a usarli dove sono.", "Sposta ora", "Pi\xC3\xB9 tardi",
+    "VSync", "Acceso: l'immagine non si taglia mai, ma su un PC lento pu\xC3\xB2 scendere a 30 fps",
 };
 
 const Texts& T() {
@@ -1406,7 +1409,7 @@ void Launcher::style_summary() {
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
     for (const char* key :
-         {"game_language", "frame_rate", "widescreen", "render_scale", "anisotropy", "hud_style", "sharp_2d"}) {
+         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "anisotropy", "hud_style", "sharp_2d"}) {
         if (setting(key) != setting_at_start(key)) return true;
     }
     return false;
@@ -1589,6 +1592,9 @@ void Launcher::page_settings() {
         const char* rates[] = {"30", "60"};
         int rate = setting("frame_rate") >= 60 ? 1 : 0;
         if (segmented("##fps", rates, 2, &rate)) set_setting("frame_rate", rate ? 60.0f : 30.0f);
+        row(t.vsync, t.vsync_sub, true);
+        int vsync = setting("vsync") != 0 ? 1 : 0;
+        if (segmented("##vsync", toggle, 2, &vsync)) set_setting("vsync", static_cast<float>(vsync));
         row(t.anisotropy, nullptr, true);
         const char* levels[] = {"1x", "4x", "8x", "16x"};
         static const float kLevels[] = {1, 4, 8, 16};

@@ -9,6 +9,9 @@
   so fixes to either reach both. Nothing changes in how the game plays.
 - A refused disc image now names its region (North America, Japan, Europe and the rest of the world) in the message.
 - The crash log also shows the caller's stack frame, to make crash reports easier to trace.
+- New VSync setting (Settings > Picture, off by default). Since 0.3.5 frames are shown without waiting for the screen,
+  for the frame rate, and the picture can tear in turns and fast camera moves. With VSync on it never tears, but a PC
+  that cannot keep up may drop to 30 fps.
 
 ### Fixed
 
