@@ -1504,6 +1504,11 @@ void Launcher::page_move_data() {
     cursor_ += px(52);
 }
 
+// The chosen disc under "Disc verified": its release, as the check found it.
+std::string disc_label(const GameDisc& disc) {
+    return std::string("Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 ") + (*disc.release ? disc.release : "another version");
+}
+
 void Launcher::page_play() {
     const Texts& t = T();
     title(t.ready);
@@ -1514,7 +1519,7 @@ void Launcher::page_play() {
     // It hooks the presents of the thread that also runs the emulated GPU (the log says so too, see profile.cpp).
     if (GetModuleHandleW(L"RTSSHooks.dll")) status(false, t.rtss_heading, t.rtss_sub, nullptr, nullptr);
     if (disc_) {
-        if (status(true, t.disc_ok, "Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 PAL", t.change, "##disc")) choose_disc();
+        if (status(true, t.disc_ok, disc_label(*disc_).c_str(), t.change, "##disc")) choose_disc();
     } else if (status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), t.choose_iso, "##disc")) {
         choose_disc();
     }
@@ -2005,7 +2010,7 @@ void Launcher::page_wizard() {
         update_row(false);
         move_data_row();
         if (disc_) {
-            if (status(true, t.disc_ok, "Midnight Club 3: DUB Edition Remix \xC2\xB7 Xbox \xC2\xB7 PAL", t.change, "##disc")) choose_disc();
+            if (status(true, t.disc_ok, disc_label(*disc_).c_str(), t.change, "##disc")) choose_disc();
         } else {
             status(false, t.disc_none, disc_problem_.empty() ? t.disc_none_sub : disc_problem_.c_str(), nullptr, nullptr);
         }

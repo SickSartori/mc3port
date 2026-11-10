@@ -127,7 +127,7 @@ std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::
             return std::nullopt;
         }
     }
-    return GameDisc{path, std::move(image), std::move(*xbe)};
+    return GameDisc{path, std::move(image), std::move(*xbe), release ? release->name : ""};
 }
 
 std::filesystem::path command_line_disc() {

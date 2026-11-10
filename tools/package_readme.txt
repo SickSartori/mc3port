@@ -2,7 +2,7 @@ mc3port <version> - Midnight Club 3: DUB Edition Remix on Windows
 =================================================================
 
 An unofficial, non-commercial fan project: a native Windows port of the
-European Xbox release, run from your own disc image. It is not affiliated
+European or USA Xbox release, run from your own disc image. It is not affiliated
 with, endorsed by or sponsored by Rockstar Games, Take-Two Interactive or
 Microsoft. No game data is included or distributed: no disc images, no
 executables, no textures, sounds, music or films. Please do not ask for
@@ -22,11 +22,10 @@ WHAT YOU NEED
   Apps > Optional features), or mc3runtime.dll will not load.
 - A graphics card and driver with Direct3D 11 (feature level 11_0).
 - A disc image (.iso or .cci) of Midnight Club 3: DUB Edition Remix, Xbox,
-  Europe (En, Fr, De, Es, It). XISO and full Redump dumps both work, in one
-  file or split in parts (name.1.iso, name.2.iso: choose any part), and so
-  does the compressed CCI format. Other
-  releases (for example the North American one) are not supported: the
-  launcher checks the game's executable and tells you if the disc is a
+  Europe (En, Fr, De, Es, It) or USA. XISO and full Redump dumps both work,
+  in one file or split in parts (name.1.iso, name.2.iso: choose any part),
+  and so does the compressed CCI format. Other releases are not supported:
+  the launcher checks the game's executable and tells you if the disc is a
   different version.
 - Optional: a controller (Xbox, PlayStation, Switch or most other USB
   and Bluetooth pads), up to four. Without one, the keyboard is

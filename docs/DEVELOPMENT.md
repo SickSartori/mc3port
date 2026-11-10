@@ -123,7 +123,7 @@ Variabili d'ambiente:
 | `MC3_SKIP_LAUNCHER=1` | parte direttamente il gioco |
 | `MC3_LAUNCHER_AUTOPLAY=<s>` | il launcher preme GIOCA dopo `s` secondi (test) |
 | `MC3_LAUNCHER_PAGE=settings\|controls\|about` | il launcher si apre su quella pagina (catture di prova) |
-| `MC3_ANY_VERSION=1` | accetta anche dischi diversi dalla versione PAL supportata |
+| `MC3_ANY_VERSION=1` | accetta anche dischi diversi dalle versioni supportate (Europa e USA) |
 | `MC3_DUMP_FRAMES=<n>` | salva un frame presentato ogni `n` come `frame-NNNNN.bmp` nella cartella di lavoro |
 | `MC3_DEBUG_DRAWS=<n>` | descrive nel log i primi `n` draw (vertici, combiner, texture, stati); con `MC3_DEBUG_DRAWS_FF=1` solo quelli fixed-function |
 | `MC3_DUMP_TARGET=<indirizzo hex>` | con ogni frame salvato, anche la render target a quell'indirizzo fisico (`target-NNNNN.bmp`) |
