@@ -344,6 +344,12 @@ LONG WINAPI on_unhandled_exception(EXCEPTION_POINTERS* info) {
     if (readable(context->Esp, 32)) {
         log_line("  stack: %08X %08X %08X %08X %08X %08X %08X %08X", stack[0], stack[1], stack[2], stack[3], stack[4],
                  stack[5], stack[6], stack[7]);
+        if (readable(context->Esp, 0xA0)) {  // the caller's frame too
+            for (int row = 8; row < 40; row += 8) {
+                log_line("  stack+%02X: %08X %08X %08X %08X %08X %08X %08X %08X", row * 4, stack[row], stack[row + 1],
+                         stack[row + 2], stack[row + 3], stack[row + 4], stack[row + 5], stack[row + 6], stack[row + 7]);
+            }
+        }
         log_game_return_addresses(stack);
     } else {
         log_line("  stack pointer %08lX is not readable", context->Esp);

@@ -7,6 +7,8 @@
 - Textures follow the sharpness the game asks for (the texture filter's level-of-detail bias), as on the Xbox.
 - mc3port now shares its game-independent runtime and its Direct3D 11 renderer with sm2port (the Spider-Man 2 port),
   so fixes to either reach both. Nothing changes in how the game plays.
+- A refused disc image now names its region (North America, Japan, Europe and the rest of the world) in the message.
+- The crash log also shows the caller's stack frame, to make crash reports easier to trace.
 
 ### Fixed
 

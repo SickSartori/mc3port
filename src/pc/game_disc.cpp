@@ -92,8 +92,13 @@ std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::
         problem = text("The game on this disc image cannot be read.", "Il gioco in questa immagine non si puo' leggere.");
         return std::nullopt;
     }
-    log_line("disc: %s: '%s', title id %08X, default.xbe SHA-256 %s", utf8(path).c_str(), xbe->title().c_str(),
-             xbe->title_id(), hash.c_str());
+    // The release's region, from the certificate: a refused disc then says which one it is (reports come without the log).
+    const uint32_t region = xbe->game_region() & 7;
+    const char* region_name = region == 1 ? text("North America", "America del Nord") : region == 2 ? text("Japan", "Giappone")
+                              : region == 4 ? text("Europe and the rest of the world", "Europa e resto del mondo")
+                                            : text("several regions", "piu' regioni");
+    log_line("disc: %s: '%s', title id %08X, region %X, default.xbe SHA-256 %s", utf8(path).c_str(), xbe->title().c_str(),
+             xbe->title_id(), xbe->game_region(), hash.c_str());
     const Release* release = nullptr;
     for (const Release& known : kReleases) {
         if (hash == known.xbe) release = &known;
@@ -114,10 +119,10 @@ std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::
         } else {
             char message[512];
             std::snprintf(message, sizeof(message),
-                          text("This disc image holds \"%s\" (title id %08X), not the version mc3port supports:\n%s.",
-                               "Questa immagine contiene \"%s\" (title id %08X), non la versione supportata da "
+                          text("This disc image holds \"%s\" (title id %08X, %s), not the version mc3port supports:\n%s.",
+                               "Questa immagine contiene \"%s\" (title id %08X, %s), non la versione supportata da "
                                "mc3port:\n%s."),
-                          xbe->title().c_str(), xbe->title_id(), kSupportedName);
+                          xbe->title().c_str(), xbe->title_id(), region_name, kSupportedName);
             problem = message;
             return std::nullopt;
         }
