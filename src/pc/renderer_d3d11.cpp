@@ -518,6 +518,15 @@ HWND g_window_handle = nullptr;
 // only, not the emulated GPU (issues #3, #6).
 ComPtr<ID3D11Texture2D> g_final_texture, g_back_buffer;
 ComPtr<ID3D11RenderTargetView> g_final_rtv;
+// The swap chain has a device of its own on the same adapter, used by the present thread only. An overlay hooked on
+// Present (RTSS, Steam, Discord) draws with the swap chain's device: on the game's device it rebound targets and
+// textures under the GPU thread's draws, and the city flickered and lost its textures (issue #6). The final picture
+// is shared between the two devices, a keyed mutex (key 0 on both sides) ordering drawing and copying. Without the
+// second device these are the game's own and the GPU thread presents.
+ComPtr<ID3D11Device> g_present_device;
+ComPtr<ID3D11DeviceContext> g_present_context;
+ComPtr<ID3D11Texture2D> g_present_source;              // g_final_texture as g_present_device sees it
+ComPtr<IDXGIKeyedMutex> g_final_lock, g_present_lock;  // the shared picture's mutex, from each side
 std::mutex g_present_mutex;  // the final picture: being drawn or being copied
 std::mutex g_swap_mutex;     // the swap chain: presenting or resizing
 std::condition_variable g_present_wake;
@@ -1546,6 +1555,17 @@ void dump_frame(ID3D11Texture2D* texture, const char* prefix = "frame") {
     g_context->Unmap(staging.Get(), 0);
 }
 
+// Opens a texture of the game's device (made with SHARED_KEYEDMUTEX) on the present device, with its keyed mutex as
+// each device sees it.
+bool share_with_present_device(ID3D11Texture2D* texture, ComPtr<ID3D11Texture2D>& opened,
+                               ComPtr<IDXGIKeyedMutex>& game_lock, ComPtr<IDXGIKeyedMutex>& present_lock) {
+    ComPtr<IDXGIResource> shared;
+    HANDLE handle = nullptr;
+    return SUCCEEDED(texture->QueryInterface(IID_PPV_ARGS(&shared))) && SUCCEEDED(shared->GetSharedHandle(&handle)) &&
+           SUCCEEDED(g_present_device->OpenSharedResource(handle, IID_PPV_ARGS(&opened))) &&
+           SUCCEEDED(texture->QueryInterface(IID_PPV_ARGS(&game_lock))) && SUCCEEDED(opened.As(&present_lock));
+}
+
 // The swap chain follows the window's client area (it changes with resizing and full screen).
 void ensure_swap_chain_size() {
     const ForgetBound forget;
@@ -1558,6 +1578,9 @@ void ensure_swap_chain_size() {
     g_context->OMSetRenderTargets(0, nullptr, nullptr);
     g_final_rtv.Reset();
     g_final_texture.Reset();
+    g_final_lock.Reset();
+    g_present_source.Reset();
+    g_present_lock.Reset();
     g_back_buffer.Reset();
     g_swap_chain->ResizeBuffers(2, width, height, DXGI_FORMAT_B8G8R8A8_UNORM, g_swap_flags);
     g_swap_width = width;
@@ -1566,9 +1589,22 @@ void ensure_swap_chain_size() {
     D3D11_TEXTURE2D_DESC desc{};
     g_back_buffer->GetDesc(&desc);
     desc.BindFlags = D3D11_BIND_RENDER_TARGET;
-    desc.MiscFlags = 0;
-    g_device->CreateTexture2D(&desc, nullptr, &g_final_texture);
+    desc.MiscFlags = g_present_threaded ? D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX : 0;
+    if (const HRESULT hr = g_device->CreateTexture2D(&desc, nullptr, &g_final_texture); FAILED(hr)) {
+        log_resource_failure("the window's picture", hr, desc);
+        return;
+    }
     g_device->CreateRenderTargetView(g_final_texture.Get(), nullptr, &g_final_rtv);
+    if (!g_present_threaded) {
+        g_present_source = g_final_texture;
+        return;
+    }
+    if (!share_with_present_device(g_final_texture.Get(), g_present_source, g_final_lock, g_present_lock)) {
+        log_line("renderer: the present device cannot open the window's picture");
+        g_present_source.Reset();
+        g_final_lock.Reset();
+        g_present_lock.Reset();
+    }
 }
 
 // --- modern effects, applied to the finished frame when it is presented ---
@@ -1840,14 +1876,48 @@ void upload_scaled(Target& to, uint32_t x, uint32_t y, uint32_t width, uint32_t 
     g_context->PSSetShaderResources(0, 1, &none);
 }
 
-// Copies the finished picture into the swap chain and presents it: on the present thread, or on the GPU thread when
-// the context has no multithread protection.
+// Copies the finished picture into the swap chain and presents it: on the present thread with the swap chain's own
+// device, or on the GPU thread when there is no second device.
 void present_now() {
     std::lock_guard<std::mutex> swap(g_swap_mutex);
     {
         std::lock_guard<std::mutex> drawing(g_present_mutex);
-        if (!g_back_buffer || !g_final_texture) return;
-        g_context->CopyResource(g_back_buffer.Get(), g_final_texture.Get());
+        if (!g_back_buffer || !g_present_source) return;
+        if (g_present_lock) g_present_lock->AcquireSync(0, INFINITE);
+        g_present_context->CopyResource(g_back_buffer.Get(), g_present_source.Get());
+        if (g_present_lock) g_present_lock->ReleaseSync(0);
+    }
+    // MC3_TEST_PRESENT_HOOK=1: acts as an overlay tool hooked on Present does (RTSS, Steam, Discord): it takes the
+    // swap chain's device, saves the target, blend and pixel shader textures, binds its own and puts the saved ones
+    // back. On the game's device that broke the city's textures (issue #6); on the present device it shows nothing.
+    static const bool test_hook = GetEnvironmentVariableW(L"MC3_TEST_PRESENT_HOOK", nullptr, 0) != 0;
+    if (test_hook) {
+        ComPtr<ID3D11Device> device;
+        ComPtr<ID3D11DeviceContext> context;
+        g_swap_chain->GetDevice(IID_PPV_ARGS(&device));
+        device->GetImmediateContext(&context);
+        ID3D11ShaderResourceView* saved[8] = {};
+        ID3D11ShaderResourceView* none[8] = {};
+        ComPtr<ID3D11BlendState> blend;
+        float factor[4];
+        UINT mask = 0;
+        context->PSGetShaderResources(0, 8, saved);
+        context->OMGetBlendState(&blend, factor, &mask);
+        ID3D11RenderTargetView* target = nullptr;
+        ID3D11DepthStencilView* depth = nullptr;
+        context->OMGetRenderTargets(1, &target, &depth);
+        context->OMSetRenderTargets(0, nullptr, nullptr);
+        context->PSSetShaderResources(0, 8, none);
+        context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+        Sleep(3);
+        context->PSSetShaderResources(0, 8, saved);
+        context->OMSetBlendState(blend.Get(), factor, mask);
+        context->OMSetRenderTargets(1, &target, depth);
+        if (target) target->Release();
+        if (depth) depth->Release();
+        for (ID3D11ShaderResourceView* view : saved) {
+            if (view) view->Release();
+        }
     }
     const uint64_t start = ticks();
     const HRESULT presented = g_swap_chain->Present(0, g_swap_flags ? DXGI_PRESENT_ALLOW_TEARING : 0);
@@ -1929,14 +1999,6 @@ bool renderer_start(HWND window) {
     log_line("renderer: internal resolution %.0f lines (%.3gx)%s", 480.0f * g_scale, g_scale,
              requested <= 0 ? ", automatic" : "");
     g_context.As(&g_context1);
-    // The present thread uses the immediate context too (one copy per frame): D3D11 then serializes the calls.
-    ComPtr<ID3D11Multithread> multithread;
-    if (SUCCEEDED(g_context.As(&multithread))) {
-        multithread->SetMultithreadProtected(TRUE);
-        g_present_threaded = true;
-    } else {
-        log_line("renderer: no multithread protection, presenting on the GPU thread");
-    }
 
     ComPtr<IDXGIDevice> dxgi_device;
     ComPtr<IDXGIAdapter> adapter;
@@ -1944,6 +2006,27 @@ bool renderer_start(HWND window) {
     g_device.As(&dxgi_device);
     dxgi_device->GetAdapter(&adapter);
     adapter->GetParent(IID_PPV_ARGS(&factory));
+    // The swap chain's own device, for the present thread (g_present_device), if the window's picture can be shared
+    // with it: tried here on a small texture, since a failure later would leave the window black for good.
+    if (SUCCEEDED(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                                    levels, 1, D3D11_SDK_VERSION, &g_present_device, nullptr, &g_present_context))) {
+        D3D11_TEXTURE2D_DESC probe_desc{};
+        probe_desc.Width = probe_desc.Height = 16;
+        probe_desc.MipLevels = probe_desc.ArraySize = 1;
+        probe_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        probe_desc.SampleDesc.Count = 1;
+        probe_desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+        probe_desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+        ComPtr<ID3D11Texture2D> probe, opened;
+        ComPtr<IDXGIKeyedMutex> game_lock, present_lock;
+        g_present_threaded = SUCCEEDED(g_device->CreateTexture2D(&probe_desc, nullptr, &probe)) &&
+                             share_with_present_device(probe.Get(), opened, game_lock, present_lock);
+    }
+    if (!g_present_threaded) {
+        log_line("renderer: no second device for presenting, presenting on the GPU thread");
+        g_present_device = g_device;
+        g_present_context = g_context;
+    }
     DXGI_SWAP_CHAIN_DESC1 desc{};
     desc.Width = g_swap_width = 640;
     desc.Height = g_swap_height = 480;
@@ -1965,7 +2048,7 @@ bool renderer_start(HWND window) {
     }
     desc.Flags = g_swap_flags;
     log_line("renderer: present %s", g_swap_flags ? "without waiting for the display" : "in step with the display");
-    if (FAILED(factory->CreateSwapChainForHwnd(g_device.Get(), window, &desc, nullptr, nullptr, &g_swap_chain))) {
+    if (FAILED(factory->CreateSwapChainForHwnd(g_present_device.Get(), window, &desc, nullptr, nullptr, &g_swap_chain))) {
         log_line("renderer: cannot create the swap chain");
         return false;
     }
@@ -2863,6 +2946,7 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
     ensure_swap_chain_size();
     const uint64_t effects_start = ticks();
     std::unique_lock<std::mutex> drawing(g_present_mutex);
+    if (g_final_lock) g_final_lock->AcquireSync(0, INFINITE);
     present_frame(frame_view, frame_desc.Width, frame_desc.Height);
     hud_frame_shown();
     ++g_presented;
@@ -2897,6 +2981,7 @@ void renderer_present(uint32_t address, uint32_t width, uint32_t height, uint32_
         const auto extra = g_targets.find(g_dump_target);
         if (extra != g_targets.end()) dump_frame(extra->second.texture.Get(), "target");
     }
+    if (g_final_lock) g_final_lock->ReleaseSync(0);
     if (g_present_threaded) {
         g_present_pending = true;
         drawing.unlock();

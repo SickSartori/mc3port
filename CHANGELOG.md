@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Textures broken and flickering with RTSS** (issue #6), and with any overlay that draws inside Present (Steam,
+  Discord, MSI Afterburner). Since 0.3.4 frames are presented on a thread of their own, and the overlay drew with the
+  game's own Direct3D device while the game was drawing: it swapped render targets and textures under the game's
+  draws, and the road and buildings came and went. The window now has a Direct3D device of its own for presenting,
+  so an overlay never touches the game's. `MC3_TEST_PRESENT_HOOK=1` acts as such an overlay, to check it without one.
+
 ## 0.3.5 (2026-11-09)
 
 ### New
