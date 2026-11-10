@@ -11,7 +11,7 @@
 
 #include "pc/game_disc.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 
 // Runs until the player starts the game (returns the verified disc) or quits (returns nothing).
 std::optional<GameDisc> run_launcher(HWND window, const std::filesystem::path& exe_directory);
@@ -23,4 +23,4 @@ void start_game_menu(HWND window, const std::filesystem::path& disc_path);
 // Opens the menu (a controller's Back+Start).
 void game_menu_open();
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

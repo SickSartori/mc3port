@@ -24,7 +24,7 @@
 #include "pc/profile.h"
 #include "pc/settings.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 // --- register map (offsets from 0xFD000000) ---
@@ -1037,4 +1037,4 @@ void nv2a_set_display_mode(uint32_t mode, uint32_t format, uint32_t pitch, uint3
     g_display = DisplayMode{mode, format, pitch, frame_buffer};
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

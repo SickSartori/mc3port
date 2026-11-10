@@ -7,11 +7,12 @@
 #include "pc/game_pause.h"
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
+#include "pc/loading_screen.h"
 #include "pc/log.h"
 #include "pc/profile.h"
 #include "pc/settings.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 // Xbox stacks are committed up front and the Xbox CRT does not probe large stack frames page by page. On Windows
@@ -205,4 +206,4 @@ void register_thread_functions() {
     register_kernel(250, &ObfDereferenceObject);
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-namespace mc3::pc {
+namespace xport::pc {
 
 enum class PadInput : uint8_t {
     kRightTrigger, kLeftTrigger, kSteerLeft, kSteerRight,
@@ -31,4 +31,4 @@ void bind_key(PadInput input, int virtual_key);  // and saves all bindings
 void reset_key_bindings();
 void load_key_bindings();  // from the settings (after settings_load)
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

@@ -9,7 +9,7 @@
 #include "core/xbe.h"
 #include "core/xdvdfs.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 
 struct GameDisc {
     std::filesystem::path path;
@@ -35,4 +35,4 @@ std::filesystem::path ask_for_disc_image(void* owner_window);
 // nothing when the player gives up (the caller exits). Used when the launcher is skipped.
 std::optional<GameDisc> open_game_disc(const std::filesystem::path& exe_directory);
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

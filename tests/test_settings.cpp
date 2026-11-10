@@ -8,7 +8,7 @@
 #include "pc/settings.h"
 #include "test.h"
 
-using namespace mc3::pc;
+using namespace xport::pc;
 
 namespace {
 bool same(float a, float b) { return std::fabs(a - b) < 0.001f; }

@@ -10,7 +10,7 @@
 struct ImDrawList;
 struct ImFont;
 
-namespace mc3::pc {
+namespace xport::pc {
 
 // A flat four-vertex draw in the lower right of a frame (nv2a_kelvin.cpp): positions in surface pixels, the first
 // texture's coordinates, the diffuse colour of the first vertex.
@@ -47,4 +47,4 @@ struct HudFonts {
 };
 void hud_draw(ImDrawList* list, const HudFonts& fonts);
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

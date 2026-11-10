@@ -27,7 +27,7 @@
 #include "pc/settings.h"
 #include "pc/xbox_thread.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 // Primitive types (NV097_SET_BEGIN_END).
@@ -1455,4 +1455,4 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
 
 void kelvin_request_debug_window() { g_window_requested = true; }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

@@ -14,7 +14,7 @@
 #include "pc/renderer_d3d11.h"
 #include "pc/settings.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 constexpr float kPi = 3.14159265f;
@@ -515,4 +515,4 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     }
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

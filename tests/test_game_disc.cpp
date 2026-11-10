@@ -12,14 +12,14 @@
 #include "test.h"
 
 // game_disc.cpp's only ties to the rest of the program.
-namespace mc3::pc {
+namespace xport::pc {
 void log_line(const char*, ...) {}
 std::string setting_text(const char*) { return {}; }
 void setting_save_text(const char*, const std::string&) {}
-}  // namespace mc3::pc
+}  // namespace xport::pc
 
-using namespace mc3;
-using namespace mc3::pc;
+using namespace xport;
+using namespace xport::pc;
 
 namespace {
 

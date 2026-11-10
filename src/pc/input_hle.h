@@ -4,7 +4,7 @@
 
 #include "core/xbe.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 
 // Redirects the XPP gamepad functions (XGetDevices, XGetDeviceChanges, XInputOpen/Close/GetState/SetState/
 // GetCapabilities) to the PC's XInput controllers, with the keyboard as controller 1 when no pad is there.
@@ -22,4 +22,4 @@ void input_note_file_opened(const std::string& path);
 // the game's own polling pace.
 void input_menu_combo_poll();
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

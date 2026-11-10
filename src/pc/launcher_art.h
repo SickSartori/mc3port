@@ -8,7 +8,7 @@
 
 #include "core/xdvdfs.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 
 struct DxtImage {
     uint32_t width = 0, height = 0;
@@ -23,4 +23,4 @@ struct LauncherArt {
 // Reads a few megabytes from the disc: run it on a helper thread.
 LauncherArt load_launcher_art(const XdvdfsImage& disc);
 
-}  // namespace mc3::pc
+}  // namespace xport::pc

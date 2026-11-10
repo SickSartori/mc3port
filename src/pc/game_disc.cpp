@@ -14,7 +14,7 @@
 #include "pc/log.h"
 #include "pc/settings.h"
 
-namespace mc3::pc {
+namespace xport::pc {
 namespace {
 
 // The releases the port's code patches (hle_patches.cpp, dsound_hle.cpp, input_hle.cpp) are made for: default.xbe's
@@ -224,4 +224,4 @@ std::optional<GameDisc> open_game_disc(const std::filesystem::path& exe_director
     }
 }
 
-}  // namespace mc3::pc
+}  // namespace xport::pc
