@@ -18,6 +18,9 @@
   draws, and the road and buildings came and went. The window now has a Direct3D device of its own for presenting,
   so an overlay never touches the game's. `MC3_TEST_PRESENT_HOOK=1` acts as such an overlay, to check it without one.
 
+- **Grainy neon glow** (issue #14). The ambient occlusion darkened the road under the car with a fine per-pixel
+  pattern, which showed through the bright glow. It now uses the same directions for every pixel and comes out smooth.
+
 ## 0.3.5 (2026-11-09)
 
 ### New
