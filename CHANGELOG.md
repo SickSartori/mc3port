@@ -11,6 +11,17 @@
   second each (87 of them, 8 seconds in all, from the first start to the garage). The shaders now come with mc3port
   and are made ready at start, on a thread of their own: a first run compiles none while playing.
 
+### Improved
+
+- **The installer also comes in a zip** (`mc3port-<version>-windows-x86-setup.zip`). Chrome, Edge and Opera often
+  block a new installer that is not code signed; the zip gets through. Extract it and run the setup. The plain
+  `-setup.exe` stays in the release for the launcher's updates.
+- The installer says what mc3port sends over the internet (only the update check, to GitHub) and has a box to turn
+  the update check off.
+- mc3port's shared runtime is now open source, as [xport](https://github.com/SickSartori/xport) (MIT licence), so
+  every line of the Windows files can be read and built from public code. This is a first step towards code signed
+  releases.
+
 ## 0.3.6 (2026-11-10)
 
 ### New

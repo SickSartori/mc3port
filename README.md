@@ -97,20 +97,22 @@ games and releases (the original DUB Edition, for example) are not supported.
 </details>
 
 Optional: a controller (see [Controls](#controls)), and an internet connection for the update check only (it can
-be switched off). Without an audio device the game simply runs silent.
+be switched off, see [Privacy](#privacy)). Without an audio device the game simply runs silent.
 
 ## Installing
 
 | Way | How | Updates |
 |---|---|---|
 | **[RecompLauncher](https://recomplauncher.com/game/mc3port)** (easiest) | Find mc3port in the catalog and install it. The launcher checks your disc, keeps the main settings on the game's page and starts the game straight away. | Automatic |
-| **Installer** | Download `mc3port-<version>-windows-x86-setup.exe` from the [latest release](https://github.com/SickSartori/mc3port/releases/latest) and run it. It installs for your user only (no administrator rights), with Start menu and desktop shortcuts. | Offered by the launcher: it downloads the new installer, checks its SHA-256 and shows it to you |
+| **Installer** | Download `mc3port-<version>-windows-x86-setup.zip` from the [latest release](https://github.com/SickSartori/mc3port/releases/latest), extract it and run the setup inside. It installs for your user only (no administrator rights), with Start menu and desktop shortcuts. | Offered by the launcher: it downloads the new installer, checks its SHA-256 and shows it to you |
 | **Portable** | Download `mc3port-<version>-windows-x86.zip`, extract it anywhere and start `mc3port\mc3.exe`. | Extract the new version over the old one |
 | **Linux (Wine)** | Download `mc3port-<version>-linux.tar.gz`: see [Linux](#linux-experimental). | Run `install.sh` again |
 
 Every package contains `README.txt`, a short guide, and `CHANGELOG.md`. To check a download, compare its SHA-256 with
-the release's `SHA256SUMS`. The files are not code signed yet, so Windows SmartScreen may ask once whether you trust
-them ("More info", then "Run anyway").
+the release's `SHA256SUMS`. The files are not code signed yet (see [Code signing policy](#code-signing-policy)), so
+browsers may warn about the download and Windows SmartScreen may ask once whether you trust them ("More info", then
+"Run anyway"). The installer is also attached as a plain `-setup.exe`, which the launcher uses for its updates; some
+browsers block that one, the zip gets through.
 
 ### First start
 
@@ -351,6 +353,27 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 - The program icon and logo are mc3port's own (`tools/make_icon.py`), in the spirit of the game's logo.
 - The launcher's logo and pictures are the game's own, read from your disc while it runs; they are not part of
   mc3port.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by
+[SignPath Foundation](https://signpath.org). The application is under review: until it is approved, the releases are
+not signed yet.
+
+- Committers and reviewers: [SickSartori](https://github.com/SickSartori)
+- Approvers: [SickSartori](https://github.com/SickSartori)
+
+The Windows files are built from this repository and [xport](https://github.com/SickSartori/xport) by GitHub Actions
+([release workflow](.github/workflows/release.yml)); each release lists their SHA-256 in `SHA256SUMS`.
+
+## Privacy
+
+mc3port collects no personal data and has no telemetry. The only connection it makes on its own is the update check:
+when the launcher opens, it asks `api.github.com` for this project's latest release. You can turn it off in the
+installer, or at any time with `check_updates = 0` in `Documents\mc3port\mc3port.ini`; started from RecompLauncher, it
+is always off. If you accept an update, the launcher downloads the new installer and `SHA256SUMS` from this project's
+GitHub releases. **Report a problem** only opens GitHub's bug form in your browser, filled in for you to read and send
+yourself. The game's online play is not available.
 
 ## Licence
 
