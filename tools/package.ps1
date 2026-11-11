@@ -33,6 +33,8 @@ $stage = Join-Path "dist" "mc3port"
 if (Test-Path dist) { Remove-Item dist -Recurse -Force }
 New-Item -ItemType Directory -Force "$stage\docs\licenses" | Out-Null
 Copy-Item build/pc-x86/Release/mc3.exe, build/pc-x86/Release/mc3runtime.dll, recomplauncher.json $stage
+# The shaders compiled while testing: read at start, so that a first run compiles nothing while playing.
+Copy-Item shader_cache "$stage\shader_cache" -Recurse
 Copy-Item README.md, CHANGELOG.md, LICENSE, THIRD_PARTY.md "$stage\docs"
 # README.txt: the short guide (what you need, first start, where the files are), with the version filled in and
 # Windows line endings, so that Notepad shows it properly.

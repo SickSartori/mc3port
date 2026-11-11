@@ -7,6 +7,9 @@
 - **Micro stutter** when frames come late for a moment, for example while new textures enter the city. The game's
   step then jumped from 1/60 to 1/30 s for a frame and back, and the picture skipped ahead. The step now changes
   only when the frame rate clearly changes.
+- **Stutter the first time each effect shows.** The graphics card's shaders were compiled while playing, up to a
+  second each (87 of them, 8 seconds in all, from the first start to the garage). The shaders now come with mc3port
+  and are made ready at start, on a thread of their own: a first run compiles none while playing.
 
 ## 0.3.6 (2026-11-10)
 

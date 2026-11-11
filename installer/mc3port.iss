@@ -75,6 +75,8 @@ Type: files; Name: "{app}\CHANGELOG.md"
 Type: files; Name: "{app}\LICENSE"
 Type: files; Name: "{app}\THIRD_PARTY.md"
 Type: filesandordirs; Name: "{app}\licenses"
+; The shipped shaders are replaced whole on each update: an older renderer's are never read again.
+Type: filesandordirs; Name: "{app}\shader_cache"
 
 [Files]
 Source: "{#SourceDir}\mc3.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -85,6 +87,7 @@ Source: "{#SourceDir}\docs\CHANGELOG.md"; DestDir: "{app}\docs"; Flags: ignoreve
 Source: "{#SourceDir}\docs\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\THIRD_PARTY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\licenses\*"; DestDir: "{app}\docs\licenses"; Flags: ignoreversion
+Source: "{#SourceDir}\shader_cache\*"; DestDir: "{app}\shader_cache"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{cm:ShortcutName}"; Filename: "{app}\mc3.exe"
