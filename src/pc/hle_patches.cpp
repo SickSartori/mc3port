@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "pc/exec_memory.h"
+#include "pc/frame_step.h"
 #include "pc/game_pause.h"
 #include "pc/log.h"
 #include "pc/nv2a.h"
@@ -286,14 +287,24 @@ const Patch kPatches[] = {
 // On the GPU thread, for each new frame shown: `vblanks` since the previous one. The average over the last frames sets
 // the fixed step, so that game time follows real time even when frames come late now and then.
 void time_frame_shown(uint32_t vblanks) {
+    // A frame of 100 ms or more (MC3_LONG_FRAME_MS=<ms> sets another limit) is a hitch the player sees: in the log, to
+    // find what made it.
+    static const uint32_t long_frame_ms = [] {
+        char value[16] = {};
+        return GetEnvironmentVariableA("MC3_LONG_FRAME_MS", value, sizeof(value)) ? std::max(1, std::atoi(value)) : 100;
+    }();
+    if (vblanks * 1000 >= long_frame_ms * nv2a_vblank_hz() && vblanks < nv2a_vblank_hz() * 10) {
+        log_line("time: a frame took %u ms", vblanks * 1000 / nv2a_vblank_hz());
+    }
     static uint32_t recent[8] = {};
     static uint32_t shown = 0;
     recent[shown++ % 8] = std::min<uint32_t>(vblanks, 8);
     if (shown < 8) return;
     uint32_t total = 0;
     for (const uint32_t v : recent) total += v;
-    // Whole sixtieths, at least one (1/60 s, the shortest step the game had on the Xbox), like the measured path:
-    // where frames jitter between 1 and 3 blanks the average wandered between 0.0156 and 0.0229 s every frame. (The
+    // Whole sixtieths, at least one (1/60 s, the shortest step the game had on the Xbox), changed only when the pace
+    // clearly changes (step_sixtieths): where frames jitter between 1 and 3 blanks the average wandered between 0.0156
+    // and 0.0229 s every frame. (The
     // menus that stood still at 60 fps, issue #12, were a float clock grown too large: see game_ticks.)
     // MC3_STEP_FLOOR=<seconds> raises the result (diagnostic).
     static const float floor = [] {
@@ -301,7 +312,8 @@ void time_frame_shown(uint32_t vblanks) {
         return GetEnvironmentVariableA("MC3_STEP_FLOOR", value, sizeof(value)) ? static_cast<float>(std::atof(value)) : 0.0f;
     }();
     const float average = static_cast<float>(total) / 8.0f / static_cast<float>(nv2a_vblank_hz());
-    const float sixtieths = std::max(1.0f, std::round(average * 60.0f));
+    static float sixtieths = 0;
+    sixtieths = step_sixtieths(sixtieths, average * 60.0f);
     const float period = std::max(sixtieths / 60.0f, floor);
     g_frame_period = period;
     if (*g_fixed_mode == 1) use_fixed_step(period);

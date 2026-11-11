@@ -587,7 +587,17 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     if (GetEnvironmentVariableW(L"RECOMPLAUNCHER_MODE", launcher_mode, 16) && std::wcscmp(launcher_mode, L"bigpicture") == 0) {
         SetEnvironmentVariableW(L"MC3_FULLSCREEN", L"1");
     }
-    settings_load(data_directory() / "mc3port.ini");
+    const std::filesystem::path settings_file = data_directory() / "mc3port.ini";
+    std::error_code no_file;
+    const bool first_settings = !std::filesystem::exists(settings_file, no_file);
+    settings_load(settings_file);
+    // The installer's "Check for updates" box (installer/mc3port.iss writes setup_choices.ini beside mc3.exe): it
+    // counts only on the first start, before mc3port.ini exists; after that the file's own value decides.
+    if (first_settings && GetPrivateProfileIntW(L"mc3port", L"check_updates", 1,
+                                                (exe_directory / L"setup_choices.ini").c_str()) == 0) {
+        setting_save("check_updates", 0);
+        log_line("settings: update check off, as chosen in the installer");
+    }
     if (!data_folder_note().empty()) log_line("files: %s", data_folder_note().c_str());
     log_line("files: program in %s, data in %s%s", reinterpret_cast<const char*>(exe_directory.u8string().c_str()),
              reinterpret_cast<const char*>(data_directory().u8string().c_str()), portable_mode() ? " (portable)" : "");
@@ -604,9 +614,12 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     load_key_bindings();
     nv2a_load_icons();  // the exe's resources, before the XBE overwrites them
     // The launcher, unless a disc image is given on the command line (frontends, test scripts) or MC3_SKIP_LAUNCHER
-    // or MC3_NO_DIALOG is set.
-    const bool skip_launcher = !command_line_disc().empty() || GetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", nullptr, 0) ||
-                               GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0);
+    // or MC3_NO_DIALOG is set. MC3_SHOW_LAUNCHER (the game menu's "Back to the launcher") shows it even with a disc on
+    // the command line.
+    const bool show_launcher = GetEnvironmentVariableW(L"MC3_SHOW_LAUNCHER", nullptr, 0) != 0;
+    const bool skip_launcher = GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0) ||
+                               (!show_launcher && (!command_line_disc().empty() ||
+                                                   GetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", nullptr, 0)));
     std::optional<GameDisc> disc =
         skip_launcher ? open_game_disc(exe_directory) : run_launcher(nv2a_open_window(), exe_directory);
     if (!disc) {

@@ -34,6 +34,11 @@ cmake --build --preset pc-x86-debug
 
 Pacchetto della release (zip e SHA256SUMS in `dist/`): `pwsh -File tools/package.ps1`.
 
+`shader_cache/` sono gli shader compilati durante le prove, copiati da `Documenti\mc3port\shader_cache`: il pacchetto
+li mette accanto a `mc3.exe` e il renderer li prepara all'avvio, così anche alla prima partita non compila niente mentre
+si gioca. Prima di una release che cambia il renderer: svuotare la cache in Documenti, giocare menu, garage, città e una
+gara, poi ricopiarla qui. Il log dice `combiner shader ... compiled` per ogni shader che mancava.
+
 ## Branch e rilasci
 
 - `main`: solo versioni pubblicate. Ogni commit su `main` corrisponde a un tag `vx.y.z` e a una release.
@@ -51,7 +56,7 @@ pubblica la release con le note prese dal CHANGELOG (`tools/release_notes.ps1`).
 
 | Cartella | Contenuto |
 |---|---|
-| `external/sick-xport` | libreria privata condivisa con sm2port (sottomodulo git): `src/core` (ISO, XBE, export del kernel) e la parte di `src/pc` che non dipende dal gioco (kernel, memoria, thread, registri e texture della GPU, orologi, controller, percorsi, log, crash, profilo); `xport.cmake` |
+| `external/xport` | libreria open source (MIT) condivisa con sm2port (sottomodulo git, github.com/SickSartori/xport): `src/core` (ISO, XBE, export del kernel) e la parte di `src/pc` che non dipende dal gioco (kernel, memoria, thread, registri e texture della GPU, orologi, controller, percorsi, log, crash, profilo); `xport.cmake` |
 | `src/pc` | la parte di Midnight Club 3: patch del gioco, input e audio (XACT, WMA), renderer D3D11 e front end della GPU, HUD, dischi, launcher |
 | `third_party` | Dear ImGui e i font Barlow, con le loro licenze; la licenza di SDL3, che CMake scarica alla configurazione |
 | `res` | risorse Win32: icona, musica del launcher |

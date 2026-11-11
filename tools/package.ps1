@@ -3,6 +3,8 @@
 #                                                  and the other documents in docs; the same folder name in every version, so a
 #                                                  new zip extracted in the same place updates the old one)
 #   dist/mc3port-<version>-windows-x86-setup.exe  (installer, with Inno Setup 6.6+; skipped if it is missing)
+#   dist/mc3port-<version>-windows-x86-setup.zip  (the same installer in a zip: browsers block a new, unsigned .exe
+#                                                  download more often; the launcher's updater keeps using the .exe)
 #   dist/mc3port-<version>-linux.tar.gz           (the portable folder plus install.sh for Wine, and the menu icon)
 #   dist/SHA256SUMS
 # The version comes from project(... VERSION ...) in CMakeLists.txt. No game file can end up in the package.
@@ -33,6 +35,8 @@ $stage = Join-Path "dist" "mc3port"
 if (Test-Path dist) { Remove-Item dist -Recurse -Force }
 New-Item -ItemType Directory -Force "$stage\docs\licenses" | Out-Null
 Copy-Item build/pc-x86/Release/mc3.exe, build/pc-x86/Release/mc3runtime.dll, recomplauncher.json $stage
+# The shaders compiled while testing: read at start, so that a first run compiles nothing while playing.
+Copy-Item shader_cache "$stage\shader_cache" -Recurse
 Copy-Item README.md, CHANGELOG.md, LICENSE, THIRD_PARTY.md "$stage\docs"
 # README.txt: the short guide (what you need, first start, where the files are), with the version filled in and
 # Windows line endings, so that Notepad shows it properly.
@@ -62,6 +66,7 @@ $iscc = @($env:ISCC, "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:Pro
 if ($iscc) {
     & $iscc /Q "/DAppVersion=$version" "/DSourceDir=$(Resolve-Path $stage)" "/DOutputDir=$(Resolve-Path dist)" installer/mc3port.iss
     if ($LASTEXITCODE) { throw "installer build failed" }
+    Compress-Archive -Path "dist/$name-setup.exe" -DestinationPath "dist/$name-setup.zip"
 } elseif ($env:GITHUB_ACTIONS) {
     throw "Inno Setup not found: the release needs the installer"
 } else {

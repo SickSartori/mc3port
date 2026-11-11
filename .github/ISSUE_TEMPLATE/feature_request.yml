@@ -1,0 +1,18 @@
+name: Feature request
+description: Something you would like mc3port to do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you would like
+      description: What it should do, and where (launcher, menus, city, races).
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: How you would use it, or what you miss without it.
+    validations:
+      required: false

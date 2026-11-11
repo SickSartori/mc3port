@@ -652,9 +652,16 @@ NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_rout
         if (offset >= file->disc_entry.size && length) {
             status = kStatusEndOfFile;
         } else {
+            const ULONGLONG start = GetTickCount64();
             read = static_cast<uint32_t>(g_disc->read(file->disc_entry, offset, buffer, length));
             if (read == 0 && length) status = kStatusUnsuccessful;
             slow_disc_read(file->disc_entry.sector * 2048ull + offset, read);
+            // A read the game waits on shows as a hitch: which file, and whether the game asked for it to be
+            // asynchronous (an event or an APC), which a disc image answers at once anyway.
+            if (const ULONGLONG ms = GetTickCount64() - start; ms >= 20) {
+                log_line("disc: read of %s took %llu ms (offset %llX, %X bytes%s)", file->location.xbox_path.c_str(), ms,
+                         static_cast<unsigned long long>(offset), length, event || apc_routine ? ", asked async" : "");
+            }
         }
     } else if (file->host != INVALID_HANDLE_VALUE) {
         OVERLAPPED overlapped{};

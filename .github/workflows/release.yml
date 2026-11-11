@@ -19,11 +19,9 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        # The shared runtime is a private submodule: XPORT_RUNTIME_TOKEN is a fine-grained token with read access to
-        # SickSartori/sick-xport's contents (it also reads this public repository).
+        # The shared runtime is the public submodule SickSartori/xport.
         with:
           submodules: recursive
-          token: ${{ secrets.XPORT_RUNTIME_TOKEN }}
 
       # Before the build: a tag that does not match the version, or a version without its CHANGELOG section, fails in
       # seconds instead of after the package is made.

@@ -54,8 +54,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
 
 [Messages]
-english.WelcomeLabel2=This will install [name/ver], an unofficial native Windows port of Midnight Club 3: DUB Edition Remix.%n%nNo game files are included: on the first start you choose the disc image (ISO) of your own European or USA Xbox copy.%n%nYour settings and saves are kept in your user folder and stay when you update or uninstall.
-italian.WelcomeLabel2=Verrà installato [name/ver], un port nativo non ufficiale per Windows di Midnight Club 3: DUB Edition Remix.%n%nNessun file del gioco è incluso: al primo avvio scegli l'immagine del disco (ISO) della tua copia Xbox europea o americana.%n%nImpostazioni e salvataggi restano nella tua cartella utente e non si perdono con aggiornamenti o disinstallazione.
+english.WelcomeLabel2=This will install [name/ver], an unofficial native Windows port of Midnight Club 3: DUB Edition Remix.%n%nNo game files are included: on the first start you choose the disc image (ISO) of your own European or USA Xbox copy.%n%nYour settings and saves are kept in your user folder and stay when you update or uninstall.%n%nPrivacy: mc3port collects no personal data. The only connection it makes on its own is the update check, which asks GitHub for the latest release when the launcher opens. You can turn it off on the next pages.
+italian.WelcomeLabel2=Verrà installato [name/ver], un port nativo non ufficiale per Windows di Midnight Club 3: DUB Edition Remix.%n%nNessun file del gioco è incluso: al primo avvio scegli l'immagine del disco (ISO) della tua copia Xbox europea o americana.%n%nImpostazioni e salvataggi restano nella tua cartella utente e non si perdono con aggiornamenti o disinstallazione.%n%nPrivacy: mc3port non raccoglie dati personali. L'unica connessione che fa da solo è il controllo degli aggiornamenti, che chiede a GitHub l'ultima versione quando si apre il launcher. Puoi disattivarlo nelle pagine successive.
 
 [CustomMessages]
 english.DesktopShortcut=Create a desktop shortcut
@@ -64,9 +64,18 @@ english.ShortcutName=Midnight Club 3 DUB Edition Remix (mc3port)
 italian.ShortcutName=Midnight Club 3 DUB Edition Remix (mc3port)
 english.StartNow=Start mc3port
 italian.StartNow=Avvia mc3port
+english.CheckUpdates=Check for updates on GitHub when the launcher opens
+italian.CheckUpdates=Controlla gli aggiornamenti su GitHub quando si apre il launcher
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:DesktopShortcut}"
+Name: "checkupdates"; Description: "{cm:CheckUpdates}"
+
+[INI]
+; The update check box: mc3.exe reads it on the first start only (runtime.cpp), then mc3port.ini's check_updates.
+; Plain [INI] entries, no [Code] (see [Run]).
+Filename: "{app}\setup_choices.ini"; Section: "mc3port"; Key: "check_updates"; String: "1"; Tasks: checkupdates; Flags: uninsdeletesection
+Filename: "{app}\setup_choices.ini"; Section: "mc3port"; Key: "check_updates"; String: "0"; Tasks: not checkupdates; Flags: uninsdeletesection
 
 [InstallDelete]
 ; Up to 0.3.0 the documents were next to mc3.exe; they are in docs now.
@@ -75,6 +84,8 @@ Type: files; Name: "{app}\CHANGELOG.md"
 Type: files; Name: "{app}\LICENSE"
 Type: files; Name: "{app}\THIRD_PARTY.md"
 Type: filesandordirs; Name: "{app}\licenses"
+; The shipped shaders are replaced whole on each update: an older renderer's are never read again.
+Type: filesandordirs; Name: "{app}\shader_cache"
 
 [Files]
 Source: "{#SourceDir}\mc3.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -85,6 +96,7 @@ Source: "{#SourceDir}\docs\CHANGELOG.md"; DestDir: "{app}\docs"; Flags: ignoreve
 Source: "{#SourceDir}\docs\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\THIRD_PARTY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\licenses\*"; DestDir: "{app}\docs\licenses"; Flags: ignoreversion
+Source: "{#SourceDir}\shader_cache\*"; DestDir: "{app}\shader_cache"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{cm:ShortcutName}"; Filename: "{app}\mc3.exe"
