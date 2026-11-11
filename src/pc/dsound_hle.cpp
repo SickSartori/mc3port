@@ -771,6 +771,7 @@ HRESULT32 __stdcall StreamPause(uint32_t self, uint32_t pause) {
 HRESULT32 __stdcall StreamFlushEx(uint32_t self, uint32_t, uint32_t, uint32_t flags) {
     if (!(flags & (kFlushExAsync | kFlushExEnvelope))) return StreamFlush(self);
     GameLock lock(audio_lock());
+    trace_voice(*voice_of(self), "flushex", flags);
     release_voice(*voice_of(self));
     return kOk;
 }

@@ -287,6 +287,15 @@ const Patch kPatches[] = {
 // On the GPU thread, for each new frame shown: `vblanks` since the previous one. The average over the last frames sets
 // the fixed step, so that game time follows real time even when frames come late now and then.
 void time_frame_shown(uint32_t vblanks) {
+    // A frame of 100 ms or more (MC3_LONG_FRAME_MS=<ms> sets another limit) is a hitch the player sees: in the log, to
+    // find what made it.
+    static const uint32_t long_frame_ms = [] {
+        char value[16] = {};
+        return GetEnvironmentVariableA("MC3_LONG_FRAME_MS", value, sizeof(value)) ? std::max(1, std::atoi(value)) : 100;
+    }();
+    if (vblanks * 1000 >= long_frame_ms * nv2a_vblank_hz() && vblanks < nv2a_vblank_hz() * 10) {
+        log_line("time: a frame took %u ms", vblanks * 1000 / nv2a_vblank_hz());
+    }
     static uint32_t recent[8] = {};
     static uint32_t shown = 0;
     recent[shown++ % 8] = std::min<uint32_t>(vblanks, 8);
