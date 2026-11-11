@@ -65,6 +65,8 @@ And around the game:
 - **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
 - **A HUD of its own**, optional: speedometer, rev counter, gear and special ability drawn sharp at any resolution.
 - **Sharp 2D pictures**: the radar's map, icons, letters and the cars' stickers enlarged with clean edges.
+- **Your own music** on the game's radio: playlists made in the launcher's Music page from MP3, FLAC, WAV, WMA or M4A
+  files, chosen in the game in Pause > Options > Audio Options.
 - **Cheats** in the in-game menu: money for your career, and the game's own codes with what each one does.
 - **Quality of life**: frame counter, opening films skipped, readable loading screens if you want them, an update
   check with a verified download, and a crash report that fills in the bug form for you.

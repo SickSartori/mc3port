@@ -4,6 +4,7 @@
 #include <d3dcompiler.h>
 #include <dxgi1_2.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 #include <bcrypt.h>
 #include <winhttp.h>
 #include <wrl/client.h>
@@ -18,13 +19,16 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "../../res/launcher_resources.h"
@@ -47,6 +51,7 @@
 #include "pc/renderer_d3d11.h"
 #include "pc/launcher_style.h"
 #include "pc/settings.h"
+#include "pc/soundtracks.h"
 #include "pc/update_check.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
@@ -94,6 +99,11 @@ struct Texts {
     const char *move_heading, *move_sub, *move_failed, *move_button;
     const char *move_title, *move_lead, *move_now, *move_later;
     const char *vsync, *vsync_sub;
+    const char *music, *music_none, *music_building, *music_saving, *music_failed, *music_new, *music_import,
+        *music_songs, *music_open, *music_back, *music_add, *music_rename, *music_delete, *music_sure, *music_ok,
+        *music_page, *music_previous, *music_next, *music_dialog, *music_files_dialog, *music_new_name;
+    const char *back_to_launcher, *back_to_launcher_sub, *back_to_launcher_button, *menu_launcher;
+    const char *menu_music, *music_lead;
 };
 
 const Texts kEnglish = {
@@ -150,6 +160,15 @@ const Texts kEnglish = {
     "Could not move them: close what uses them, then try again", "Move",
     "Move your files", "Your saves and settings from an earlier version are in a hidden folder. Move them to Documents\\mc3port, where they are easy to find and copy. Until you do, the game keeps using them where they are.", "Move now", "Later",
     "VSync", "On: the picture never tears, but a slow PC may drop to 30 fps",
+    "Your music",
+    "No playlists yet. Import a folder (each subfolder becomes a playlist) or make a new playlist from some songs.",
+    "Converting %zu of %zu: %s", "Saving", "Something did not work: %s", "New playlist", "Import folder",
+    "%zu songs, %s", "Open", "Back", "Add songs", "Rename", "Delete", "Sure?", "OK", "Page %d of %d", "Previous",
+    "Next", "Choose your music folder: each subfolder becomes a playlist", "Choose the songs to add", "Playlist %d",
+    "BACK TO THE LAUNCHER",
+    "The game closes and the launcher opens again, as at the start: every setting, the disc and your music can be changed there. Progress since the last save is lost.",
+    "OPEN THE LAUNCHER", "LAUNCHER",
+    "MUSIC", "Your own songs on the game's radio. Make your playlists here (MP3, FLAC, WAV, WMA, M4A); in the game choose one in Pause > Options > Audio Options, the Music selector.",
 };
 
 const Texts kItalian = {
@@ -210,6 +229,16 @@ const Texts kItalian = {
     "Spostamento non riuscito: chiudi ci\xC3\xB2 che li usa e riprova", "Sposta",
     "Sposta i tuoi file", "I salvataggi e le impostazioni di una versione precedente sono in una cartella nascosta. Spostali in Documenti\\mc3port, dove sono facili da trovare e copiare. Finch\xC3\xA9 non lo fai, il gioco continua a usarli dove sono.", "Sposta ora", "Pi\xC3\xB9 tardi",
     "VSync", "Acceso: l'immagine non si taglia mai, ma su un PC lento pu\xC3\xB2 scendere a 30 fps",
+    "La tua musica",
+    "Ancora nessuna playlist. Importa una cartella (ogni sottocartella diventa una playlist) o crea una nuova playlist da alcuni brani.",
+    "Converto %zu di %zu: %s", "Salvo", "Qualcosa non \xC3\xA8 andato: %s", "Nuova playlist", "Importa cartella",
+    "%zu brani, %s", "Apri", "Indietro", "Aggiungi brani", "Rinomina", "Elimina", "Sicuro?", "OK", "Pagina %d di %d",
+    "Precedenti", "Successivi", "Scegli la cartella della musica: ogni sottocartella diventa una playlist",
+    "Scegli i brani da aggiungere", "Playlist %d",
+    "TORNA AL LAUNCHER",
+    "Il gioco si chiude e si riapre il launcher, come all'avvio: l\xC3\xAC si cambiano tutte le impostazioni, il disco e la tua musica. I progressi dall'ultimo salvataggio andranno persi.",
+    "APRI IL LAUNCHER", "LAUNCHER",
+    "MUSICA", "I tuoi brani alla radio del gioco. Crea qui le tue playlist (MP3, FLAC, WAV, WMA, M4A); nel gioco scegline una in Pausa > Opzioni > Opzioni audio, selettore Musica.",
 };
 
 const Texts& T() {
@@ -217,6 +246,166 @@ const Texts& T() {
     return texts;
 }
 bool italian() { return &T() == &kItalian; }
+
+// --- your music (custom soundtracks, soundtracks.cpp) ---
+
+std::filesystem::path music_folder() {
+    return data_directory() / "xbox_hdd" / "Partition1" / "TDATA" / "FFFE0000" / "MUSIC";
+}
+
+// The playlists, and the change being made to them on a thread of its own (conversions take a while).
+struct MusicState {
+    std::mutex mutex;
+    bool loaded = false, running = false, saving = false, stop = false;
+    size_t done = 0, total = 0;
+    std::string file, problem;  // the file being converted; what did not work (UTF-8)
+    std::vector<MusicPlaylist> playlists;
+    std::thread worker;
+};
+MusicState g_music;
+
+std::string utf8(const std::wstring& text) {
+    std::string out(WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0, nullptr,
+                                        nullptr),
+                    '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), static_cast<int>(out.size()),
+                        nullptr, nullptr);
+    return out;
+}
+
+std::wstring wide(const std::string& text) {
+    std::wstring out(MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), nullptr, 0), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()), out.data(), static_cast<int>(out.size()));
+    return out;
+}
+
+using MusicChange = std::function<std::string(std::vector<MusicPlaylist>&)>;
+
+// Progress of the files `offset` and on, out of `total`; false once the launcher closes.
+std::function<bool(size_t, size_t, const std::wstring&)> music_progress(size_t offset, size_t total) {
+    return [offset, total](size_t done, size_t, const std::wstring& file) {
+        std::lock_guard<std::mutex> lock(g_music.mutex);
+        g_music.done = offset + done, g_music.total = total, g_music.file = utf8(file);
+        return !g_music.stop;
+    };
+}
+
+// `change` gets a copy of the playlists (and returns what did not work), which is then saved and MUSIC read again. One
+// change at a time; none while one runs.
+void change_music(MusicChange change) {
+    std::vector<MusicPlaylist> playlists;
+    {
+        std::lock_guard<std::mutex> lock(g_music.mutex);
+        if (g_music.running) return;
+        if (g_music.worker.joinable()) g_music.worker.join();  // finished: running is false
+        g_music.running = true;
+        g_music.saving = false;
+        g_music.done = g_music.total = 0;
+        g_music.file.clear(), g_music.problem.clear();
+        playlists = g_music.playlists;
+    }
+    g_music.worker = std::thread([change = std::move(change), playlists = std::move(playlists)]() mutable {
+        const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        std::string problem = change(playlists);
+        {
+            std::lock_guard<std::mutex> lock(g_music.mutex);
+            g_music.saving = true;
+        }
+        const std::string saved = save_music(music_folder(), playlists);
+        if (!saved.empty()) problem = saved;
+        std::vector<MusicPlaylist> loaded = load_music(music_folder());
+        if (SUCCEEDED(com)) CoUninitialize();
+        size_t songs = 0;
+        for (const MusicPlaylist& playlist : loaded) songs += playlist.songs.size();
+        log_line("music: %zu playlists, %zu songs%s%s", loaded.size(), songs, problem.empty() ? "" : "; ", problem.c_str());
+        std::lock_guard<std::mutex> lock(g_music.mutex);
+        g_music.playlists = std::move(loaded);
+        g_music.problem = problem;
+        g_music.running = false;
+    });
+}
+
+// When the launcher closes: a conversion stops after its file, and what is converted is saved.
+void finish_music() {
+    {
+        std::lock_guard<std::mutex> lock(g_music.mutex);
+        g_music.stop = true;
+    }
+    if (g_music.worker.joinable()) g_music.worker.join();
+    g_music.stop = false;
+}
+
+// Converts `files` into a playlist: the one at `index`, or a new one after the others (index past them).
+MusicChange add_songs_change(std::vector<std::filesystem::path> files, size_t index) {
+    return [files = std::move(files), index](std::vector<MusicPlaylist>& playlists) -> std::string {
+        if (index >= playlists.size()) {
+            if (playlists.size() >= kMaxSoundtracks) return "at most 100 playlists";
+            int number = 1;  // "Playlist N", the first N no playlist has
+            for (bool taken = true; taken; ) {
+                char name[32];
+                std::snprintf(name, sizeof(name), T().music_new_name, number);
+                taken = false;
+                for (const MusicPlaylist& playlist : playlists) taken |= playlist.name == wide(name);
+                if (taken) ++number;
+                else playlists.push_back({wide(name), {}});
+            }
+        }
+        MusicPlaylist& playlist = index < playlists.size() ? playlists[index] : playlists.back();
+        return import_songs(files, music_folder(), playlist, music_progress(0, files.size())).error;
+    };
+}
+
+// A folder: each subfolder a playlist, its own files one more, after the playlists there are.
+MusicChange import_folder_change(std::filesystem::path source) {
+    return [source = std::move(source)](std::vector<MusicPlaylist>& playlists) -> std::string {
+        const auto plan = folder_playlists(source);
+        size_t total = 0, offset = 0;
+        for (const auto& [name, files] : plan) total += files.size();
+        if (!total) return "no audio files (MP3, FLAC, WAV, WMA, M4A) in " + utf8(source.filename().wstring());
+        std::string problem;
+        for (const auto& [name, files] : plan) {
+            if (playlists.size() >= kMaxSoundtracks) return "at most 100 playlists";
+            MusicPlaylist playlist{name.substr(0, kSoundtrackNameLength), {}};
+            const MusicImport import = import_songs(files, music_folder(), playlist, music_progress(offset, total));
+            offset += files.size();
+            if (problem.empty()) problem = import.error;
+            if (!playlist.songs.empty()) playlists.push_back(std::move(playlist));
+        }
+        return problem;
+    };
+}
+
+// The open dialog for a folder (folder) or audio files (several at once); nothing when closed.
+std::vector<std::filesystem::path> ask_for_music(HWND owner, bool folder) {
+    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    std::vector<std::filesystem::path> chosen;
+    ComPtr<IFileOpenDialog> dialog;
+    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
+        DWORD options = 0;
+        dialog->GetOptions(&options);
+        dialog->SetOptions(options | FOS_FORCEFILESYSTEM | (folder ? FOS_PICKFOLDERS : FOS_ALLOWMULTISELECT | FOS_FILEMUSTEXIST));
+        dialog->SetTitle(wide(folder ? T().music_dialog : T().music_files_dialog).c_str());
+        if (!folder) {
+            const COMDLG_FILTERSPEC filter{L"Audio (MP3, FLAC, WAV, WMA, M4A)", L"*.mp3;*.flac;*.wav;*.wma;*.m4a;*.aac"};
+            dialog->SetFileTypes(1, &filter);
+        }
+        ComPtr<IShellItemArray> items;
+        DWORD count = 0;
+        if (SUCCEEDED(dialog->Show(owner)) && SUCCEEDED(dialog->GetResults(&items)) && SUCCEEDED(items->GetCount(&count))) {
+            for (DWORD i = 0; i < count; ++i) {
+                ComPtr<IShellItem> item;
+                PWSTR path = nullptr;
+                if (SUCCEEDED(items->GetItemAt(i, &item)) && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+                    chosen.emplace_back(path);
+                    CoTaskMemFree(path);
+                }
+            }
+        }
+    }
+    if (SUCCEEDED(com)) CoUninitialize();
+    std::sort(chosen.begin(), chosen.end());
+    return chosen;
+}
 
 // --- colours ---
 
@@ -570,7 +759,7 @@ public:
 
 private:
     // In game, kPlay is the pause page and kQuit the page that exits the game.
-    enum class Page { kPlay, kSettings, kControls, kCheats, kAbout, kQuit };
+    enum class Page { kPlay, kSettings, kControls, kMusic, kCheats, kAbout, kLauncher, kQuit };
 
     bool start_graphics();
     void start_imgui();
@@ -660,10 +849,31 @@ private:
     void page_wizard();
     void page_paused();
     void page_exit();
+    void page_launcher();
+    void page_music();
     // The file dialog makes the game window its owner, which needs the window thread: never while g_ui_mutex is
     // held (that thread waits for it in window_hook). Clicks only ask for it; run() opens it between frames.
     void choose_disc() { choose_disc_requested_ = true; }
     void run_disc_dialog();
+    // Your music (page_music): the playlist open (-1 the list), the pages shown, the name being typed.
+    enum class MusicDialog { kNone, kFolder, kNewPlaylist, kAddSongs };  // opened between frames, like the disc's
+    static constexpr int kNotRenaming = -2, kRenamingPlaylist = -1;      // else the song renamed
+    MusicDialog music_dialog_ = MusicDialog::kNone;
+    size_t music_dialog_index_ = 0;  // the playlist Add songs is for
+    int music_open_ = -1, music_list_page_ = 0, music_song_page_ = 0, music_renaming_ = kNotRenaming;
+    char music_name_[128] = {};
+    bool music_name_focus_ = false;
+    std::string music_confirm_;  // the Delete pressed once ("playlist", "song<n>"), until 4 s after
+    double music_confirm_time_ = 0;
+    int rows_fit(float row, float below) const;
+    float button_width(const char* label) const;
+    bool delete_button(const std::string& what, ImVec2 at, const char* id);
+    std::optional<std::wstring> name_field(const char* id, ImVec2 at, float width);
+    std::optional<std::wstring> take_name();
+    void start_renaming(int what, const std::wstring& name);
+    void music_pager(int& page, int pages);
+    void music_list(const std::vector<MusicPlaylist>& playlists);
+    MusicChange music_playlist(const MusicPlaylist& playlist, size_t index);
     void set_setting(const char* key, float value) { setting_save(key, value); }
     int style() const;
     void apply_style(int style);
@@ -1436,10 +1646,32 @@ void restart_to_move_old_data() {
     end_process(0);
 }
 
+// The game closes and the launcher opens again, as at the first start: settings that need a restart, the disc and your
+// music can all be changed there. The command line stays (a frontend's disc is still the one shown).
+void back_to_launcher() {
+    wchar_t exe[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring command = GetCommandLineW();
+    SetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", nullptr);
+    SetEnvironmentVariableW(L"MC3_SHOW_LAUNCHER", L"1");
+    SetEnvironmentVariableW(L"MC3_RESTART_FROM", std::to_wstring(GetCurrentProcessId()).c_str());
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(exe, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
+        log_line("game menu: back to the launcher failed (error %lu)", GetLastError());
+        return;
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    log_line("game menu: back to the launcher");
+    end_process(0);
+}
+
 void restart_game() {
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     std::wstring command = GetCommandLineW();
+    SetEnvironmentVariableW(L"MC3_SHOW_LAUNCHER", nullptr);  // after "Back to the launcher": a restart goes straight on
     SetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", L"1");
     SetEnvironmentVariableW(L"MC3_RESTART_FROM", std::to_wstring(GetCurrentProcessId()).c_str());
     STARTUPINFOW startup{sizeof(startup)};
@@ -2091,9 +2323,9 @@ void Launcher::frame(float now, float dt) {
 
     // Menu (hidden during the first-run guide).
     if (!wizard_) {
-        const char* labels[] = {t.play, t.settings, t.controls, t.about, t.quit};
-        const Page targets[] = {Page::kPlay, Page::kSettings, Page::kControls, Page::kAbout, Page::kQuit};
-        side_menu(now, since, labels, targets, 5);
+        const char* labels[] = {t.play, t.settings, t.controls, t.menu_music, t.about, t.quit};
+        const Page targets[] = {Page::kPlay, Page::kSettings, Page::kControls, Page::kMusic, Page::kAbout, Page::kQuit};
+        side_menu(now, since, labels, targets, 6);
     }
     panel(now, since);
     bottom_bar(since);
@@ -2149,6 +2381,8 @@ void Launcher::panel(float now, float since) {
             case Page::kControls: page_controls(); break;
             case Page::kCheats: page_cheats(); break;
             case Page::kAbout: page_about(); break;
+            case Page::kLauncher: page_launcher(); break;
+            case Page::kMusic: page_music(); break;
             case Page::kQuit:
                 if (in_game_) page_exit();
                 break;
@@ -2716,6 +2950,307 @@ void Launcher::page_exit() {
     }
 }
 
+// --- your music: playlists made in the launcher (soundtracks.cpp writes them as the Xbox dashboard did) ---
+
+namespace {
+
+std::string duration(uint64_t milliseconds) {
+    const unsigned seconds = static_cast<unsigned>(milliseconds / 1000);
+    char text[32];
+    if (seconds >= 3600) {
+        std::snprintf(text, sizeof(text), "%u:%02u:%02u", seconds / 3600, seconds / 60 % 60, seconds % 60);
+    } else {
+        std::snprintf(text, sizeof(text), "%u:%02u", seconds / 60, seconds % 60);
+    }
+    return text;
+}
+
+std::string playlist_detail(const MusicPlaylist& playlist) {
+    uint64_t total = 0;
+    for (const MusicSong& song : playlist.songs) total += song.milliseconds;
+    char text[96];
+    std::snprintf(text, sizeof(text), T().music_songs, playlist.songs.size(), duration(total).c_str());
+    return text;
+}
+
+}  // namespace
+
+// How many rows of `row` fit under the cursor, leaving `below` for what follows them; at least 3.
+int Launcher::rows_fit(float row, float below) const {
+    const float room = static_cast<float>(height_) - px(48) - below - (origin_.y + cursor_);
+    return std::max(3, static_cast<int>(room / row));
+}
+
+float Launcher::button_width(const char* label) const { return measure(body_bold_, px(18), label).x + px(28); }
+
+// Delete, then Sure? for 4 s: true on the second press.
+bool Launcher::delete_button(const std::string& what, ImVec2 at, const char* id) {
+    const Texts& t = T();
+    const bool armed = music_confirm_ == what && ImGui::GetTime() - music_confirm_time_ < 4;
+    if (!small_button(armed ? t.music_sure : t.music_delete, at, id)) return false;
+    if (armed) {
+        music_confirm_.clear();
+        return true;
+    }
+    music_confirm_ = what;
+    music_confirm_time_ = ImGui::GetTime();
+    return false;
+}
+
+// The field a name is typed in: the new name on Enter, nothing on Escape (which then does nothing else).
+std::optional<std::wstring> Launcher::name_field(const char* id, ImVec2 at, float width) {
+    ImGui::SetCursorScreenPos(at);
+    ImGui::PushItemWidth(width);
+    ImGui::PushFont(body_bold_, px(18));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
+    if (music_name_focus_) {
+        ImGui::SetKeyboardFocusHere();
+        music_name_focus_ = false;
+    }
+    const bool entered =
+        ImGui::InputText(id, music_name_, sizeof(music_name_), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+    focus_ring();
+    if (ImGui::IsItemDeactivated() && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        music_renaming_ = kNotRenaming;
+        cancel_frame_ = ImGui::GetFrameCount();
+    }
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
+    ImGui::PopItemWidth();
+    return entered ? take_name() : std::nullopt;
+}
+
+// The typed name, without spaces around it and at most as long as the database keeps; none when empty.
+std::optional<std::wstring> Launcher::take_name() {
+    std::wstring name = wide(music_name_);
+    while (!name.empty() && iswspace(name.back())) name.pop_back();
+    while (!name.empty() && iswspace(name.front())) name.erase(name.begin());
+    music_renaming_ = kNotRenaming;
+    if (name.empty()) return std::nullopt;
+    return name.substr(0, kSoundtrackNameLength);
+}
+
+void Launcher::start_renaming(int what, const std::wstring& name) {
+    music_renaming_ = what;
+    music_name_focus_ = true;
+    std::snprintf(music_name_, sizeof(music_name_), "%s", utf8(name).c_str());
+}
+
+// Previous, the page, Next: shown when there is more than one page; both ends wrap around.
+void Launcher::music_pager(int& page, int pages) {
+    if (pages <= 1) return;
+    const Texts& t = T();
+    const float y = origin_.y + cursor_ + px(6);
+    ImVec2 size;
+    if (small_button(t.music_previous, ImVec2(origin_.x, y), "##music_previous", &size)) page = (page + pages - 1) % pages;
+    char label[48];
+    std::snprintf(label, sizeof(label), t.music_page, page + 1, pages);
+    const ImVec2 label_size = measure(body_, px(17), label);
+    text(body_, px(17), ImVec2(origin_.x + (panel_width_ - label_size.x) / 2, y + (size.y - label_size.y) / 2), kDim, label);
+    if (small_button(t.music_next, ImVec2(origin_.x + panel_width_ - button_width(t.music_next), y), "##music_next")) {
+        page = (page + 1) % pages;
+    }
+    cursor_ += size.y + px(16);
+}
+
+// The playlists: New playlist and Import folder, then each with its songs and length, to open.
+void Launcher::music_list(const std::vector<MusicPlaylist>& playlists) {
+    const Texts& t = T();
+    lead(t.music_lead);
+    const float y = origin_.y + cursor_;
+    ImVec2 size;
+    if (small_button(t.music_new, ImVec2(origin_.x, y), "##music_new", &size)) music_dialog_ = MusicDialog::kNewPlaylist;
+    if (small_button(t.music_import, ImVec2(origin_.x + size.x + px(12), y), "##music_import")) {
+        music_dialog_ = MusicDialog::kFolder;
+    }
+    cursor_ += size.y + px(20);
+    if (playlists.empty()) {
+        lead(t.music_none);
+        return;
+    }
+    const int count = static_cast<int>(playlists.size()), per_page = rows_fit(px(74), px(60));
+    const int pages = (count + per_page - 1) / per_page;
+    music_list_page_ = std::min(music_list_page_, pages - 1);
+    for (int i = music_list_page_ * per_page; i < std::min(count, (music_list_page_ + 1) * per_page); ++i) {
+        char id[32];
+        std::snprintf(id, sizeof(id), "##playlist%d", i);
+        if (status(true, utf8(playlists[i].name).c_str(), playlist_detail(playlists[i]).c_str(), t.music_open, id)) {
+            music_open_ = i;
+            music_song_page_ = 0;
+            music_renaming_ = kNotRenaming;
+            focus_panel_ = true;
+        }
+    }
+    music_pager(music_list_page_, pages);
+}
+
+// One playlist: its name (renamed in place), Back, Add songs, Rename, Delete, then its songs, each renamed or deleted.
+MusicChange Launcher::music_playlist(const MusicPlaylist& playlist, size_t index) {
+    const Texts& t = T();
+    MusicChange change;
+    float y = origin_.y + cursor_;
+    if (music_renaming_ == kRenamingPlaylist) {
+        if (const auto name = name_field("##playlist_name", ImVec2(origin_.x, y), panel_width_)) {
+            change = [index, name = *name](std::vector<MusicPlaylist>& playlists) {
+                if (index < playlists.size()) playlists[index].name = name;
+                return std::string();
+            };
+        }
+    } else {
+        list_->PushClipRect(ImVec2(origin_.x, y), ImVec2(origin_.x + panel_width_, y + px(40)), true);
+        text(body_bold_, px(28), ImVec2(origin_.x, y), kInk, utf8(playlist.name).c_str());
+        list_->PopClipRect();
+    }
+    text(body_, px(17), ImVec2(origin_.x, y + px(40)), kDim, playlist_detail(playlist).c_str());
+    cursor_ += px(72);
+
+    y = origin_.y + cursor_;
+    float x = origin_.x;
+    ImVec2 size;
+    if (small_button(t.music_back, ImVec2(x, y), "##music_back", &size)) {
+        music_open_ = -1;
+        music_renaming_ = kNotRenaming;
+        focus_panel_ = true;
+    }
+    x += size.x + px(12);
+    if (small_button(t.music_add, ImVec2(x, y), "##music_add", &size)) {
+        music_dialog_ = MusicDialog::kAddSongs;
+        music_dialog_index_ = index;
+    }
+    x += size.x + px(12);
+    const bool renaming = music_renaming_ == kRenamingPlaylist;
+    if (small_button(renaming ? t.music_ok : t.music_rename, ImVec2(x, y), "##music_rename", &size)) {
+        if (!renaming) {
+            start_renaming(kRenamingPlaylist, playlist.name);
+        } else if (const auto name = take_name()) {
+            change = [index, name = *name](std::vector<MusicPlaylist>& playlists) {
+                if (index < playlists.size()) playlists[index].name = name;
+                return std::string();
+            };
+        }
+    }
+    x += size.x + px(12);
+    if (delete_button("playlist", ImVec2(x, y), "##music_delete")) {
+        music_open_ = -1;
+        focus_panel_ = true;
+        change = [index](std::vector<MusicPlaylist>& playlists) {
+            if (index < playlists.size()) playlists.erase(playlists.begin() + static_cast<std::ptrdiff_t>(index));
+            return std::string();
+        };
+    }
+    cursor_ += size.y + px(18);
+
+    // The songs: number, name, length, Rename, Delete.
+    const float row = px(46);
+    const int count = static_cast<int>(playlist.songs.size()), per_page = rows_fit(row, px(60));
+    const int pages = (count + per_page - 1) / per_page;
+    music_song_page_ = std::min(music_song_page_, std::max(0, pages - 1));
+    for (int s = music_song_page_ * per_page; s < std::min(count, (music_song_page_ + 1) * per_page); ++s) {
+        const MusicSong& song = playlist.songs[s];
+        y = origin_.y + cursor_;
+        const bool this_one = music_renaming_ == s;
+        const std::string what = "song" + std::to_string(s);
+        const bool armed = music_confirm_ == what && ImGui::GetTime() - music_confirm_time_ < 4;
+        const float delete_x = origin_.x + panel_width_ - button_width(armed ? t.music_sure : t.music_delete);
+        const float rename_x = delete_x - px(8) - button_width(this_one ? t.music_ok : t.music_rename);
+        const std::string length = duration(song.milliseconds);
+        const float length_x = rename_x - px(14) - measure(body_, px(17), length.c_str()).x;
+        char number[8], id[32];
+        std::snprintf(number, sizeof(number), "%02d", s + 1);
+        text(body_bold_, px(16), ImVec2(origin_.x, y + px(12)), kDim, number);
+        const float name_x = origin_.x + px(36);
+        if (this_one) {
+            if (const auto name = name_field("##song_name", ImVec2(name_x, y + px(4)), length_x - px(12) - name_x)) {
+                change = [index, s, name = *name](std::vector<MusicPlaylist>& playlists) {
+                    if (index < playlists.size() && static_cast<size_t>(s) < playlists[index].songs.size()) {
+                        playlists[index].songs[s].name = name;
+                    }
+                    return std::string();
+                };
+            }
+        } else {
+            list_->PushClipRect(ImVec2(name_x, y), ImVec2(length_x - px(12), y + row), true);
+            text(body_, px(19), ImVec2(name_x, y + px(10)), kInk, utf8(song.name).c_str());
+            list_->PopClipRect();
+        }
+        text(body_, px(17), ImVec2(length_x, y + px(12)), kDim, length.c_str());
+        std::snprintf(id, sizeof(id), "##song_rename%d", s);
+        if (small_button(this_one ? t.music_ok : t.music_rename, ImVec2(rename_x, y + px(5)), id)) {
+            if (!this_one) {
+                start_renaming(s, song.name);
+            } else if (const auto name = take_name()) {
+                change = [index, s, name = *name](std::vector<MusicPlaylist>& playlists) {
+                    if (index < playlists.size() && static_cast<size_t>(s) < playlists[index].songs.size()) {
+                        playlists[index].songs[s].name = name;
+                    }
+                    return std::string();
+                };
+            }
+        }
+        std::snprintf(id, sizeof(id), "##song_delete%d", s);
+        if (delete_button(what, ImVec2(delete_x, y + px(5)), id)) {
+            if (count == 1) music_open_ = -1;  // its last song: the playlist goes too
+            change = [index, s](std::vector<MusicPlaylist>& playlists) {
+                if (index < playlists.size() && static_cast<size_t>(s) < playlists[index].songs.size()) {
+                    playlists[index].songs.erase(playlists[index].songs.begin() + s);
+                }
+                return std::string();
+            };
+        }
+        cursor_ += row;
+        list_->AddLine(ImVec2(origin_.x, origin_.y + cursor_ - px(2)), ImVec2(origin_.x + panel_width_, origin_.y + cursor_ - px(2)),
+                       fade(IM_COL32(255, 255, 255, 16)));
+    }
+    cursor_ += px(8);
+    music_pager(music_song_page_, pages);
+    return change;
+}
+
+// Your music, a page of the launcher's menu (not in the game: the game reads the playlists when free roam starts). The
+// list of playlists, or the one opened; every change is saved at once (change_music).
+void Launcher::page_music() {
+    const Texts& t = T();
+    title(t.menu_music);
+    std::unique_lock<std::mutex> lock(g_music.mutex);
+    if (!g_music.loaded && !g_music.running) {
+        g_music.playlists = load_music(music_folder());
+        g_music.loaded = true;
+    }
+    char detail[512];
+    if (g_music.running) {
+        lead(t.music_lead);
+        if (g_music.saving || !g_music.total) {
+            std::snprintf(detail, sizeof(detail), "%s", t.music_saving);
+        } else {
+            std::snprintf(detail, sizeof(detail), t.music_building, std::min(g_music.done + 1, g_music.total), g_music.total,
+                          g_music.file.c_str());
+        }
+        status(false, t.music, detail, nullptr, nullptr, true);
+        return;
+    }
+    if (!g_music.problem.empty()) {
+        std::snprintf(detail, sizeof(detail), t.music_failed, g_music.problem.c_str());
+        if (status(false, t.music, detail, t.music_ok, "##music_problem")) g_music.problem.clear();
+    }
+    if (music_open_ >= static_cast<int>(g_music.playlists.size())) music_open_ = -1;
+    MusicChange change;
+    if (music_open_ < 0) {
+        music_list(g_music.playlists);
+    } else {
+        change = music_playlist(g_music.playlists[music_open_], static_cast<size_t>(music_open_));
+    }
+    lock.unlock();
+    if (change) change_music(std::move(change));
+}
+
+// In the game menu: the launcher again, as at the start (back_to_launcher).
+void Launcher::page_launcher() {
+    const Texts& t = T();
+    title(t.back_to_launcher);
+    lead(t.back_to_launcher_sub);
+    if (big_button(t.back_to_launcher_button, "##back_to_launcher", false)) back_to_launcher();
+}
+
 void Launcher::frame_in_game(float now) {
     const Texts& t = T();
     const ImVec2 screen(static_cast<float>(width_), static_cast<float>(height_));
@@ -2736,9 +3271,9 @@ void Launcher::frame_in_game(float now) {
     list_ = ImGui::GetWindowDrawList();
     // The launcher's entrance, twice as quick.
     header(since * 2);
-    const char* labels[] = {t.resume, t.settings, t.controls, t.cheats, t.quit};
-    const Page targets[] = {Page::kPlay, Page::kSettings, Page::kControls, Page::kCheats, Page::kQuit};
-    side_menu(now, since * 2, labels, targets, 5);
+    const char* labels[] = {t.resume, t.settings, t.controls, t.cheats, t.menu_launcher, t.quit};
+    const Page targets[] = {Page::kPlay, Page::kSettings, Page::kControls, Page::kCheats, Page::kLauncher, Page::kQuit};
+    side_menu(now, since * 2, labels, targets, 6);
     panel(now, since * 2);
     bottom_bar(since * 2);
     g_alpha = 1;
@@ -2964,7 +3499,17 @@ std::optional<GameDisc> Launcher::run() {
             choose_disc_requested_ = false;
             run_disc_dialog();
         }
+        if (music_dialog_ != MusicDialog::kNone) {
+            const MusicDialog dialog = std::exchange(music_dialog_, MusicDialog::kNone);
+            const std::vector<std::filesystem::path> chosen = ask_for_music(window_, dialog == MusicDialog::kFolder);
+            if (!chosen.empty()) {
+                change_music(dialog == MusicDialog::kFolder
+                                 ? import_folder_change(chosen[0])
+                                 : add_songs_change(chosen, dialog == MusicDialog::kAddSongs ? music_dialog_index_ : SIZE_MAX));
+            }
+        }
     }
+    finish_music();
     log_line("launcher: %s", play_ ? "play" : "quit");
     stop_graphics();
     return play_ ? std::move(disc_) : std::nullopt;

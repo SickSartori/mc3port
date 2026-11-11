@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### New
+
+- **Your own music on the game's radio** (#17). The launcher has a **Music** page: make playlists from your MP3,
+  FLAC, WAV, WMA or M4A files, add, rename and delete songs and playlists, or import a whole folder (each subfolder
+  becomes a playlist). mc3port converts the songs to the Xbox's format, as the Xbox dashboard did. In the game, choose
+  a playlist in Pause > Options > Audio Options, with the Music selector at the top.
+- **Back to the launcher** in the in-game menu (F1): the game closes and the launcher opens again, where the disc,
+  your music and the settings that need a restart can be changed.
+
 ### Fixed
 
 - **Micro stutter** when frames come late for a moment, for example while new textures enter the city. The game's
@@ -10,6 +19,8 @@
 - **Stutter the first time each effect shows.** The graphics card's shaders were compiled while playing, up to a
   second each (87 of them, 8 seconds in all, from the first start to the garage). The shaders now come with mc3port
   and are made ready at start, on a thread of their own: a first run compiles none while playing.
+- **Song titles in 16:9**: the first letters no longer drift towards the radar, and a long title no longer runs under
+  the dials. The scrolling text of the first screen (the legal notice) keeps its normal spacing.
 
 ### Improved
 
