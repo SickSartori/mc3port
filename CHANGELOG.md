@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Micro stutter** when frames come late for a moment, for example while new textures enter the city. The game's
+  step then jumped from 1/60 to 1/30 s for a frame and back, and the picture skipped ahead. The step now changes
+  only when the frame rate clearly changes.
+
 ## 0.3.6 (2026-11-10)
 
 ### New
