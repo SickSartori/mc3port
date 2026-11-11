@@ -13,6 +13,8 @@
 [![Downloads](https://img.shields.io/github/downloads/SickSartori/mc3port/total)](https://github.com/SickSartori/mc3port/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20(Wine)-blue)](#installing)
 [![Licence](https://img.shields.io/github/license/SickSartori/mc3port)](LICENSE)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
 [Download](https://github.com/SickSartori/mc3port/releases/latest) ·
 [Features](#features) ·
