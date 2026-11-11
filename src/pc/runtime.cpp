@@ -614,9 +614,12 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     load_key_bindings();
     nv2a_load_icons();  // the exe's resources, before the XBE overwrites them
     // The launcher, unless a disc image is given on the command line (frontends, test scripts) or MC3_SKIP_LAUNCHER
-    // or MC3_NO_DIALOG is set.
-    const bool skip_launcher = !command_line_disc().empty() || GetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", nullptr, 0) ||
-                               GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0);
+    // or MC3_NO_DIALOG is set. MC3_SHOW_LAUNCHER (the game menu's "Back to the launcher") shows it even with a disc on
+    // the command line.
+    const bool show_launcher = GetEnvironmentVariableW(L"MC3_SHOW_LAUNCHER", nullptr, 0) != 0;
+    const bool skip_launcher = GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0) ||
+                               (!show_launcher && (!command_line_disc().empty() ||
+                                                   GetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", nullptr, 0)));
     std::optional<GameDisc> disc =
         skip_launcher ? open_game_disc(exe_directory) : run_launcher(nv2a_open_window(), exe_directory);
     if (!disc) {

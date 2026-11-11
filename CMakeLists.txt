@@ -74,9 +74,10 @@ if(WIN32)
         src/pc/renderer_game.cpp
         src/pc/runtime.cpp
         src/pc/settings.cpp
+        src/pc/soundtracks.cpp
         res/launcher.rc
     )
-    target_link_libraries(mc3runtime PRIVATE xportcore shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp windowscodecs imgui mfplat mfreadwrite mfuuid shlwapi SDL3::SDL3-static)
+    target_link_libraries(mc3runtime PRIVATE xportcore shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp windowscodecs imgui mf mfplat mfreadwrite mfuuid shlwapi SDL3::SDL3-static)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
                                MC3PORT_VERSION="${PROJECT_VERSION}" ${MC3_VERSION_DEFINES})
     target_compile_options(mc3runtime PRIVATE /utf-8)
@@ -115,6 +116,8 @@ if(WIN32)
         endfunction()
         mc3_test(test_direction_pace)
         mc3_test(test_frame_step)
+        mc3_test(test_soundtracks src/pc/soundtracks.cpp)
+        target_link_libraries(test_soundtracks PRIVATE mf mfplat mfreadwrite mfuuid ole32 shell32)
         mc3_test(test_audio_gains)
         mc3_test(test_launcher_style src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp)
         mc3_test(test_settings src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp)
