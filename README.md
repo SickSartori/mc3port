@@ -377,6 +377,13 @@ is always off. If you accept an update, the launcher downloads the new installer
 GitHub releases. **Report a problem** only opens GitHub's bug form in your browser, filled in for you to read and send
 yourself. The game's online play is not available.
 
+## Supporting the project
+
+mc3port is free and always will be: no paid builds, no early access, no locked features. If you enjoy it and want to
+say thanks, you can support its author on [GitHub Sponsors](https://github.com/sponsors/SickSartori) or
+[Ko-fi](https://ko-fi.com/sicksartori). It is never needed to play, and it buys nothing: it gives more time for fixes,
+features and the next port.
+
 ## Licence
 
 mc3port's code in this repository is released under the [MIT licence](LICENSE), and so is the shared runtime
