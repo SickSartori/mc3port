@@ -67,7 +67,7 @@ using Microsoft::WRL::ComPtr;
 
 constexpr char kRepository[] = "SickSartori/mc3port";
 
-// --- texts: the launcher speaks Windows' language (Italian, else English) ---
+// --- texts: the launcher speaks Windows' language (Italian, Portuguese, Spanish, else English) ---
 
 struct Texts {
     const char *play, *settings, *controls, *about, *quit;
@@ -84,6 +84,8 @@ struct Texts {
         *legal,
         *credits;
     const char *update_now, *update_install_sub, *downloading, *update_failed;
+    const char *update_title, *update_lead, *update_big, *update_install, *update_install_note, *update_page,
+        *update_portable_note, *update_later, *update_progress, *update_ready, *update_install_small;
     const char *welcome, *welcome_lead, *next, *style_title, *style_lead, *all_set, *all_set_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
@@ -132,8 +134,12 @@ const Texts kEnglish = {
     "The form on GitHub, already filled in, and the log to attach", "Update to %s",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "Licences, credits and how to contribute: on GitHub",
-    "Update", "Downloads and checks the installer, then shows it to you to start", "Downloading the update...",
+    "Update", "Downloads and checks the installer; then you start it with one click", "Downloading the update...",
     "The update could not be downloaded or checked",
+    "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE", "INSTALL",
+    "The launcher closes and the installer opens. Your saves and settings stay.", "OPEN THE PAGE",
+    "This copy is portable: download the new version from the release page.", "Later", "%.1f of %.1f MB",
+    "Update ready", "Install",
     "WELCOME", "You need your own copy: a disc image (ISO) of the Xbox Midnight Club 3: DUB Edition Remix, Europe or USA.",
     "NEXT", "STYLE", "Original is the game as it was on the Xbox, Enhanced the best this port can show. You can change it any time in the settings.", "ALL SET",
     "Disc verified. Connect a controller or use the keyboard.",
@@ -199,8 +205,12 @@ const Texts kItalian = {
     "Il modulo su GitHub, gi\xC3\xA0 compilato, e il log da allegare", "Aggiorna alla %s",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenze, crediti e come contribuire: su GitHub",
-    "Aggiorna", "Scarica e verifica l'installer, poi te lo mostra da avviare", "Scarico l'aggiornamento...",
+    "Aggiorna", "Scarica e verifica l'installer, poi lo avvii con un clic", "Scarico l'aggiornamento...",
     "Non \xC3\xA8 stato possibile scaricare o verificare l'aggiornamento",
+    "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA", "INSTALLA",
+    "Il launcher si chiude e si apre l'installer. Salvataggi e impostazioni restano.", "APRI LA PAGINA",
+    "Questa copia \xC3\xA8 portatile: scarica la nuova versione dalla pagina della release.", "Pi\xC3\xB9 tardi",
+    "%.1f di %.1f MB", "Aggiornamento pronto", "Installa",
     "BENVENUTO",
     "Per giocare serve la tua copia: l'immagine ISO del disco Xbox di Midnight Club 3: DUB Edition Remix, Europa o USA.",
     "AVANTI", "STILE", "Originale \xC3\xA8 il gioco com'era sull'Xbox, Migliorata il meglio che questo port sa mostrare. Potrai cambiarlo quando vuoi nelle impostazioni.", "TUTTO PRONTO",
@@ -241,11 +251,167 @@ const Texts kItalian = {
     "MUSICA", "I tuoi brani alla radio del gioco. Crea qui le tue playlist (MP3, FLAC, WAV, WMA, M4A); nel gioco scegline una in Pausa > Opzioni > Opzioni audio, selettore Musica.",
 };
 
+// Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
+const Texts kPortuguese = {
+    "JOGAR", "CONFIGURAÇÕES", "CONTROLES", "SOBRE", "SAIR",
+    "PRONTO PARA CORRER", "As ruas de San Diego, Atlanta, Detroit e Tóquio esperam por você.", "Disco verificado",
+    "Nenhum disco escolhido", "Escolha a imagem do disco (ISO) da sua cópia de Xbox (Europa ou EUA).", "Trocar", "Escolher a ISO",
+    "Controle conectado", "Xbox, PlayStation e outros controles", "Nenhum controle", "O teclado também funciona", "Editar",
+    "Imagem", "Efeitos", "Jogo", "Áudio",
+    "Idioma do jogo", "Textos e vozes do jogo (não há português)", "Como o Windows", "Quadros por segundo", "60 é mais fluido; 30 como no Xbox",
+    "Volume do jogo", "Música do launcher", "A música de fundo desta tela; 0 desliga",
+    "Proporção", "16:9 usa o modo widescreen do próprio jogo", "Modo de janela", "Alt+Enter ou F11 durante o jogo",
+    "Janela", "Tela cheia",
+    "Estilo", "Como no Xbox: 30 fps, 4:3, 480p, sem efeitos modernos", "60 fps, 16:9, a resolução da sua tela, efeitos modernos", "As suas escolhas",
+    "Original", "Melhorado", "Personalizado",
+    "Resolução interna", "Bordas mais suaves, mais trabalho para a placa de vídeo",
+    "Filtro de texturas", "Vértices na placa de vídeo", "Mais rápido; desligue só para resolver problemas",
+    "Efeitos modernos", "Brilho, nitidez, cor e sombreamento (F10 durante o jogo)", "Sim", "Não",
+    "Nitidez", "Brilho das luzes", "Limite do brilho", "Saturação", "Contraste", "Vinheta", "Oclusão de ambiente",
+    "Tamanho da oclusão",
+    "Teclas do jogo", "Os controles funcionam como são. Escolha aqui as teclas do teclado.", "Tecla? Esc cancela",
+    "Restaurar teclas", "Teclas do PC", "Tela cheia sim/não", "Efeitos modernos sim/não", "Menus: mover, escolher, voltar",
+    "Controles de PlayStation, Switch e quase todos os outros funcionam, com os botões nas posições do Xbox.",
+    "Port nativo não oficial para Windows. Nenhum arquivo do jogo incluído: você precisa da sua cópia.", "Procurando atualizações...",
+    "Esta é a versão mais recente", "A versão %s está disponível", "Abre a página da versão; nada é baixado sozinho",
+    "Abrir", "Pasta de logs", "Para relatar um problema, anexe mc3port.log", "Relatar um problema",
+    "O formulário no GitHub, já preenchido, e o log para anexar", "Atualizar para %s",
+    "Midnight Club é uma marca da Take-Two Interactive / Rockstar Games. Este projeto não tem ligação com elas.",
+    "Licenças, créditos e como contribuir: no GitHub",
+    "Atualizar", "Baixa e verifica o instalador; depois você o inicia com um clique", "Baixando a atualização...",
+    "Não foi possível baixar ou verificar a atualização",
+    "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR", "INSTALAR",
+    "O launcher fecha e o instalador abre. Seus saves e configurações ficam.", "ABRIR A PÁGINA",
+    "Esta cópia é portátil: baixe a nova versão na página da versão.", "Mais tarde", "%.1f de %.1f MB",
+    "Atualização pronta", "Instalar",
+    "BEM-VINDO", "Você precisa da sua cópia: uma imagem de disco (ISO) do Midnight Club 3: DUB Edition Remix de Xbox, Europa ou EUA.",
+    "AVANÇAR", "ESTILO", "Original é o jogo como era no Xbox, Melhorado o melhor que este port consegue mostrar. Você pode mudar quando quiser nas configurações.", "TUDO PRONTO",
+    "Disco verificado. Conecte um controle ou use o teclado.",
+    "Disco", "Xbox · Europa ou EUA", "nenhum", "Controle", "conectado", "não conectado", "Versão", "Selecionar", "Voltar",
+    "CONTINUAR", "VOLTAR AO JOGO", "PAUSADO", "O jogo está pausado. F1 ou Esc para voltar.", "SAIR DO JOGO",
+    "O progresso desde o último save será perdido.", "SAIR", "Vale a partir do próximo início do jogo", "Menu do jogo",
+    "Contador de FPS", "Num canto durante o jogo", "Pausar em segundo plano",
+    "Abre o menu quando você troca de janela", "Continuar", "Abas", "Jogar",
+    "Direcional · A · B · LB RB · Start", "Controle: mover, escolher, voltar, abas, jogar", "Desfoque de movimento", "Páginas", "Mover", "Direcional",
+    "Mover · direita: entrar na página",
+    "Rastros das luzes",
+    "Pular os vídeos iniciais", "Os logos da Rockstar e a introdução, direto para a tela de título",
+    "Reinício necessário", "Para as mudanças que valem no início; o progresso não salvo é perdido", "Reiniciar agora",
+    "HUD", "O do mc3port: mostradores redesenhados, nítidos em qualquer resolução", "O do jogo", "Unidade de velocidade",
+    "Imagens nítidas", "Mapa do radar, ícones, letras e adesivos dos carros ampliados com bordas limpas",
+    "TRAPAÇAS", "As do mc3port, com uma carreira carregada, pelo menu durante o jogo; e os códigos do jogo, para consultar.",
+    "Dinheiro", "Somado à carreira: fica quando o jogo salva", "+ US$ 10.000", "Códigos do jogo",
+    "Digite-os no menu do jogo, Options > Cheat Codes (como o próprio jogo os confere).",
+    "Telas de carregamento", "Pelo menos este tempo, para lê-las como no Xbox",
+    "O jogo fechou com um erro da última vez", "mc3port-crash-report.zip está pronto para anexar a um relato", "Relatar", "Relatar o erro",
+    "O RivaTuner (RTSS) pode deixar o jogo muito lento", "Se travar: no RTSS ponha mc3.exe em detection level None, ou feche o RTSS",
+    "Pasta dos saves", "Seus perfis. Para um backup, copie toda a pasta xbox_hdd",
+    "Você tem arquivos de uma versão anterior", "Mover seus saves e configurações para Documentos\\mc3port",
+    "Não foi possível movê-los: feche o que os usa e tente de novo", "Mover",
+    "Mover seus arquivos", "Seus saves e configurações de uma versão anterior estão numa pasta oculta. Mova-os para Documentos\\mc3port, onde é fácil encontrá-los e copiá-los. Até lá, o jogo continua a usá-los onde estão.", "Mover agora", "Mais tarde",
+    "VSync", "Ligado: a imagem nunca se corta, mas um PC lento pode cair para 30 fps",
+    "Sua música",
+    "Ainda nenhuma playlist. Importe uma pasta (cada subpasta vira uma playlist) ou crie uma nova playlist com algumas músicas.",
+    "Convertendo %zu de %zu: %s", "Salvando", "Algo não funcionou: %s", "Nova playlist", "Importar pasta",
+    "%zu músicas, %s", "Abrir", "Voltar", "Adicionar músicas", "Renomear", "Excluir", "Certeza?", "OK", "Página %d de %d",
+    "Anteriores", "Próximas", "Escolha a pasta da sua música: cada subpasta vira uma playlist", "Escolha as músicas para adicionar",
+    "Playlist %d",
+    "VOLTAR AO LAUNCHER",
+    "O jogo fecha e o launcher abre de novo, como no início: lá se mudam todas as configurações, o disco e a sua música. O progresso desde o último save será perdido.",
+    "ABRIR O LAUNCHER", "LAUNCHER",
+    "MÚSICA", "Suas próprias músicas no rádio do jogo. Crie aqui as suas playlists (MP3, FLAC, WAV, WMA, M4A); no jogo escolha uma em Pause > Options > Audio Options, seletor Music.",
+};
+
+const Texts kSpanish = {
+    "JUGAR", "AJUSTES", "CONTROLES", "ACERCA DE", "SALIR",
+    "LISTO PARA CORRER", "Las calles de San Diego, Atlanta, Detroit y Tokio te esperan.", "Disco verificado",
+    "Ningún disco elegido", "Elige la imagen del disco (ISO) de tu copia de Xbox (Europa o EE. UU.).", "Cambiar", "Elegir la ISO",
+    "Mando conectado", "Mandos de Xbox, PlayStation y otros", "Ningún mando", "El teclado también funciona", "Editar",
+    "Imagen", "Efectos", "Juego", "Audio",
+    "Idioma del juego", "Textos y voces del juego", "Como Windows", "Fotogramas por segundo", "60 es más fluido; 30 como en Xbox",
+    "Volumen del juego", "Música del launcher", "La música de fondo de esta pantalla; 0 la apaga",
+    "Relación de aspecto", "16:9 usa el modo panorámico del propio juego", "Modo de ventana", "Alt+Intro o F11 mientras juegas",
+    "Ventana", "Pantalla completa",
+    "Estilo", "Como en Xbox: 30 fps, 4:3, 480p, sin efectos modernos", "60 fps, 16:9, la resolución de tu pantalla, efectos modernos", "Tus elecciones",
+    "Original", "Mejorado", "Personalizado",
+    "Resolución interna", "Bordes más suaves, más trabajo para la tarjeta gráfica",
+    "Filtro de texturas", "Vértices en la tarjeta gráfica", "Más rápido; apágalo solo para resolver problemas",
+    "Efectos modernos", "Resplandor, nitidez, color y sombreado (F10 mientras juegas)", "Sí", "No",
+    "Nitidez", "Resplandor de las luces", "Umbral del resplandor", "Saturación", "Contraste", "Viñeta", "Oclusión ambiental",
+    "Tamaño de la oclusión",
+    "Teclas del juego", "Los mandos funcionan tal como son. Elige aquí las teclas del teclado.", "¿Tecla? Esc cancela",
+    "Restaurar teclas", "Teclas del PC", "Pantalla completa sí/no", "Efectos modernos sí/no", "Menús: moverse, elegir, volver",
+    "Los mandos de PlayStation, Switch y casi todos los demás funcionan, con los botones en las posiciones de Xbox.",
+    "Port nativo no oficial para Windows. No incluye archivos del juego: necesitas tu copia.", "Buscando actualizaciones...",
+    "Esta es la última versión", "La versión %s está disponible", "Abre la página de la versión; nada se descarga solo",
+    "Abrir", "Carpeta de registros", "Para informar de un problema, adjunta mc3port.log", "Informar de un problema",
+    "El formulario en GitHub, ya rellenado, y el registro para adjuntar", "Actualizar a %s",
+    "Midnight Club es una marca de Take-Two Interactive / Rockstar Games. Este proyecto no está afiliado a ellas.",
+    "Licencias, créditos y cómo contribuir: en GitHub",
+    "Actualizar", "Descarga y comprueba el instalador; luego lo inicias con un clic", "Descargando la actualización...",
+    "No se pudo descargar o comprobar la actualización",
+    "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR", "INSTALAR",
+    "El launcher se cierra y se abre el instalador. Tus partidas y ajustes se quedan.", "ABRIR LA PÁGINA",
+    "Esta copia es portátil: descarga la nueva versión desde la página de la versión.", "Más tarde", "%.1f de %.1f MB",
+    "Actualización lista", "Instalar",
+    "BIENVENIDO", "Necesitas tu copia: una imagen de disco (ISO) de Midnight Club 3: DUB Edition Remix de Xbox, Europa o EE. UU.",
+    "SIGUIENTE", "ESTILO", "Original es el juego como era en Xbox, Mejorado lo mejor que este port puede mostrar. Puedes cambiarlo cuando quieras en los ajustes.", "TODO LISTO",
+    "Disco verificado. Conecta un mando o usa el teclado.",
+    "Disco", "Xbox · Europa o EE. UU.", "ninguno", "Mando", "conectado", "no conectado", "Versión", "Elegir", "Volver",
+    "CONTINUAR", "VOLVER AL JUEGO", "EN PAUSA", "El juego está en pausa. F1 o Esc para volver.", "SALIR DEL JUEGO",
+    "Se perderá el progreso desde la última partida guardada.", "SALIR", "Se aplica la próxima vez que empiece el juego", "Menú del juego",
+    "Contador de FPS", "En una esquina mientras juegas", "Pausa en segundo plano",
+    "Abre el menú cuando cambias de ventana", "Continuar", "Pestañas", "Jugar",
+    "Cruceta · A · B · LB RB · Start", "Mando: moverse, elegir, volver, pestañas, jugar", "Desenfoque de movimiento", "Páginas", "Mover", "Cruceta",
+    "Mover · derecha: entrar en la página",
+    "Estelas de las luces",
+    "Saltar los vídeos iniciales", "Los logotipos de Rockstar y la introducción, directo a la pantalla de título",
+    "Hace falta reiniciar", "Para los cambios que se aplican al empezar; se pierde el progreso no guardado", "Reiniciar ahora",
+    "HUD", "El de mc3port: indicadores redibujados, nítidos a cualquier resolución", "El del juego", "Unidad de velocidad",
+    "Imágenes nítidas", "El mapa del radar, iconos, letras y pegatinas de los coches ampliados con bordes limpios",
+    "TRUCOS", "Los de mc3port, con una carrera cargada, desde el menú durante el juego; y los códigos del juego, para consultar.",
+    "Dinero", "Se suma a la carrera: se queda cuando el juego guarda", "+ 10.000 $", "Códigos del juego",
+    "Escríbelos en el menú del juego, en las opciones de trucos (tal como los comprueba el propio juego).",
+    "Pantallas de carga", "Al menos este tiempo, para leerlas como en Xbox",
+    "La última vez el juego se cerró por un error", "mc3port-crash-report.zip está listo para adjuntar a un informe", "Informar", "Informar del error",
+    "RivaTuner (RTSS) puede ralentizar mucho el juego", "Si da tirones: en RTSS pon mc3.exe en detection level None, o cierra RTSS",
+    "Carpeta de partidas", "Tus perfiles. Para una copia de seguridad, copia toda la carpeta xbox_hdd",
+    "Tienes archivos de una versión anterior", "Mover tus partidas y ajustes a Documentos\\mc3port",
+    "No se pudieron mover: cierra lo que los usa y vuelve a intentarlo", "Mover",
+    "Mover tus archivos", "Tus partidas y ajustes de una versión anterior están en una carpeta oculta. Muévelos a Documentos\\mc3port, donde es fácil encontrarlos y copiarlos. Hasta entonces, el juego sigue usándolos donde están.", "Mover ahora", "Más tarde",
+    "VSync", "Activado: la imagen nunca se corta, pero un PC lento puede bajar a 30 fps",
+    "Tu música",
+    "Todavía no hay listas. Importa una carpeta (cada subcarpeta se convierte en una lista) o crea una lista nueva con algunas canciones.",
+    "Convirtiendo %zu de %zu: %s", "Guardando", "Algo no ha funcionado: %s", "Nueva lista", "Importar carpeta",
+    "%zu canciones, %s", "Abrir", "Volver", "Añadir canciones", "Renombrar", "Eliminar", "¿Seguro?", "OK", "Página %d de %d",
+    "Anteriores", "Siguientes", "Elige la carpeta de tu música: cada subcarpeta se convierte en una lista", "Elige las canciones para añadir",
+    "Lista %d",
+    "VOLVER AL LAUNCHER",
+    "El juego se cierra y el launcher se abre de nuevo, como al empezar: allí se cambian todos los ajustes, el disco y tu música. Se perderá el progreso desde la última partida guardada.",
+    "ABRIR EL LAUNCHER", "LAUNCHER",
+    "MÚSICA", "Tus propias canciones en la radio del juego. Crea aquí tus listas (MP3, FLAC, WAV, WMA, M4A); en el juego elige una en Pausa > Opciones > Opciones de audio, el selector de música.",
+};
+
+// The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
 const Texts& T() {
-    static const Texts& texts = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_ITALIAN ? kItalian : kEnglish;
+    static const Texts& texts = [] () -> const Texts& {
+        char forced[8] = {};
+        WORD language = PRIMARYLANGID(GetUserDefaultUILanguage());
+        if (GetEnvironmentVariableA("MC3_LAUNCHER_LANGUAGE", forced, sizeof(forced))) {
+            language = !std::strcmp(forced, "it") ? LANG_ITALIAN : !std::strcmp(forced, "pt") ? LANG_PORTUGUESE
+                     : !std::strcmp(forced, "es") ? LANG_SPANISH : LANG_ENGLISH;
+        }
+        return language == LANG_ITALIAN ? kItalian : language == LANG_PORTUGUESE ? kPortuguese
+             : language == LANG_SPANISH ? kSpanish : kEnglish;
+    }();
     return texts;
 }
-bool italian() { return &T() == &kItalian; }
+
+// For the few texts kept in tables beside their item (cheat codes, keys): the one in the launcher's language.
+const char* in_language(const char* english, const char* italian, const char* portuguese, const char* spanish) {
+    const Texts& texts = T();
+    return &texts == &kItalian ? italian : &texts == &kPortuguese ? portuguese : &texts == &kSpanish ? spanish : english;
+}
 
 // --- your music (custom soundtracks, soundtracks.cpp) ---
 
@@ -489,8 +655,8 @@ std::string key_name(int virtual_key) {
         case VK_DOWN: return "\xE2\x86\x93";
         case VK_LEFT: return "\xE2\x86\x90";
         case VK_RIGHT: return "\xE2\x86\x92";
-        case VK_SPACE: return italian() ? "Spazio" : "Space";
-        case VK_RETURN: return italian() ? "Invio" : "Enter";
+        case VK_SPACE: return in_language("Space", "Spazio", "Espaço", "Espacio");
+        case VK_RETURN: return in_language("Enter", "Invio", "Enter", "Intro");
         case VK_BACK: return "Backspace";
         case VK_LSHIFT: case VK_RSHIFT: return "Shift";
         case VK_LCONTROL: case VK_RCONTROL: return "Ctrl";
@@ -519,21 +685,16 @@ struct UpdateCheck {
     int state = 0;  // 0 checking, 1 up to date, 2 newer found, 3 failed (shown as nothing)
     std::string version, url;
     std::string setup_url, sums_url;  // the release's installer and SHA256SUMS, if it has them
-    int download = 0;                 // 0 none, 1 downloading, 2 verified (show it), 3 failed
+    int download = 0;                 // 0 none, 1 downloading, 2 verified (the player installs it), 3 failed
+    uint64_t received = 0, size = 0;  // of the installer, while it downloads
     std::filesystem::path setup_file;
+    std::vector<std::string> points;  // what is new, from the release's notes
 };
-
-std::string json_string(const std::string& json, const char* key) {
-    const std::string marker = std::string("\"") + key + "\":\"";
-    const size_t at = json.find(marker);
-    if (at == std::string::npos) return {};
-    const size_t start = at + marker.size(), end = json.find('"', start);
-    return end == std::string::npos ? std::string() : json.substr(start, end - start);
-}
 
 // A GET over HTTPS. WinHTTP follows redirects, which GitHub's release downloads need. The body only when the answer
 // is 200; *status is the answer, for the log.
-std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* status) {
+std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* status,
+                      const std::function<void(uint64_t, uint64_t)>& progress = nullptr) {
     std::string body;
     *status = 0;
     wchar_t host[256] = {}, path[2048] = {}, query[2048] = {};
@@ -560,9 +721,15 @@ std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* st
         WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, status, &size,
                             nullptr) &&
         *status == 200) {
+        DWORD length = 0, length_size = sizeof(length);  // 0 when the server does not say
+        WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &length,
+                            &length_size, nullptr);
         char buffer[16384];
         DWORD read = 0;
-        while (WinHttpReadData(request, buffer, sizeof(buffer), &read) && read) body.append(buffer, read);
+        while (WinHttpReadData(request, buffer, sizeof(buffer), &read) && read) {
+            body.append(buffer, read);
+            if (progress) progress(body.size(), length);
+        }
     }
     if (request) WinHttpCloseHandle(request);
     if (connection) WinHttpCloseHandle(connection);
@@ -570,19 +737,26 @@ std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* st
     return body;
 }
 
+// MC3_UPDATE_TEST=<version>: test runs of the update notice, as an installed copy of that version.
+const char* update_test() {
+    static char version[32] = {};
+    static const bool set = GetEnvironmentVariableA("MC3_UPDATE_TEST", version, sizeof(version)) > 0;
+    return set ? version : nullptr;
+}
+
 void check_for_updates(UpdateCheck* check) {
     wchar_t latest[160];
     std::swprintf(latest, 160, L"https://api.github.com/repos/%hs/releases/latest", kRepository);
     DWORD status = 0;
     const std::string body = https_get(latest, L"Accept: application/vnd.github+json\r\n", &status);
-    const std::string tag = json_string(body, "tag_name"), url = json_string(body, "html_url");
+    const std::string tag = json_text(body, "tag_name"), url = json_text(body, "html_url");
     std::lock_guard<std::mutex> lock(check->mutex);
     if (tag.empty()) {
         check->state = 3;
         log_line("launcher: update check: no answer (HTTP %lu)", status);
         return;
     }
-    const bool newer = version_numbers(tag) > version_numbers(MC3PORT_VERSION);
+    const bool newer = version_numbers(tag) > version_numbers(update_test() ? update_test() : MC3PORT_VERSION);
     check->state = newer ? 2 : 1;
     check->version = tag;
     check->url = release_link(url, kRepository, "tag/") ? url : std::string("https://github.com/") + kRepository + "/releases";
@@ -594,6 +768,7 @@ void check_for_updates(UpdateCheck* check) {
         if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "-setup.exe") == 0) check->setup_url = asset;
         if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "SHA256SUMS") == 0) check->sums_url = asset;
     }
+    check->points = release_points(json_text(body, "body"), 6);
     log_line("launcher: latest release %s (%s)", tag.c_str(), newer ? "newer" : "not newer");
 }
 
@@ -613,7 +788,7 @@ std::string sha256_hex(const std::string& data) {
 }
 
 // Downloads the release's installer and SHA256SUMS and checks the installer's hash; only a verified installer is
-// saved, to %TEMP%\mc3port-update. The player starts it (see the launcher's loop): mc3port never runs it by itself.
+// saved, to %TEMP%\mc3port-update. The player starts it (install_update): mc3port never runs it by itself.
 void download_update(UpdateCheck* check) {
     std::string setup_url, sums_url;
     {
@@ -629,7 +804,10 @@ void download_update(UpdateCheck* check) {
     DWORD setup_status = 0, sums_status = 0;
     const std::string installer = sums_url.empty() ? std::string()
                                                    : https_get(std::wstring(setup_url.begin(), setup_url.end()), nullptr,
-                                                               &setup_status);
+                                                               &setup_status, [check](uint64_t received, uint64_t size) {
+                                                                   std::lock_guard<std::mutex> lock(check->mutex);
+                                                                   check->received = received, check->size = size;
+                                                               });
     const std::string list = installer.empty() ? std::string()
                                                : https_get(std::wstring(sums_url.begin(), sums_url.end()), nullptr,
                                                            &sums_status);
@@ -843,6 +1021,12 @@ private:
     void page_cheats();
     void page_about();
     void update_row(bool always);
+    void page_update();
+    void start_update_download();
+    void install_update();
+    bool install_requested_ = false;  // Install pressed: started between frames, outside the UI lock (see install_update)
+    bool update_prompt_ = false, update_prompt_shown_ = false;  // the new version's notice, once per start
+    Page update_prompt_page_ = Page::kPlay;                      // another page from the menu closes it
     void move_data_row();
     void page_move_data();
     bool update_available();
@@ -1948,24 +2132,24 @@ void Launcher::page_settings() {
 // The game's cheat codes, decoded from its check (0x001923B0 compares the typed text, encoded by 0x00192350, with
 // the strings at 0x00463D10), with what each sets there.
 struct CheatCode {
-    const char *code, *english, *italian;
+    const char *code, *english, *italian, *portuguese, *spanish;
 };
 const CheatCode kCheatCodes[] = {
-    {"roadtrip", "Unlocks (the same as the next two)", "Sblocca (come i due seguenti)"},
-    {"crosscountry", "Unlocks", "Sblocca"},
-    {"urbansprawl", "Unlocks", "Sblocca"},
-    {"ontheroad", "No damage", "Nessun danno"},
-    {"hyperagro", "Heavier cars", "Auto pi\xC3\xB9 pesanti"},
-    {"dfens", "Agro special ability", "Abilit\xC3\xA0 Agro"},
-    {"allin", "Zone special ability", "Abilit\xC3\xA0 Zone"},
-    {"Rjnr", "Roar ability (capital R)", "Abilit\xC3\xA0 Roar (R maiuscola)"},
-    {"trythisathome", "Flaming head, on or off", "Testa in fiamme, s\xC3\xAC o no"},
-    {"getheadj", "Smiley head", "Testa sorridente"},
-    {"getheadk", "Pumpkin head", "Testa di zucca"},
-    {"getheadl", "Bunny head", "Testa di coniglio"},
-    {"getheadm", "Snowman head", "Testa di pupazzo"},
-    {"kubmir", "+$1 each time", "+1 $ ogni volta"},
-    {"rimbuk", "-$1 each time", "-1 $ ogni volta"},
+    {"roadtrip", "Unlocks (the same as the next two)", "Sblocca (come i due seguenti)", "Desbloqueia (o mesmo que os dois seguintes)", "Desbloquea (lo mismo que los dos siguientes)"},
+    {"crosscountry", "Unlocks", "Sblocca", "Desbloqueia", "Desbloquea"},
+    {"urbansprawl", "Unlocks", "Sblocca", "Desbloqueia", "Desbloquea"},
+    {"ontheroad", "No damage", "Nessun danno", "Sem danos", "Sin daños"},
+    {"hyperagro", "Heavier cars", "Auto pi\xC3\xB9 pesanti", "Carros mais pesados", "Coches más pesados"},
+    {"dfens", "Agro special ability", "Abilit\xC3\xA0 Agro", "Habilidade Agro", "Habilidad Agro"},
+    {"allin", "Zone special ability", "Abilit\xC3\xA0 Zone", "Habilidade Zone", "Habilidad Zone"},
+    {"Rjnr", "Roar ability (capital R)", "Abilit\xC3\xA0 Roar (R maiuscola)", "Habilidade Roar (R maiúsculo)", "Habilidad Roar (R mayúscula)"},
+    {"trythisathome", "Flaming head, on or off", "Testa in fiamme, s\xC3\xAC o no", "Cabeça em chamas, sim ou não", "Cabeza en llamas, sí o no"},
+    {"getheadj", "Smiley head", "Testa sorridente", "Cabeça sorridente", "Cabeza sonriente"},
+    {"getheadk", "Pumpkin head", "Testa di zucca", "Cabeça de abóbora", "Cabeza de calabaza"},
+    {"getheadl", "Bunny head", "Testa di coniglio", "Cabeça de coelho", "Cabeza de conejo"},
+    {"getheadm", "Snowman head", "Testa di pupazzo", "Cabeça de boneco de neve", "Cabeza de muñeco de nieve"},
+    {"kubmir", "+$1 each time", "+1 $ ogni volta", "+US$ 1 a cada vez", "+1 $ cada vez"},
+    {"rimbuk", "-$1 each time", "-1 $ ogni volta", "-US$ 1 a cada vez", "-1 $ cada vez"},
 };
 
 void Launcher::page_cheats() {
@@ -1985,7 +2169,7 @@ void Launcher::page_cheats() {
         for (const CheatCode& c : kCheatCodes) {
             const float y = origin_.y + cursor_;
             text(body_bold_, px(18), ImVec2(origin_.x, y), kInk, c.code);
-            text(body_, px(17), ImVec2(origin_.x + px(180), y + px(1)), kInk, italian() ? c.italian : c.english);
+            text(body_, px(17), ImVec2(origin_.x + px(180), y + px(1)), kInk, in_language(c.english, c.italian, c.portuguese, c.spanish));
             cursor_ += px(30);
         }
         cursor_ += px(12);
@@ -2046,11 +2230,11 @@ void Launcher::page_controls() {
     }
     if (controls_tab_ == 1) {
         // The port's own keys, not rebindable.
-        const char* enter = italian() ? "Invio" : "Enter";
+        const char* enter = in_language("Enter", "Invio", "Enter", "Intro");
         char alt_enter[32];
         std::snprintf(alt_enter, sizeof(alt_enter), "F11 \xC2\xB7 Alt+%s", enter);
         char navigation[48];
-        std::snprintf(navigation, sizeof(navigation), "%s \xC2\xB7 %s \xC2\xB7 Esc \xC2\xB7 Q E", italian() ? "Frecce" : "Arrows", enter);
+        std::snprintf(navigation, sizeof(navigation), "%s \xC2\xB7 %s \xC2\xB7 Esc \xC2\xB7 Q E", in_language("Arrows", "Frecce", "Setas", "Flechas"), enter);
         const char* system[][2] = {{"F1 \xC2\xB7 Back+Start", t.menu_key}, {alt_enter, t.full_screen_key}, {"F10", t.effects_key},
                                    {navigation, t.launcher_keys}, {t.pad_keys, t.pad_menu_keys}};
         const float line = px(44);
@@ -2080,7 +2264,7 @@ void Launcher::page_controls() {
         const ImVec2 key_size = measure(body_bold_, px(16), key.c_str());
         const ImVec2 box_a(x + cell - std::max(px(60), key_size.x + px(18)), y + px(3)), box_b(x + cell, y + row_height - px(3));
         list_->PushClipRect(ImVec2(x + px(80), y), ImVec2(box_a.x - px(6), y + row_height), true);  // never under the key box
-        text(body_, px(17), ImVec2(x + px(80), y + (row_height - measure(body_, px(17), "A").y) / 2), kInk, italian() ? binding.italian : binding.english);
+        text(body_, px(17), ImVec2(x + px(80), y + (row_height - measure(body_, px(17), "A").y) / 2), kInk, in_language(binding.english, binding.italian, binding.portuguese, binding.spanish));
         list_->PopClipRect();
         ImGui::SetCursorScreenPos(box_a);
         ImGui::PushID(i);
@@ -2119,20 +2303,19 @@ void Launcher::update_row(bool always) {
     }
     if (setting("check_updates") == 0 || state == 3 || (!always && state != 2)) return;
     std::error_code ignored;
-    const bool installed = !portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored);
+    const bool installed = update_test() || (!portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored));
     const bool self_update = installed && !setup_url.empty() && download != 3;
     char found[96];
     std::snprintf(found, sizeof(found), t.update_found, version.c_str());
     if (download == 1) {
-        status(false, t.downloading, found, nullptr, nullptr);
+        status(false, t.downloading, found, nullptr, nullptr, true);
+    } else if (download == 2) {
+        if (status(true, t.update_ready, found, t.update_install_small, "##update")) install_requested_ = true;
     } else if (state == 2) {
         if (status(false, download == 3 ? t.update_failed : found, self_update ? t.update_install_sub : t.update_sub,
                    self_update ? t.update_now : t.open, "##update", download != 3)) {
             if (self_update) {
-                std::lock_guard<std::mutex> lock(updates_.mutex);
-                updates_.download = 1;
-                if (download_thread_.joinable()) download_thread_.join();
-                download_thread_ = std::thread(download_update, &updates_);
+                start_update_download();
             } else {
                 ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
             }
@@ -2147,7 +2330,93 @@ void Launcher::update_row(bool always) {
 bool Launcher::update_available() {
     if (setting("check_updates") == 0) return false;
     std::lock_guard<std::mutex> lock(updates_.mutex);
-    return updates_.state == 2 && updates_.download != 2;
+    return updates_.state == 2;
+}
+
+void Launcher::start_update_download() {
+    std::lock_guard<std::mutex> lock(updates_.mutex);
+    if (updates_.download == 1) return;
+    updates_.download = 1;
+    updates_.received = updates_.size = 0;
+    if (download_thread_.joinable()) download_thread_.join();
+    download_thread_ = std::thread(download_update, &updates_);
+}
+
+// The player pressed Install: the verified installer starts and the launcher closes, so that it can replace our files.
+// Should Windows refuse to start it, Explorer shows it instead. Called between frames: ShellExecute sends messages to
+// our window, whose thread waits for the UI lock a frame holds.
+void Launcher::install_update() {
+    std::filesystem::path setup;
+    {
+        std::lock_guard<std::mutex> lock(updates_.mutex);
+        setup = updates_.setup_file;
+    }
+    const HINSTANCE started = ShellExecuteW(window_, L"open", setup.c_str(), nullptr, setup.parent_path().c_str(), SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(started) <= 32) {
+        const std::wstring argument = L"/select,\"" + setup.wstring() + L"\"";
+        ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
+    }
+    log_line("launcher: update: %s the installer, closing", reinterpret_cast<INT_PTR>(started) > 32 ? "started" : "showing");
+    done_ = true;
+}
+
+// The new version's notice, over the first page once per start: what is new, then Update (an installed copy: the
+// download with its progress, then Install) or the release page (a portable copy), or Later.
+void Launcher::page_update() {
+    const Texts& t = T();
+    int download;
+    uint64_t received, size;
+    std::string version, url, setup_url;
+    std::vector<std::string> points;
+    {
+        std::lock_guard<std::mutex> lock(updates_.mutex);
+        download = updates_.download;
+        received = updates_.received, size = updates_.size;
+        version = updates_.version, url = updates_.url, setup_url = updates_.setup_url;
+        points = updates_.points;
+    }
+    title(t.update_title);
+    char line[256];
+    std::snprintf(line, sizeof(line), t.update_lead, version.c_str());
+    lead(line);
+    for (const std::string& point : points) {
+        const float wrap = panel_width_ - px(24);
+        const ImVec2 at(origin_.x, origin_.y + cursor_), point_size = measure(body_, px(18), point.c_str(), wrap);
+        list_->AddRectFilled(ImVec2(at.x + px(2), at.y + px(9)), ImVec2(at.x + px(9), at.y + px(16)), fade(kRed));
+        text(body_, px(18), ImVec2(at.x + px(24), at.y), kInk, point.c_str(), wrap);
+        cursor_ += point_size.y + px(10);
+    }
+    cursor_ += px(8);
+    std::error_code ignored;
+    const bool installed = update_test() || (!portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored));
+    const bool self_update = installed && !setup_url.empty();
+    if (download == 1) {
+        std::snprintf(line, sizeof(line), t.update_progress, received / 1048576.0, size / 1048576.0);
+        status(false, t.downloading, size ? line : "", nullptr, nullptr, true);
+        if (size) {  // the bar under the row
+            const float y = origin_.y + cursor_ - px(14), fraction = std::min(1.0f, static_cast<float>(received) / size);
+            list_->AddRectFilled(ImVec2(origin_.x, y), ImVec2(origin_.x + panel_width_, y + px(4)), fade(IM_COL32(255, 255, 255, 30)));
+            list_->AddRectFilled(ImVec2(origin_.x, y), ImVec2(origin_.x + panel_width_ * fraction, y + px(4)), fade(kRed));
+        }
+        return;  // no Later while it downloads: the download goes on in any case
+    }
+    if (download == 2) {
+        if (big_button(t.update_install, "##update_install", true)) install_requested_ = true;
+        lead(t.update_install_note);
+    } else {
+        if (download == 3) status(false, t.update_failed, "", nullptr, nullptr);
+        if (self_update && download != 3) {
+            if (big_button(t.update_big, "##update_big", true)) start_update_download();
+        } else {
+            if (big_button(t.update_page, "##update_page", true)) ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            if (!installed) lead(t.update_portable_note);
+        }
+    }
+    if (small_button(t.update_later, ImVec2(origin_.x, origin_.y + cursor_), "##update_later")) {
+        update_prompt_ = false;
+        page_since_ = static_cast<float>(ImGui::GetTime());
+    }
+    cursor_ += px(52);
 }
 
 // Where the game keeps its profiles, as on the Xbox's hard disk (54540079 is the game's title ID). Before the first save
@@ -2372,7 +2641,16 @@ void Launcher::panel(float now, float since) {
     status_keeps_focus_ = wizard_ ? !move_prompt_ && wizard_step_ == 0 : page_ == Page::kPlay;
     list_->ChannelsSetCurrent(1);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_alpha);
-    if (wizard_) {
+    if (!update_prompt_shown_ && !wizard_ && !in_game_ && update_available()) {
+        update_prompt_ = update_prompt_shown_ = true;
+        update_prompt_page_ = page_;
+        page_since_ = now;
+        focus_panel_ = true;  // Update already selected: one press of A
+    }
+    if (update_prompt_ && page_ != update_prompt_page_) update_prompt_ = false;
+    if (update_prompt_ && !wizard_) {
+        page_update();
+    } else if (wizard_) {
         page_wizard();
     } else {
         switch (page_) {
@@ -2628,7 +2906,7 @@ void Launcher::bottom_bar(float since) {
     }
     if (!wizard_) hint(pad ? "LB RB" : "Q E", kChrome, page_ == Page::kSettings || page_ == Page::kControls ? t.tabs_hint : t.pages_hint);
     hint(pad ? "B" : "Esc", IM_COL32(255, 90, 90, 255), t.back);
-    hint(pad ? "A" : (italian() ? "Invio" : "Enter"), kGreen, t.select);
+    hint(pad ? "A" : in_language("Enter", "Invio", "Enter", "Intro"), kGreen, t.select);
     hint(pad ? t.dpad : "\xE2\x86\x91\xE2\x86\x93\xE2\x86\x90\xE2\x86\x92", kChrome,
          pad && menu_has_focus_ && !wizard_ ? t.enter_hint : t.move_hint);
 }
@@ -3472,16 +3750,6 @@ std::optional<GameDisc> Launcher::run() {
         resize_if_needed();
         upload_art();
         {
-            std::lock_guard<std::mutex> lock(updates_.mutex);
-            if (updates_.download == 2) {  // verified: Explorer shows the installer for the player to start; we close
-                updates_.download = 0;     // so that it can replace our files
-                const std::wstring argument = L"/select,\"" + updates_.setup_file.wstring() + L"\"";
-                ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
-                log_line("launcher: update downloaded, showing the installer, closing");
-                done_ = true;
-            }
-        }
-        {
             std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
             configure_navigation();
             ImGui_ImplDX11_NewFrame();
@@ -3495,6 +3763,10 @@ std::optional<GameDisc> Launcher::run() {
         draw_background(time);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         swap_chain_->Present(1, 0);
+        if (install_requested_) {  // outside the lock, like the dialogs
+            install_requested_ = false;
+            install_update();
+        }
         if (choose_disc_requested_) {  // outside the lock: see choose_disc
             choose_disc_requested_ = false;
             run_disc_dialog();
