@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -24,9 +25,10 @@ namespace {
 // narrowing the pieces near a side tore them apart (over the tutorials' films and the loading screens too, where the
 // last 3D scene still counted). The scissor rectangle follows the draw; the radar's clear of the alpha does not: its
 // mask then covered less than the original box, and the frame showed the previous one through the rest.
-int g_debug_hud = -1;        // MC3_DEBUG_HUD=<n>: the first n decisions in the log
+int g_debug_hud = -1;        // MC3_DEBUG_HUD=<n>: the first n decisions about draws near the radar or a dial
 HudBox g_radar_box{};        // the radar's scissor rectangle...
 ULONGLONG g_radar_seen = 0;  // ...last seen then
+std::unordered_map<uint32_t, ULONGLONG> g_title_pages;  // font pages of the song's title, by address: last used then
 
 bool inside(float left, float top, float right, float bottom, const HudBox& box, float margin) {
     return left >= box.left - margin && right <= box.right + margin && top >= box.top - margin &&
@@ -88,7 +90,20 @@ RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float lef
     if (left > right || top > bottom) return n;
     const float narrow = width / height / renderer_aspect();
     const bool over_shown_scene = renderer_over_shown_scene(surface);
-    const bool radar = now - g_radar_seen < 1000 &&
+    // The song's title and artist, shown on a song change between the radar and the dials (y 355 to 395 of 480), letter
+    // by letter: narrowed towards the middle, every letter alike so the line stays whole. Widened like the rest of the
+    // HUD, a long artist line ran under mc3port's dials ("...Stone and Mikk"). Letters only: textured and at most 21
+    // lines tall (19 for the largest). The same band holds a grid of untextured squares across the whole picture, a
+    // screen effect: narrowing half of it doubled letters ("Unwrittten").
+    const bool letter = texture != 0 && top >= 0.72f * height && bottom <= 0.835f * height &&
+                        bottom - top <= 0.045f * height && right - left < width / 4;
+    // The longest lines start over the radar's ring, where letters and the ring's icons share the place ("di B...ig
+    // Tymers", "d...i Baby"): what tells them apart is the font's pages, which the radar never uses. A letter on a page
+    // the title used in the last 2 s is the title's (only a title's first frame can miss it).
+    const auto font_page = g_title_pages.find(texture);
+    const bool title_page = letter && font_page != g_title_pages.end() && now - font_page->second < 2000;
+    // Not what starts past the ring's right edge either: the icons on the ring's edge are centred on it.
+    const bool radar = now - g_radar_seen < 1000 && !title_page && left < g_radar_box.right - 1 &&
                        inside(left, top, right, bottom, g_radar_box, 0.35f * (g_radar_box.right - g_radar_box.left));
     // With mc3port's HUD the game's dials are not drawn (hud.cpp takes them), so nothing in their boxes needs the
     // narrowing, and the letters of a text that cross a box (the special ability's tall track reaches the texts
@@ -97,20 +112,23 @@ RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float lef
     const bool dial = !hud_enabled() && std::any_of(dials.begin(), dials.end(), [&](const HudBox& box) {
                           return inside(left, top, right, bottom, box, 6);
                       });
-    if (narrow < 0.99f && over_shown_scene && (radar || dial)) {
-        n.anchor = radar ? 0 : width;
+    const bool song_title = letter && !radar && !dial;
+    if (song_title) g_title_pages[texture] = now;
+    if (narrow < 0.99f && over_shown_scene && (radar || dial || song_title)) {
+        n.anchor = radar ? 0 : dial ? width : width / 2;
         n.factor = narrow;
     }
     if (g_debug_hud < 0) {
         char value[16] = {};
         g_debug_hud = GetEnvironmentVariableA("MC3_DEBUG_HUD", value, sizeof(value)) ? std::atoi(value) : 0;
     }
-    if (g_debug_hud > 0) {
+    // Only the draws near the radar, a dial or the song's title: menus used them all up.
+    if (g_debug_hud > 0 && (radar || dial || (top >= 0.68f * height && bottom <= 0.87f * height))) {
         --g_debug_hud;
-        log_line("hud: %.0f..%.0f x %.0f..%.0f on %08X (clip %u,%u %ux%u), texture %08X: %s%s%s-> %.3f towards %.0f",
+        log_line("hud: %.0f..%.0f x %.0f..%.0f on %08X (clip %u,%u %ux%u), texture %08X: %s%s%s%s-> %.3f towards %.0f",
                  left, right, top, bottom, surface.color_address, surface.clip_x, surface.clip_y, surface.clip_width,
                  surface.clip_height, texture, over_shown_scene ? "" : "not over a shown scene ", radar ? "radar " : "",
-                 dial ? "dial " : "", n.factor, n.anchor);
+                 dial ? "dial " : "", song_title ? "title " : "", n.factor, n.anchor);
     }
     return n;
 }
