@@ -10,6 +10,10 @@
   a playlist in Pause > Options > Audio Options, with the Music selector at the top.
 - **Back to the launcher** in the in-game menu (F1): the game closes and the launcher opens again, where the disc,
   your music and the settings that need a restart can be changed.
+- **Updates from the launcher.** When a new version is out, the launcher says so at start, with what is new. An
+  installed copy downloads the installer (with its progress), checks it, and starts it when you press Install;
+  nothing installs by itself. A portable copy opens the release page.
+- **The launcher in Portuguese and Spanish**, chosen from Windows' language like English and Italian.
 
 ### Fixed
 
