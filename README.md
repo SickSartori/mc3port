@@ -65,6 +65,8 @@ And around the game:
 - **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
 - **A HUD of its own**, optional: speedometer, rev counter, gear and special ability drawn sharp at any resolution.
 - **Sharp 2D pictures**: the radar's map, icons, letters and the cars' stickers enlarged with clean edges.
+- **Your own music** on the game's radio: playlists made in the launcher's Music page from MP3, FLAC, WAV, WMA or M4A
+  files, chosen in the game in Pause > Options > Audio Options.
 - **Cheats** in the in-game menu: money for your career, and the game's own codes with what each one does.
 - **Quality of life**: frame counter, opening films skipped, readable loading screens if you want them, an update
   check with a verified download, and a crash report that fills in the bug form for you.
@@ -97,20 +99,22 @@ games and releases (the original DUB Edition, for example) are not supported.
 </details>
 
 Optional: a controller (see [Controls](#controls)), and an internet connection for the update check only (it can
-be switched off). Without an audio device the game simply runs silent.
+be switched off, see [Privacy](#privacy)). Without an audio device the game simply runs silent.
 
 ## Installing
 
 | Way | How | Updates |
 |---|---|---|
 | **[RecompLauncher](https://recomplauncher.com/game/mc3port)** (easiest) | Find mc3port in the catalog and install it. The launcher checks your disc, keeps the main settings on the game's page and starts the game straight away. | Automatic |
-| **Installer** | Download `mc3port-<version>-windows-x86-setup.exe` from the [latest release](https://github.com/SickSartori/mc3port/releases/latest) and run it. It installs for your user only (no administrator rights), with Start menu and desktop shortcuts. | Offered by the launcher: it downloads the new installer, checks its SHA-256 and shows it to you |
+| **Installer** | Download `mc3port-<version>-windows-x86-setup.zip` from the [latest release](https://github.com/SickSartori/mc3port/releases/latest), extract it and run the setup inside. It installs for your user only (no administrator rights), with Start menu and desktop shortcuts. | Offered by the launcher: it downloads the new installer, checks its SHA-256 and shows it to you |
 | **Portable** | Download `mc3port-<version>-windows-x86.zip`, extract it anywhere and start `mc3port\mc3.exe`. | Extract the new version over the old one |
 | **Linux (Wine)** | Download `mc3port-<version>-linux.tar.gz`: see [Linux](#linux-experimental). | Run `install.sh` again |
 
 Every package contains `README.txt`, a short guide, and `CHANGELOG.md`. To check a download, compare its SHA-256 with
-the release's `SHA256SUMS`. The files are not code signed yet, so Windows SmartScreen may ask once whether you trust
-them ("More info", then "Run anyway").
+the release's `SHA256SUMS`. The files are not code signed yet (see [Code signing policy](#code-signing-policy)), so
+browsers may warn about the download and Windows SmartScreen may ask once whether you trust them ("More info", then
+"Run anyway"). The installer is also attached as a plain `-setup.exe`, which the launcher uses for its updates; some
+browsers block that one, the zip gets through.
 
 ### First start
 
@@ -320,10 +324,11 @@ name in its paths. On Linux, please also give the distribution, the Wine or Prot
 ## Building from source
 
 mc3port's game-specific code is here; the shared runtime it builds on (the Xbox kernel, memory and threads, the
-graphics chip's registers and textures, disc reading) is a private library, `external/sick-xport`, so this repository
-alone does not build. The releases include it, compiled, in `mc3runtime.dll`.
+graphics chip's registers and textures, disc reading) is an open-source library shared with
+[sm2port](https://github.com/SickSartori/sm2port): [xport](https://github.com/SickSartori/xport), a git
+submodule in `external/xport`.
 
-With access to the library: Visual Studio 2022 or newer with "Desktop development with C++" (MSVC x86 tools, Windows
+You need Visual Studio 2022 or newer with "Desktop development with C++" (MSVC x86 tools, Windows
 SDK, CMake tools), `git submodule update --init`, then from a Developer PowerShell in the project folder:
 
 ```
@@ -351,9 +356,36 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 - The launcher's logo and pictures are the game's own, read from your disc while it runs; they are not part of
   mc3port.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by
+[SignPath Foundation](https://signpath.org). The application is under review: until it is approved, the releases are
+not signed yet.
+
+- Committers and reviewers: [SickSartori](https://github.com/SickSartori)
+- Approvers: [SickSartori](https://github.com/SickSartori)
+
+The Windows files are built from this repository and [xport](https://github.com/SickSartori/xport) by GitHub Actions
+([release workflow](.github/workflows/release.yml)); each release lists their SHA-256 in `SHA256SUMS`.
+
+## Privacy
+
+mc3port collects no personal data and has no telemetry. The only connection it makes on its own is the update check:
+when the launcher opens, it asks `api.github.com` for this project's latest release. You can turn it off in the
+installer, or at any time with `check_updates = 0` in `Documents\mc3port\mc3port.ini`; started from RecompLauncher, it
+is always off. If you accept an update, the launcher downloads the new installer and `SHA256SUMS` from this project's
+GitHub releases. **Report a problem** only opens GitHub's bug form in your browser, filled in for you to read and send
+yourself. The game's online play is not available.
+
+## Supporting the project
+
+mc3port is free and always will be: no paid builds, no early access, no locked features. If you enjoy it and want to
+say thanks, you can support its author on [GitHub Sponsors](https://github.com/sponsors/SickSartori) or
+[Ko-fi](https://ko-fi.com/sicksartori). It is never needed to play, and it buys nothing: it gives more time for fixes,
+features and the next port.
+
 ## Licence
 
-mc3port's code in this repository is released under the [MIT licence](LICENSE). The shared runtime
-(`external/sick-xport`) is not: it is private, and its compiled form in `mc3runtime.dll` may be used and passed on
-unchanged as part of mc3port's releases. Third-party parts keep their own licences, listed in
+mc3port's code in this repository is released under the [MIT licence](LICENSE), and so is the shared runtime
+[xport](https://github.com/SickSartori/xport). Third-party parts keep their own licences, listed in
 [THIRD_PARTY.md](THIRD_PARTY.md). The game itself, and everything read from your disc, belongs to its owners.

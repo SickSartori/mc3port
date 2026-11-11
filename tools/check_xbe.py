@@ -2,8 +2,8 @@
 
   python -I tools/check_xbe.py <default.xbe>
 
-- every kernel import of the XBE must exist in external/sick-xport/src/core/kernel_exports.cpp (and the table must be contiguous);
-- runs the same fs: pattern scan as external/sick-xport/src/pc/fs_patch.cpp and prints what would be patched.
+- every kernel import of the XBE must exist in external/xport/src/core/kernel_exports.cpp (and the table must be contiguous);
+- runs the same fs: pattern scan as external/xport/src/pc/fs_patch.cpp and prints what would be patched.
 """
 import collections
 import pathlib
@@ -17,7 +17,7 @@ CONTEXT_SLOT = 0x14
 
 
 def load_kernel_table():
-    text = (ROOT / "external/sick-xport/src/core/kernel_exports.cpp").read_text()
+    text = (ROOT / "external/xport/src/core/kernel_exports.cpp").read_text()
     table = {}
     for kind, ordinal, name in re.findall(r"\b([FD])\((\d+), (\w+)\)", text):
         ordinal = int(ordinal)
@@ -53,7 +53,7 @@ def file_offset(sections, va):
 
 
 def decode(code, i):
-    """Same patterns as decode() in external/sick-xport/src/pc/fs_patch.cpp: (length, kind, reg, offset) or None."""
+    """Same patterns as decode() in external/xport/src/pc/fs_patch.cpp: (length, kind, reg, offset) or None."""
     if code[i] != 0x64 or i + 6 > len(code):
         return None
     if code[i + 1] == 0xA1:

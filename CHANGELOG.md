@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.3.7 (2026-11-11)
+
+### New
+
+- **Your own music on the game's radio** (#17). The launcher has a **Music** page: make playlists from your MP3,
+  FLAC, WAV, WMA or M4A files, add, rename and delete songs and playlists, or import a whole folder (each subfolder
+  becomes a playlist). mc3port converts the songs to the Xbox's format, as the Xbox dashboard did. In the game, choose
+  a playlist in Pause > Options > Audio Options, with the Music selector at the top.
+- **Back to the launcher** in the in-game menu (F1): the game closes and the launcher opens again, where the disc,
+  your music and the settings that need a restart can be changed.
+- **Updates from the launcher.** When a new version is out, the launcher says so at start, with what is new. An
+  installed copy downloads the installer (with its progress), checks it, and starts it when you press Install;
+  nothing installs by itself. A portable copy opens the release page.
+- **The launcher in Portuguese and Spanish**, chosen from Windows' language like English and Italian.
+
+### Fixed
+
+- **Micro stutter** when frames come late for a moment, for example while new textures enter the city. The game's
+  step then jumped from 1/60 to 1/30 s for a frame and back, and the picture skipped ahead. The step now changes
+  only when the frame rate clearly changes.
+- **Stutter the first time each effect shows.** The graphics card's shaders were compiled while playing, up to a
+  second each (87 of them, 8 seconds in all, from the first start to the garage). The shaders now come with mc3port
+  and are made ready at start, on a thread of their own: a first run compiles none while playing.
+- **Song titles in 16:9**: the first letters no longer drift towards the radar, and a long title no longer runs under
+  the dials. The scrolling text of the first screen (the legal notice) keeps its normal spacing.
+
+### Improved
+
+- **The installer also comes in a zip** (`mc3port-<version>-windows-x86-setup.zip`). Chrome, Edge and Opera often
+  block a new installer that is not code signed; the zip gets through. Extract it and run the setup. The plain
+  `-setup.exe` stays in the release for the launcher's updates.
+- The installer says what mc3port sends over the internet (only the update check, to GitHub) and has a box to turn
+  the update check off.
+- mc3port's shared runtime is now open source, as [xport](https://github.com/SickSartori/xport) (MIT licence), so
+  every line of the Windows files can be read and built from public code. This is a first step towards code signed
+  releases.
+
 ## 0.3.6 (2026-11-10)
 
 ### New

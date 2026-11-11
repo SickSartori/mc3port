@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(mc3port VERSION 0.3.6 LANGUAGES C CXX)
+project(mc3port VERSION 0.3.7 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,9 +12,9 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 string(REPLACE "/Ob1" "/Ob2" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 string(REPLACE "/Ob1" "/Ob2" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
 
-# The shared runtime (private submodule, external/sick-xport): the Xbox kernel, memory, threads, the NV2A's
+# The shared runtime (open-source submodule, external/xport): the Xbox kernel, memory, threads, the NV2A's
 # registers and textures, paths, logs; xportcore is its portable part (discs, XBE, kernel exports).
-include(external/sick-xport/xport.cmake)
+include(external/xport/xport.cmake)
 
 if(WIN32)
     if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
@@ -74,9 +74,10 @@ if(WIN32)
         src/pc/renderer_game.cpp
         src/pc/runtime.cpp
         src/pc/settings.cpp
+        src/pc/soundtracks.cpp
         res/launcher.rc
     )
-    target_link_libraries(mc3runtime PRIVATE xportcore shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp windowscodecs imgui mfplat mfreadwrite mfuuid shlwapi SDL3::SDL3-static)
+    target_link_libraries(mc3runtime PRIVATE xportcore shell32 user32 gdi32 winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp windowscodecs imgui mf mfplat mfreadwrite mfuuid shlwapi SDL3::SDL3-static)
     target_compile_definitions(mc3runtime PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE
                                MC3PORT_VERSION="${PROJECT_VERSION}" ${MC3_VERSION_DEFINES})
     target_compile_options(mc3runtime PRIVATE /utf-8)
@@ -114,6 +115,9 @@ if(WIN32)
             add_test(NAME ${name} COMMAND ${name})
         endfunction()
         mc3_test(test_direction_pace)
+        mc3_test(test_frame_step)
+        mc3_test(test_soundtracks src/pc/soundtracks.cpp)
+        target_link_libraries(test_soundtracks PRIVATE mf mfplat mfreadwrite mfuuid ole32 shell32)
         mc3_test(test_audio_gains)
         mc3_test(test_launcher_style src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp)
         mc3_test(test_settings src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp)

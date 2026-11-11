@@ -12,7 +12,18 @@ body:
     attributes:
       label: mc3port version
       description: Shown on the launcher's About page.
-      placeholder: "0.2.4"
+      placeholder: "0.3.6"
+    validations:
+      required: true
+  - type: dropdown
+    id: disc
+    attributes:
+      label: Disc release
+      description: Shown on the launcher's Play page, under the verified disc.
+      options:
+        - Europe
+        - USA
+        - Not sure
     validations:
       required: true
   - type: dropdown

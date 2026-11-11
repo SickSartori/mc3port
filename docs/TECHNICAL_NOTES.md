@@ -7,7 +7,7 @@ Il repository non contiene né conterrà mai file del gioco: ogni utente usa la 
 ## Architettura
 
 ```
-external/sick-xport   libreria privata condivisa con sm2port: src/core (ISO XDVDFS, XBE, export del kernel, nessun
+external/xport        libreria open source (MIT) condivisa con sm2port: src/core (ISO XDVDFS, XBE, export del kernel, nessun
                       header di piattaforma) e il runtime che non dipende dal gioco (kernel, memoria, GPU, percorsi, log)
 src/pc                Windows x86: launcher e la parte del runtime propria di Midnight Club 3
 ```
