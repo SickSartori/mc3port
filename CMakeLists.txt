@@ -12,9 +12,9 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 string(REPLACE "/Ob1" "/Ob2" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 string(REPLACE "/Ob1" "/Ob2" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
 
-# The shared runtime (private submodule, external/sick-xport): the Xbox kernel, memory, threads, the NV2A's
+# The shared runtime (open-source submodule, external/xport): the Xbox kernel, memory, threads, the NV2A's
 # registers and textures, paths, logs; xportcore is its portable part (discs, XBE, kernel exports).
-include(external/sick-xport/xport.cmake)
+include(external/xport/xport.cmake)
 
 if(WIN32)
     if(NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
