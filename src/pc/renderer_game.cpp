@@ -95,8 +95,10 @@ RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float lef
     // HUD, a long artist line ran under mc3port's dials ("...Stone and Mikk"). Letters only: textured and at most 21
     // lines tall (19 for the largest). The same band holds a grid of untextured squares across the whole picture, a
     // screen effect: narrowing half of it doubled letters ("Unwrittten").
-    const bool letter = texture != 0 && top >= 0.72f * height && bottom <= 0.835f * height &&
-                        bottom - top <= 0.045f * height && right - left < width / 4;
+    // Only while driving (the radar shows): the credits scroll their lines up through the same band over the menus' 3D
+    // city, and each line was squeezed and let go as it passed.
+    const bool letter = now - g_radar_seen < 1000 && texture != 0 && top >= 0.72f * height &&
+                        bottom <= 0.835f * height && bottom - top <= 0.045f * height && right - left < width / 4;
     // The longest lines start over the radar's ring, where letters and the ring's icons share the place ("di B...ig
     // Tymers", "d...i Baby"): what tells them apart is the font's pages, which the radar never uses. A letter on a page
     // the title used in the last 2 s is the title's (only a title's first frame can miss it).
