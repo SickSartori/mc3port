@@ -16,6 +16,11 @@
 [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support_the_project-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
+
+mc3port is free and always will be. If you enjoy it, you can [support its author](#supporting-the-project).
+
 [Download](https://github.com/SickSartori/mc3port/releases/latest) ·
 [Features](#features) ·
 [Install](#installing) ·
@@ -23,7 +28,8 @@
 [Settings](#settings) ·
 [FAQ](#faq) ·
 [Troubleshooting](#troubleshooting) ·
-[Changelog](CHANGELOG.md)
+[Changelog](CHANGELOG.md) ·
+[Support the project](#supporting-the-project)
 
 </div>
 
@@ -380,6 +386,9 @@ GitHub releases. **Report a problem** only opens GitHub's bug form in your brows
 yourself. The game's online play is not available.
 
 ## Supporting the project
+
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support_the_project-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
 mc3port is free and always will be: no paid builds, no early access, no locked features. If you enjoy it and want to
 say thanks, you can support its author on [GitHub Sponsors](https://github.com/sponsors/SickSartori) or

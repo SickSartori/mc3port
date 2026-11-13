@@ -106,6 +106,7 @@ struct Texts {
         *music_page, *music_previous, *music_next, *music_dialog, *music_files_dialog, *music_new_name;
     const char *back_to_launcher, *back_to_launcher_sub, *back_to_launcher_button, *menu_launcher;
     const char *menu_music, *music_lead;
+    const char *support, *support_sub;
 };
 
 const Texts kEnglish = {
@@ -175,6 +176,7 @@ const Texts kEnglish = {
     "The game closes and the launcher opens again, as at the start: every setting, the disc and your music can be changed there. Progress since the last save is lost.",
     "OPEN THE LAUNCHER", "LAUNCHER",
     "MUSIC", "Your own songs on the game's radio. Make your playlists here (MP3, FLAC, WAV, WMA, M4A); in the game choose one in Pause > Options > Audio Options, the Music selector.",
+    "Support the project", "Free, and always will be. A thank-you gives more time for fixes and new ports.",
 };
 
 const Texts kItalian = {
@@ -249,6 +251,7 @@ const Texts kItalian = {
     "Il gioco si chiude e si riapre il launcher, come all'avvio: l\xC3\xAC si cambiano tutte le impostazioni, il disco e la tua musica. I progressi dall'ultimo salvataggio andranno persi.",
     "APRI IL LAUNCHER", "LAUNCHER",
     "MUSICA", "I tuoi brani alla radio del gioco. Crea qui le tue playlist (MP3, FLAC, WAV, WMA, M4A); nel gioco scegline una in Pausa > Opzioni > Opzioni audio, selettore Musica.",
+    "Sostieni il progetto", "Gratis, e lo rester\xC3\xA0. Un grazie d\xC3\xA0 pi\xC3\xB9 tempo per correzioni e nuovi port.",
 };
 
 // Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
@@ -320,6 +323,7 @@ const Texts kPortuguese = {
     "O jogo fecha e o launcher abre de novo, como no início: lá se mudam todas as configurações, o disco e a sua música. O progresso desde o último save será perdido.",
     "ABRIR O LAUNCHER", "LAUNCHER",
     "MÚSICA", "Suas próprias músicas no rádio do jogo. Crie aqui as suas playlists (MP3, FLAC, WAV, WMA, M4A); no jogo escolha uma em Pause > Options > Audio Options, seletor Music.",
+    "Apoie o projeto", "Gratuito, e sempre será. Um obrigado dá mais tempo para correções e novos ports.",
 };
 
 const Texts kSpanish = {
@@ -390,6 +394,7 @@ const Texts kSpanish = {
     "El juego se cierra y el launcher se abre de nuevo, como al empezar: allí se cambian todos los ajustes, el disco y tu música. Se perderá el progreso desde la última partida guardada.",
     "ABRIR EL LAUNCHER", "LAUNCHER",
     "MÚSICA", "Tus propias canciones en la radio del juego. Crea aquí tus listas (MP3, FLAC, WAV, WMA, M4A); en el juego elige una en Pausa > Opciones > Opciones de audio, el selector de música.",
+    "Apoya el proyecto", "Gratis, y siempre lo será. Un gracias da más tiempo para correcciones y nuevos ports.",
 };
 
 // The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
@@ -999,8 +1004,10 @@ private:
     // Panel content: cursor_ moves down.
     void title(const char* str);
     void lead(const char* str);
+    // `second_label`: one more button on the row, to the left of the first; `second_pressed` tells when it is pressed.
     bool status(bool good, const char* heading, const char* detail, const char* button_label, const char* id,
-                bool pulse = false);
+                bool pulse = false, const char* second_label = nullptr, const char* second_id = nullptr,
+                bool* second_pressed = nullptr);
     bool small_button(const char* label, ImVec2 at, const char* id, ImVec2* size_out = nullptr);
     bool big_button(const char* label, const char* id, bool pulse);
     bool tabs(const char* const* labels, int count, int* current);
@@ -1551,7 +1558,7 @@ bool Launcher::small_button(const char* label, ImVec2 at, const char* id, ImVec2
 }
 
 bool Launcher::status(bool good, const char* heading, const char* detail, const char* button_label, const char* id,
-                      bool pulse) {
+                      bool pulse, const char* second_label, const char* second_id, bool* second_pressed) {
     const float height = px(64);
     const ImVec2 a(origin_.x, origin_.y + cursor_), b(origin_.x + panel_width_, a.y + height);
     const ImU32 accent = good ? kGreen : kAmber;
@@ -1564,12 +1571,16 @@ bool Launcher::status(bool good, const char* heading, const char* detail, const 
         list_->AddCircle(dot, px(12) + px(14) * p, fade(accent, 0.6f * (1 - p)), 0, px(2));
     }
     const float button_x = button_label ? b.x - measure(body_bold_, px(18), button_label).x - px(28) - px(14) : b.x;
-    list_->PushClipRect(a, ImVec2(button_x - px(12), b.y), true);  // texts stop before the button
+    const float second_x = second_label ? button_x - measure(body_bold_, px(18), second_label).x - px(28) - px(10) : button_x;
+    list_->PushClipRect(a, ImVec2(second_x - px(12), b.y), true);  // texts stop before the buttons
     text(body_bold_, px(21), ImVec2(a.x + px(46), a.y + px(9)), kInk, heading);
     text(body_, px(17), ImVec2(a.x + px(46), a.y + px(35)), kDim, detail);
     list_->PopClipRect();
     const bool keep_focus_request = focus_panel_ && status_keeps_focus_;
     if (keep_focus_request) focus_panel_ = false;
+    if (second_label && small_button(second_label, ImVec2(second_x, a.y + px(14)), second_id) && second_pressed) {
+        *second_pressed = true;
+    }
     const bool pressed = button_label && small_button(button_label, ImVec2(button_x, a.y + px(14)), id);
     if (button_label) focus_frame(ImVec2(a.x - px(24), a.y), ImVec2(b.x + px(14), b.y));
     if (keep_focus_request) focus_panel_ = true;
@@ -2492,6 +2503,12 @@ void Launcher::page_about() {
     if (status(true, t.saves, t.saves_sub, t.open, "##saves")) show_saves();
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
     if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
+    // Never needed to play, and it buys nothing (README, "Supporting the project"): a row among the others, no reminders.
+    bool sponsors = false;
+    if (status(true, t.support, t.support_sub, "Ko-fi", "##kofi", false, "GitHub Sponsors", "##sponsors", &sponsors)) {
+        ShellExecuteA(nullptr, "open", "https://ko-fi.com/sicksartori", nullptr, nullptr, SW_SHOWNORMAL);
+    }
+    if (sponsors) ShellExecuteA(nullptr, "open", "https://github.com/sponsors/SickSartori", nullptr, nullptr, SW_SHOWNORMAL);
     cursor_ += px(8);
     const ImVec2 size = measure(body_, px(16), t.legal, panel_width_);
     text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.legal, panel_width_);

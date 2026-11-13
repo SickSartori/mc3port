@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.8
+
+### New
+
+- **Support the project** from the About page of the launcher and of the in-game menu: a row with the links to GitHub
+  Sponsors and Ko-fi. It is never needed to play and it unlocks nothing; there are no reminders.
+
 ## 0.3.7 (2026-11-11)
 
 ### New
