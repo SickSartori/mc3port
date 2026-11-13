@@ -32,6 +32,13 @@ void test_refused(const std::filesystem::path& folder) {
     write_file(folder / "text.iso", std::string(200000, 'x'));
     CHECK(!check_game_disc(folder / "text.iso", problem) && !problem.empty());
 
+    // A file that is not an image at all (one of the port's own, say): told that the game is not included.
+    const std::string not_an_image = problem;
+    problem.clear();
+    write_file(folder / "readme.md", std::string("text"));
+    CHECK(!check_game_disc(folder / "readme.md", problem) && problem.find(".iso") != std::string::npos);
+    CHECK(problem != not_an_image);
+
     problem.clear();
     write_file(folder / "no_xbe.iso", make_xiso({{"other.bin", {1}}}));
     CHECK(!check_game_disc(folder / "no_xbe.iso", problem) && !problem.empty());

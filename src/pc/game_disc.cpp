@@ -82,6 +82,14 @@ std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::
     if (!entry) {
         log_line("disc: %s is not an Xbox disc image (%s)", utf8(path).c_str(), image ? "no default.xbe" : error.c_str());
         problem = text("This file is not an Xbox disc image.", "Questo file non e' un'immagine di un disco Xbox.");
+        // A file of the port itself, or any other that is not an image (players look for the game in the program's
+        // folder): said plainly that the game is not in the download.
+        std::wstring extension = path.extension().wstring();
+        for (wchar_t& c : extension) c = static_cast<wchar_t>(std::towlower(c));
+        if (extension != L".iso" && extension != L".cci") {
+            problem = text("This is not a disc image. The game is not included: choose your own copy, an .iso or .cci file.",
+                           "Questo non e' un'immagine disco. Il gioco non e' incluso: scegli la tua copia, un file .iso o .cci.");
+        }
         return std::nullopt;
     }
     std::vector<uint8_t> file = image->read_all(*entry);
