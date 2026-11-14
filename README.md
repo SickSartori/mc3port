@@ -162,8 +162,8 @@ installer and the update check. If something goes wrong, please
   `libvulkan1:i386`); without them Wine has no Direct3D 11 and the window stays black. The packages from
   [WineHQ](https://gitlab.winehq.org/wine/wine/-/wikis/Download) bring the rest.
 - **The Linux package**, `mc3port-<version>-linux.tar.gz`: extract it and run `sh mc3port/install.sh`. It copies
-  mc3port to `~/.local/share/mc3port`, makes a Wine prefix of its own there, and adds the `mc3port` command and an
-  applications menu entry. Run it again to update. Settings and saves are in that one folder; the script says how to
+  mc3port to `~/.local/share/mc3port`, makes a Wine prefix of its own there, checks that Direct3D 11 starts (and says
+  what to install if it does not), and adds the `mc3port` command and an applications menu entry. Run it again to update. Settings and saves are in that one folder; the script says how to
   remove it.
 - **Or the portable zip**, by hand: extract it, put your `.iso` in the `mc3port` folder (it is found there without
   asking) or choose it in the launcher, then run `wine mc3.exe` from that folder. Your files are then in

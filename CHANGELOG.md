@@ -11,6 +11,10 @@
 
 - Choosing a file that is not a disc image (one of mc3port's own files, for example) now says that the game is not
   included and that your own `.iso` or `.cci` is needed, instead of only "not an Xbox disc image".
+- **When Direct3D 11 does not start**, mc3port says so and what to do (the graphics driver on Windows, the 32-bit
+  Vulkan libraries under Wine) instead of showing a black window.
+- **Linux**: the install script checks that Direct3D 11 starts in your Wine and lists the packages to install when it
+  does not. The log says which Direct3D is in use (Windows', Wine's or DXVK's) and whether Steam started the game.
 
 ## 0.3.7 (2026-11-11)
 
