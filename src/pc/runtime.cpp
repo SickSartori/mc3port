@@ -4,6 +4,7 @@
 // (module path, image size, command line) happens before map_xbe() overwrites the image with the XBE.
 
 #include <windows.h>
+#include <d3d11.h>
 #include <dbghelp.h>
 #include <dxgi1_4.h>
 #include <intrin.h>
@@ -18,9 +19,11 @@
 #include <cwchar>
 #include <cwctype>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "core/xbe.h"
 #include "core/xdvdfs.h"
@@ -540,6 +543,57 @@ void log_wine() {
              release ? release : "?");
 }
 
+// Which Direct3D the game got, for reports from Linux: the product name and version of the d3d11.dll and dxgi.dll in
+// use (Windows' own, Wine's, or DXVK's, each says its name there), and whether Steam started it (Proton, the Steam Deck).
+void log_graphics_layer() {
+    for (const wchar_t* name : {L"d3d11.dll", L"dxgi.dll"}) {
+        wchar_t path[MAX_PATH] = {};
+        HMODULE module = GetModuleHandleW(name);
+        if (!module || !GetModuleFileNameW(module, path, MAX_PATH)) continue;
+        DWORD ignored = 0;
+        const DWORD size = GetFileVersionInfoSizeW(path, &ignored);
+        std::vector<uint8_t> info(size);
+        if (!size || !GetFileVersionInfoW(path, 0, size, info.data())) continue;
+        struct Translation {
+            WORD language, code_page;
+        };
+        Translation* translations = nullptr;
+        UINT bytes = 0;
+        Translation translation{0x0409, 1200};
+        if (VerQueryValueW(info.data(), L"\\VarFileInfo\\Translation", reinterpret_cast<void**>(&translations), &bytes) &&
+            bytes >= sizeof(Translation)) {
+            translation = translations[0];
+        }
+        const auto value = [&](const wchar_t* key) -> std::wstring {
+            wchar_t query[96];
+            std::swprintf(query, std::size(query), L"\\StringFileInfo\\%04x%04x\\%ls", translation.language,
+                          translation.code_page, key);
+            wchar_t* text = nullptr;
+            UINT length = 0;
+            if (!VerQueryValueW(info.data(), query, reinterpret_cast<void**>(&text), &length) || !text) return L"?";
+            return text;
+        };
+        log_line("host: %ls: %ls %ls", name, value(L"ProductName").c_str(), value(L"ProductVersion").c_str());
+    }
+    const bool deck = GetEnvironmentVariableW(L"SteamDeck", nullptr, 0) != 0;
+    if (deck || GetEnvironmentVariableW(L"STEAM_COMPAT_DATA_PATH", nullptr, 0)) {
+        log_line("host: started by Steam%s", deck ? ", on a Steam Deck" : " (Proton)");
+    }
+}
+
+// mc3.exe --check-graphics: whether Direct3D 11 can start here, without the game. Exit code 0 when it can, 3 when not
+// (the Linux install script asks, to say what is missing before the first black window).
+void check_graphics_if_asked() {
+    if (!std::wcsstr(GetCommandLineW(), L"--check-graphics")) return;
+    Microsoft::WRL::ComPtr<ID3D11Device> device;
+    const D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL_11_0;
+    const HRESULT result = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, &level, 1, D3D11_SDK_VERSION,
+                                             &device, nullptr, nullptr);
+    log_line("graphics check: Direct3D 11 %s (%08lX)", SUCCEEDED(result) ? "starts" : "does not start",
+             static_cast<unsigned long>(result));
+    end_process(SUCCEEDED(result) ? 0 : 3);
+}
+
 DWORD WINAPI xbox_main_thread(void* parameter) {
     const auto* start = static_cast<const MainThreadStart*>(parameter);
     attach_xbox_thread_context(start->tls, 0);
@@ -605,6 +659,8 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     // A game is running: Windows sees no input from a controller, and turned the display off mid-race (sm2port issue 3).
     SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
     log_wine();
+    log_graphics_layer();
+    check_graphics_if_asked();
     SetUnhandledExceptionFilter(on_unhandled_exception);
     AddVectoredExceptionHandler(1, on_first_chance_exception);
 
