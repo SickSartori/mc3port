@@ -176,7 +176,7 @@ const Texts kEnglish = {
     "The game closes and the launcher opens again, as at the start: every setting, the disc and your music can be changed there. Progress since the last save is lost.",
     "OPEN THE LAUNCHER", "LAUNCHER",
     "MUSIC", "Your own songs on the game's radio. Make your playlists here (MP3, FLAC, WAV, WMA, M4A); in the game choose one in Pause > Options > Audio Options, the Music selector.",
-    "Support the project", "Free, and always will be. A thank-you gives more time for fixes and new ports.",
+    "Support the project", "Free, and always will be. A thank-you keeps it going.",
 };
 
 const Texts kItalian = {
@@ -251,7 +251,7 @@ const Texts kItalian = {
     "Il gioco si chiude e si riapre il launcher, come all'avvio: l\xC3\xAC si cambiano tutte le impostazioni, il disco e la tua musica. I progressi dall'ultimo salvataggio andranno persi.",
     "APRI IL LAUNCHER", "LAUNCHER",
     "MUSICA", "I tuoi brani alla radio del gioco. Crea qui le tue playlist (MP3, FLAC, WAV, WMA, M4A); nel gioco scegline una in Pausa > Opzioni > Opzioni audio, selettore Musica.",
-    "Sostieni il progetto", "Gratis, e lo rester\xC3\xA0. Un grazie d\xC3\xA0 pi\xC3\xB9 tempo per correzioni e nuovi port.",
+    "Sostieni il progetto", "Gratis, e lo rester\xC3\xA0. Un grazie lo fa andare avanti.",
 };
 
 // Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
@@ -323,7 +323,7 @@ const Texts kPortuguese = {
     "O jogo fecha e o launcher abre de novo, como no início: lá se mudam todas as configurações, o disco e a sua música. O progresso desde o último save será perdido.",
     "ABRIR O LAUNCHER", "LAUNCHER",
     "MÚSICA", "Suas próprias músicas no rádio do jogo. Crie aqui as suas playlists (MP3, FLAC, WAV, WMA, M4A); no jogo escolha uma em Pause > Options > Audio Options, seletor Music.",
-    "Apoie o projeto", "Gratuito, e sempre será. Um obrigado dá mais tempo para correções e novos ports.",
+    "Apoie o projeto", "Gratuito, e sempre será. Um obrigado o mantém vivo.",
 };
 
 const Texts kSpanish = {
@@ -394,7 +394,7 @@ const Texts kSpanish = {
     "El juego se cierra y el launcher se abre de nuevo, como al empezar: allí se cambian todos los ajustes, el disco y tu música. Se perderá el progreso desde la última partida guardada.",
     "ABRIR EL LAUNCHER", "LAUNCHER",
     "MÚSICA", "Tus propias canciones en la radio del juego. Crea aquí tus listas (MP3, FLAC, WAV, WMA, M4A); en el juego elige una en Pausa > Opciones > Opciones de audio, el selector de música.",
-    "Apoya el proyecto", "Gratis, y siempre lo será. Un gracias da más tiempo para correcciones y nuevos ports.",
+    "Apoya el proyecto", "Gratis, y siempre lo será. Un gracias lo mantiene vivo.",
 };
 
 // The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
