@@ -602,6 +602,8 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
     log_line("files: program in %s, data in %s%s", reinterpret_cast<const char*>(exe_directory.u8string().c_str()),
              reinterpret_cast<const char*>(data_directory().u8string().c_str()), portable_mode() ? " (portable)" : "");
     log_host();
+    // A game is running: Windows sees no input from a controller, and turned the display off mid-race (sm2port issue 3).
+    SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
     log_wine();
     SetUnhandledExceptionFilter(on_unhandled_exception);
     AddVectoredExceptionHandler(1, on_first_chance_exception);
