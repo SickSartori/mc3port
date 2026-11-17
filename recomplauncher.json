@@ -5,7 +5,11 @@
   "game": {
     "kind": "iso",
     "label": "Your disc image (.iso) of Midnight Club 3: DUB Edition Remix, European (PAL) or USA release.",
-    "check": { "xdvdfs": "default.xbe" }
+    "check": { "xdvdfs": "default.xbe" },
+    "dumps": [
+      { "name": "Midnight Club 3 - DUB Edition Remix (Europe) (En,Fr,De,Es,It)", "size": 7825162240, "crc32": "e0cad5e2" },
+      { "name": "Midnight Club 3 - DUB Edition Remix (USA)", "size": 7825162240, "crc32": "a4337b2a" }
+    ]
   },
   "start": {
     "program": ["mc3.exe"],
