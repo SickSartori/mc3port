@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.10
+
+### Improved
+
+- **Faster where the PC works hardest**: the work that turns each frame's Xbox drawing commands into Direct3D takes about
+  15% less time, which counts most in two-player split screen, where the city is drawn twice.
+
 ## 0.3.9 (2026-11-17)
 
 ### Improved

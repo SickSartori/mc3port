@@ -92,7 +92,7 @@ Modalità provate (con lo script di input, 25 ottobre 2026):
 |---|---|
 | Carriera | funziona: profilo, video, garage, acquisto dell'auto, prima gara; i progressi (auto comprata) si salvano e si ricaricano |
 | Arcade | funziona: guida libera a San Diego e Tokyo |
-| Arcade a 2 giocatori | funziona a schermo diviso (32 fps, la città è disegnata due volte); il riquadro nero dietro ogni auto è lo specchietto retrovisore, che come nell'originale mostra solo i fari delle auto dietro |
+| Arcade a 2 giocatori | funziona a schermo diviso (la città è disegnata due volte: 32 fps a ottobre, 50-60 fps con la 0.3.10 su un i7-1360P, dove il thread della GPU è il limite); il riquadro nero dietro ogni auto è lo specchietto retrovisore, che come nell'originale mostra solo i fari delle auto dietro |
 | Rete | corretto senza connessione: "Il cavo di rete non è connesso" |
 | Sfida di Tokyo | funziona (provata anche a mano, con il fiume percorribile) |
 | Editor di gare | funziona: si entra, la telecamera si muove, il menu dell'editor si apre (provato anche a mano) |

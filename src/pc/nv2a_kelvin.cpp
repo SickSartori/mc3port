@@ -1220,6 +1220,8 @@ void kelvin_array_elements16(const uint32_t* words, uint32_t count) {
     }
 }
 
+static bool kelvin_other_method(uint32_t method, uint32_t argument);
+
 bool kelvin_method(uint32_t method, uint32_t argument) {
     DrawState& d = g_k.draw;
     CombinerProgram& p = d.program;
@@ -1336,7 +1338,14 @@ bool kelvin_method(uint32_t method, uint32_t argument) {
             default: return true;  // border colour, bump-map matrices: not used yet
         }
     }
+    return kelvin_other_method(method, argument);
+}
 
+// Draws, clears and the state that needs more than a store. Apart, so that the stores above (a million a second in a
+// city) do not pay this function's frame: C++ exception registration, security cookie, 200 bytes of stack.
+__declspec(noinline) static bool kelvin_other_method(uint32_t method, uint32_t argument) {
+    DrawState& d = g_k.draw;
+    CombinerProgram& p = d.program;
     switch (method) {
         case 0x0184: g_k.dma_a = g_k.dma(argument); return true;
         case 0x0188: g_k.dma_b = g_k.dma(argument); return true;

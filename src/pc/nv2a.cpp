@@ -567,7 +567,7 @@ bool image_blit_method(uint32_t method, uint32_t argument) {
 }
 
 void execute_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
-    wait_for_pgraph_access();
+    if (!g_pgraph_fifo_enabled) wait_for_pgraph_access();  // checked here: a call for every word cost 3% of the thread
     if (g_collect_statistics) ++g_method_counts[(subchannel << 16) | method];
     if (g_trace_budget > 0 && g_frames >= g_trace_after_frame) {
         --g_trace_budget;
