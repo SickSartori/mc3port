@@ -62,7 +62,12 @@ static BOOL supervise(DWORD* exit_code) {
         WaitForSingleObject(process.hProcess, INFINITE);
         if (!GetExitCodeProcess(process.hProcess, exit_code)) *exit_code = 1;
         CloseHandle(process.hProcess);
-        /* What the old process set before starting the next one itself (launcher_ui.cpp). */
+        /* What the old process set before starting the next one itself (launcher_ui.cpp; renderer_d3d11.cpp in xport,
+         * which kept the rest of its own). */
+        if (*exit_code == MC3_EXIT_RESTART_AFTER_GPU_LOSS) {
+            SetEnvironmentVariableW(L"MC3_RESTARTED_AFTER_GPU_LOSS", L"1");
+            continue;
+        }
         SetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", NULL);
         SetEnvironmentVariableW(L"MC3_SHOW_LAUNCHER", NULL);
         SetEnvironmentVariableW(L"MC3_MOVE_OLD_DATA", NULL);

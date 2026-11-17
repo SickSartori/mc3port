@@ -32,8 +32,9 @@
   dialog, but exit code 2, so the launcher asks for it again. Quitting the launcher reopened by "Back to the launcher"
   no longer ends with code 2.
 - Started by RecompLauncher, the game's restarts (the in-game menu's restart, "Back to the launcher", moving the old
-  data folder) no longer look to the launcher like the game had ended: `mc3.exe` stays as the process it started,
-  starts each new one itself and ends with the game's exit code.
+  data folder, a lost graphics card) no longer look to the launcher like the game had ended: `mc3.exe` stays as the
+  process it started, starts each new one itself and ends with the game's exit code. In Big Picture mode the lost
+  graphics card's message is not shown (a controller could not close it), only logged.
 - The display no longer turns off while playing with a controller: Windows saw no input and let it sleep.
 
 ## 0.3.7 (2026-11-11)
