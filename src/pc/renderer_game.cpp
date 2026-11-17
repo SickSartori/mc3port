@@ -138,6 +138,10 @@ RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float lef
 // The radar's clear of the alpha stays where it is while its quads are narrowed towards the left: the strip they
 // gained kept the scene's alpha, and the map showed there, outside the ring. So it reaches that far too.
 void renderer_game_clear(const SurfaceState& surface, uint32_t channels, int& x0, int& y0, int& x1, int& y1) {
+    // A cleared surface is no copy of the frame until a draw copies the frame into it again: the headlights' light is
+    // built in the same surface earlier in each frame, and its pass to the frame (SRC_ALPHA, ONE) was taken for the
+    // light streaks' and faded out with them (issue #20).
+    if (channels) g_frame_copies.erase(surface.color_address);
     const ShownPicture picture = renderer_shown_picture();
     if (channels == 8 && hud_aspect() && picture.width && picture.height && x1 - x0 <= 200 && y1 - y0 <= 200 &&
         x1 <= static_cast<int>(picture.width / 2) && y0 >= static_cast<int>(picture.height / 2) &&
