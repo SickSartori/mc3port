@@ -1133,12 +1133,12 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
             }
             log_line("%s", lights);
         }
-        log_line("frame draw %llu: %s prim %u n %u surf %08X | tex0 %s %08X fmt %08X | blend %d %X %X | z %d %X w %d | "
+        log_line("frame draw %llu: %s prim %u n %u surf %08X %ux%u zeta %08X | tex0 %s %08X fmt %08X | blend %d %X %X | z %d %X w %d | "
                  "atest %d %X ref %02X | mask %08X | clip (%.3g %.3g %.3g %.3g) d0 (%.2f %.2f %.2f %.2f) | comb %08X %08X %08X"
                  " | stages %05X ctl %08X | alpha %08X %08X out %08X | stencil %d %X ref %02X rm %02X wm %02X ops %X %X %X"
                  " | cull %d %X front %X eq %X",
                  static_cast<unsigned long long>(g_draws), fixed_function ? "ff" : "vp", g_k.primitive, count,
-                 target.color_address, d.textures[0].enabled ? "on" : "off", d.textures[0].descriptor.address,
+                 target.color_address, target.width, target.height, target.zeta_address, d.textures[0].enabled ? "on" : "off", d.textures[0].descriptor.address,
                  d.textures[0].descriptor.format, d.blend_enable, d.blend_source, d.blend_destination, d.depth_test,
                  d.depth_function, d.depth_write, g_k.alpha_test, g_k.alpha_function, g_k.alpha_reference,
                  d.color_mask, v.position[0] / v.position[3], v.position[1] / v.position[3],
