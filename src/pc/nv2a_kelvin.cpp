@@ -1101,11 +1101,16 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
         // MC3_DEBUG_ADDITIVE=1: only draws that add light (blended with a destination factor of ONE).
         static const bool additive_only = GetEnvironmentVariableA("MC3_DEBUG_ADDITIVE", nullptr, 0) != 0;
         if (additive_only && !(d.blend_enable && d.blend_destination == 1)) return;
+        float brightest[4] = {};  // the vertices' largest diffuse colour: a glow drawn with zero colour adds nothing
+        for (const RenderVertex& p : vertices) {
+            for (int c = 0; c < 4; ++c) brightest[c] = std::max(brightest[c], p.diffuse[c]);
+        }
         log_line("frame rect %llu: %.0f %.0f %.0f %.0f uv %.3f %.3f %.3f %.3f texmatrix %d texgen %X address %08X "
-                 "filter %08X",
+                 "filter %08X | brightest d0 (%.2f %.2f %.2f %.2f) lighting %d diffuse array %02X",
                  static_cast<unsigned long long>(g_draws), x0, y0, x1, y1, u0, v0, u1, v1,
                  g_k.texture_matrix_enable[0], g_k.texgen[0][0], g_k.draw.textures[0].address_mode,
-                 g_k.draw.textures[0].filter);
+                 g_k.draw.textures[0].filter, brightest[0], brightest[1], brightest[2], brightest[3], g_k.lighting ? 1 : 0,
+                 g_k.array_format[kInDiffuse] & 0xFF);
         if (fixed_function && lighting_on() && g_k.light_enable_mask) {  // the lights on this draw, for missing glows
             char lights[512];
             const Vec4& normal = g_k.attribute[kInNormal];
