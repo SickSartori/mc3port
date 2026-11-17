@@ -11,16 +11,58 @@
     "program": ["mc3.exe"],
     "args": ["{game}"]
   },
-  "saves": ["{install}/xbox_hdd"],
+  "saves": ["{install}/xbox_hdd", "{documents}/mc3port/xbox_hdd", "{local}/mc3port/xbox_hdd"],
   "config": [
     {
       "id": "main",
       "format": "ini",
-      "file": "{install}/mc3port.ini",
+      "file": [
+        { "path": "{install}/mc3port.ini", "if": "{install}/portable.txt" },
+        { "path": "{install}/mc3port.ini", "if": "{install}/mc3port.ini" },
+        { "path": "{documents}/mc3port/mc3port.ini", "if": "{documents}/mc3port/xbox_hdd" },
+        { "path": "{documents}/mc3port/mc3port.ini", "if": "{documents}/mc3port/mc3port.ini" },
+        { "path": "{local}/mc3port/mc3port.ini", "if": "{local}/mc3port/xbox_hdd" },
+        { "path": "{local}/mc3port/mc3port.ini", "if": "{local}/mc3port/mc3port.ini" },
+        { "path": "{documents}/mc3port/mc3port.ini" }
+      ],
       "game_path": "disc_image"
     }
   ],
   "settings": [
+    {
+      "id": "window",
+      "label": "Window",
+      "help": "Full screen or a window. Big Picture mode always starts full screen.",
+      "choices": [
+        { "label": "Windowed", "set": { "fullscreen": "0" } },
+        { "label": "Fullscreen", "set": { "fullscreen": "1" } }
+      ],
+      "defaults": { "fullscreen": "0" }
+    },
+    {
+      "id": "vsync",
+      "label": "V-Sync",
+      "help": "The picture never tears; on a slow PC the game may drop to 30 fps.",
+      "choices": [
+        { "label": "Off", "set": { "vsync": "0" } },
+        { "label": "On", "set": { "vsync": "1" } }
+      ],
+      "defaults": { "vsync": "0" }
+    },
+    {
+      "id": "language",
+      "label": "Language",
+      "help": "The game's language. Automatic follows Windows.",
+      "choices": [
+        { "label": "Automatic", "set": { "game_language": "0" } },
+        { "label": "English", "set": { "game_language": "1" } },
+        { "label": "Deutsch", "set": { "game_language": "3" } },
+        { "label": "Français", "set": { "game_language": "4" } },
+        { "label": "Español", "set": { "game_language": "5" } },
+        { "label": "Italiano", "set": { "game_language": "6" } }
+      ],
+      "defaults": { "game_language": "0" }
+    },
     {
       "id": "frame_rate",
       "label": "Frame rate",
@@ -41,7 +83,8 @@
         { "label": "720p", "set": { "render_scale": "1.5" } },
         { "label": "1080p", "set": { "render_scale": "2.25" } },
         { "label": "1440p", "set": { "render_scale": "3" } },
-        { "label": "4K", "set": { "render_scale": "4.5" } }
+        { "label": "4K", "set": { "render_scale": "4.5" } },
+        { "label": "5K", "set": { "render_scale": "6" } }
       ],
       "defaults": { "render_scale": "0" }
     },
@@ -111,10 +154,26 @@
     }
   ],
   "folders": {
-    "saves": "{install}/xbox_hdd",
-    "logs": "{install}/logs"
+    "saves": [
+      { "path": "{install}/xbox_hdd", "if": "{install}/portable.txt" },
+      { "path": "{install}/xbox_hdd", "if": "{install}/mc3port.ini" },
+      { "path": "{documents}/mc3port/xbox_hdd", "if": "{documents}/mc3port/xbox_hdd" },
+      { "path": "{documents}/mc3port/xbox_hdd", "if": "{documents}/mc3port/mc3port.ini" },
+      { "path": "{local}/mc3port/xbox_hdd", "if": "{local}/mc3port/xbox_hdd" },
+      { "path": "{local}/mc3port/xbox_hdd", "if": "{local}/mc3port/mc3port.ini" },
+      { "path": "{documents}/mc3port/xbox_hdd" }
+    ],
+    "logs": [
+      { "path": "{install}/logs", "if": "{install}/portable.txt" },
+      { "path": "{install}/logs", "if": "{install}/mc3port.ini" },
+      { "path": "{documents}/mc3port/logs", "if": "{documents}/mc3port/xbox_hdd" },
+      { "path": "{documents}/mc3port/logs", "if": "{documents}/mc3port/mc3port.ini" },
+      { "path": "{local}/mc3port/logs", "if": "{local}/mc3port/xbox_hdd" },
+      { "path": "{local}/mc3port/logs", "if": "{local}/mc3port/mc3port.ini" },
+      { "path": "{documents}/mc3port/logs" }
+    ]
   },
   "exit_codes": {
-    "2": "mc3port could not use your disc image. It needs the European (PAL) or USA release of Midnight Club 3: DUB Edition Remix as a complete .iso: pick it again on the game's page."
+    "2": "mc3port could not use your disc image: it is missing, incomplete, or another version or region. It needs the European (PAL) or USA release of Midnight Club 3: DUB Edition Remix: pick it again on the game's page."
   }
 }

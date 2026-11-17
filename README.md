@@ -7,7 +7,7 @@
 **An unofficial native PC port of Midnight Club 3: DUB Edition Remix for the original Xbox.**<br>
 16:9 widescreen, 60 fps, up to 5K internal resolution and optional modern effects, running from your own disc image.
 
-[![Get it on RecompLauncher](https://recomplauncher.com/assets/press/launcher/badge-dark.svg)](https://recomplauncher.com/game/mc3port)
+<a href="https://recomplauncher.com/game/mc3port"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
 
 [![Latest release](https://img.shields.io/github/v/release/SickSartori/mc3port?label=release)](https://github.com/SickSartori/mc3port/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/SickSartori/mc3port/total)](https://github.com/SickSartori/mc3port/releases)
@@ -127,7 +127,8 @@ and **PLAY** (or Enter, or A on a controller) starts the game.
 ### Where your files are
 
 Settings (`mc3port.ini`), saves (`xbox_hdd`), logs (`logs`) and the shader cache live in **`Documents\mc3port`**, so
-updates and uninstalling never touch them. With RecompLauncher they are in the game's own folder.
+updates and uninstalling never touch them, with RecompLauncher too. A `portable.txt` (or an earlier `mc3port.ini`)
+next to `mc3.exe` keeps them in the game's own folder instead.
 
 <details>
 <summary>Portable data, older versions and backups</summary>

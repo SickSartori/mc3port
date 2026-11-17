@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **RecompLauncher**: `recomplauncher.json` follows the schema again (the launcher skipped it), keeps the settings,
+  saves and logs where mc3port keeps them (`Documents\mc3port` unless portable) and adds Window, V-Sync, Language and
+  5K. It also comes with the installer.
+- Started by RecompLauncher, mc3port uses only the disc the launcher gives: no other disc in its place and no file
+  dialog, but exit code 2, so the launcher asks for it again. Quitting the launcher reopened by "Back to the launcher"
+  no longer ends with code 2.
+
 ## 0.3.7 (2026-11-11)
 
 ### New
