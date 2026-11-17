@@ -6,6 +6,8 @@
 
 #include <windows.h>
 
+#include "restart_codes.h"
+
 /* Covers the XBE image (0x57A280 bytes for MC3) with room for sections loaded on demand. */
 #define XBE_RESERVE_SIZE 0x01000000u
 
@@ -15,7 +17,74 @@ unsigned char g_xbe_reserve[XBE_RESERVE_SIZE];
 
 typedef void(__cdecl* Mc3RunFunction)(void* reserved, unsigned long reserved_size);
 
+/* Started by RecompLauncher: this process starts the game as a child and waits, so the process RecompLauncher watches
+ * lasts until the player quits, through the game's restarts (restart_codes.h), and ends with the game's exit code.
+ * FALSE when the first child cannot start: the game then runs here, as without RecompLauncher. */
+static BOOL supervise(DWORD* exit_code) {
+    wchar_t exe[MAX_PATH];
+    const wchar_t* line = GetCommandLineW();
+    wchar_t* command = (wchar_t*)HeapAlloc(GetProcessHeap(), 0, ((SIZE_T)lstrlenW(line) + 1) * sizeof(wchar_t));
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
+    STARTUPINFOW startup;
+    PROCESS_INFORMATION process;
+    HANDLE job;
+    BOOL first = TRUE;
+    if (!command || !GetModuleFileNameW(NULL, exe, MAX_PATH)) return FALSE;
+    SetEnvironmentVariableW(L"MC3_SUPERVISED", L"1");
+    /* If this process is ended (RecompLauncher's Stop), the game goes with it; what the game opens (a browser, a
+     * folder) leaves the job and stays. */
+    job = CreateJobObjectW(NULL, NULL);
+    if (job) {
+        RtlSecureZeroMemory(&limits, sizeof(limits));
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+        SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits));
+    }
+    for (;;) {
+        /* RecompLauncher's window state (shown, maximised) carries over; its handles do not. */
+        GetStartupInfoW(&startup);
+        startup.dwFlags &= ~STARTF_USESTDHANDLES;
+        startup.cbReserved2 = 0;
+        startup.lpReserved2 = NULL;
+        lstrcpyW(command, line); /* CreateProcessW may write to it */
+        if (!CreateProcessW(exe, command, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &startup, &process)) {
+            if (first) {
+                SetEnvironmentVariableW(L"MC3_SUPERVISED", NULL);
+                return FALSE;
+            }
+            *exit_code = 1;
+            return TRUE;
+        }
+        first = FALSE;
+        if (job) AssignProcessToJobObject(job, process.hProcess);
+        AllowSetForegroundWindow(process.dwProcessId); /* the game's window in front, as if RecompLauncher started it */
+        ResumeThread(process.hThread);
+        CloseHandle(process.hThread);
+        WaitForSingleObject(process.hProcess, INFINITE);
+        if (!GetExitCodeProcess(process.hProcess, exit_code)) *exit_code = 1;
+        CloseHandle(process.hProcess);
+        /* What the old process set before starting the next one itself (launcher_ui.cpp). */
+        SetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", NULL);
+        SetEnvironmentVariableW(L"MC3_SHOW_LAUNCHER", NULL);
+        SetEnvironmentVariableW(L"MC3_MOVE_OLD_DATA", NULL);
+        if (*exit_code == MC3_EXIT_RESTART_GAME) {
+            SetEnvironmentVariableW(L"MC3_SKIP_LAUNCHER", L"1");
+        } else if (*exit_code == MC3_EXIT_BACK_TO_LAUNCHER) {
+            SetEnvironmentVariableW(L"MC3_SHOW_LAUNCHER", L"1");
+        } else if (*exit_code == MC3_EXIT_MOVE_OLD_DATA) {
+            SetEnvironmentVariableW(L"MC3_MOVE_OLD_DATA", L"1");
+            SetEnvironmentVariableW(L"MC3_SHOW_LAUNCHER", L"1"); /* it was in the launcher, even with a disc given */
+        } else {
+            return TRUE;
+        }
+    }
+}
+
 void __cdecl LauncherEntry(void) {
+    DWORD exit_code;
+    if (GetEnvironmentVariableW(L"RECOMPLAUNCHER", NULL, 0) && !GetEnvironmentVariableW(L"MC3_SUPERVISED", NULL, 0) &&
+        supervise(&exit_code)) {
+        ExitProcess(exit_code);
+    }
     HMODULE runtime = LoadLibraryW(L"mc3runtime.dll");
     Mc3RunFunction run = runtime ? (Mc3RunFunction)GetProcAddress(runtime, "mc3_run") : NULL;
     if (!run) {
