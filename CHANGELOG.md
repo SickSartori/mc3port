@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.9
+
+### Improved
+
+- **RecompLauncher** marks a disc image as verified when it is a Redump copy of a supported release: `recomplauncher.json`
+  lists their size and CRC32. Other images (trimmed ones, for example) play as before.
+
 ## 0.3.8 (2026-11-17)
 
 ### New
