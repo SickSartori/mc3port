@@ -6,6 +6,9 @@
 
 - **Support the project** from the About page of the launcher and of the in-game menu: a row with the links to GitHub
   Sponsors and Ko-fi. It is never needed to play and it unlocks nothing; there are no reminders.
+- **PlayStation buttons**: with a DualSense, DualShock 4 or DualShock 3 connected (or RecompLauncher's PlayStation
+  pad when none is), the launcher and the in-game menu show the cross, circle, square and triangle, L1, R1, L2, R2,
+  Options and Create (Share, Select) instead of the Xbox's buttons. The game's own prompts stay the Xbox's.
 
 ### Improved
 
@@ -24,6 +27,9 @@
 - Started by RecompLauncher, mc3port uses only the disc the launcher gives: no other disc in its place and no file
   dialog, but exit code 2, so the launcher asks for it again. Quitting the launcher reopened by "Back to the launcher"
   no longer ends with code 2.
+- Started by RecompLauncher, the game's restarts (the in-game menu's restart, "Back to the launcher", moving the old
+  data folder) no longer look to the launcher like the game had ended: `mc3.exe` stays as the process it started,
+  starts each new one itself and ends with the game's exit code.
 - The display no longer turns off while playing with a controller: Windows saw no input and let it sleep.
 
 ## 0.3.7 (2026-11-11)

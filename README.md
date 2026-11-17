@@ -17,6 +17,7 @@
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
 [Download](https://github.com/SickSartori/mc3port/releases/latest) ·
+[How to play](#how-to-play) ·
 [Features](#features) ·
 [Install](#installing) ·
 [Controls](#controls) ·
@@ -35,6 +36,16 @@
 > **No game data is included or distributed**: no disc images, no executables, no textures, sounds, music or films.
 > To play you need your own, legally obtained copy of the game. mc3port reads everything it needs from your disc
 > image while it runs. Please do not ask for game files or disc images, and do not share them.
+
+## How to play
+
+1. You need a disc image (`.iso` or `.cci`) of your own copy of **Midnight Club 3: DUB Edition Remix** for the Xbox,
+   the European or the USA release ([which ones work](#requirements)). It can stay wherever it is: nothing is copied.
+2. Get mc3port from [RecompLauncher](https://recomplauncher.com/game/mc3port), or download the installer or the
+   portable zip from the [latest release](https://github.com/SickSartori/mc3port/releases/latest)
+   ([Installing](#installing)).
+3. Start it and choose your disc image (in RecompLauncher, on the game's page): mc3port checks it and remembers it.
+   Press **PLAY**.
 
 ## Screenshots
 
