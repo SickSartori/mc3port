@@ -9,12 +9,13 @@
 
 <a href="https://recomplauncher.com/game/mc3port"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
 
+<a href="https://github.com/sponsors/SickSartori"><img alt="Sponsor on GitHub" src="https://img.shields.io/badge/Sponsor-on_GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" height="36"></a>
+<a href="https://ko-fi.com/sicksartori"><img alt="Support me on Ko-fi" src="https://ko-fi.com/img/githubbutton_sm.svg" height="36"></a>
+
 [![Latest release](https://img.shields.io/github/v/release/SickSartori/mc3port?label=release)](https://github.com/SickSartori/mc3port/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/SickSartori/mc3port/total)](https://github.com/SickSartori/mc3port/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20(Wine)-blue)](#installing)
 [![Licence](https://img.shields.io/github/license/SickSartori/mc3port)](LICENSE)
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
 [Download](https://github.com/SickSartori/mc3port/releases/latest) ·
 [How to play](#how-to-play) ·
