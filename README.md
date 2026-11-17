@@ -23,7 +23,8 @@
 [Settings](#settings) ·
 [FAQ](#faq) ·
 [Troubleshooting](#troubleshooting) ·
-[Changelog](CHANGELOG.md)
+[Changelog](CHANGELOG.md) ·
+[Support the project](#supporting-the-project)
 
 </div>
 
@@ -157,8 +158,8 @@ installer and the update check. If something goes wrong, please
   `libvulkan1:i386`); without them Wine has no Direct3D 11 and the window stays black. The packages from
   [WineHQ](https://gitlab.winehq.org/wine/wine/-/wikis/Download) bring the rest.
 - **The Linux package**, `mc3port-<version>-linux.tar.gz`: extract it and run `sh mc3port/install.sh`. It copies
-  mc3port to `~/.local/share/mc3port`, makes a Wine prefix of its own there, and adds the `mc3port` command and an
-  applications menu entry. Run it again to update. Settings and saves are in that one folder; the script says how to
+  mc3port to `~/.local/share/mc3port`, makes a Wine prefix of its own there, checks that Direct3D 11 starts (and says
+  what to install if it does not), and adds the `mc3port` command and an applications menu entry. Run it again to update. Settings and saves are in that one folder; the script says how to
   remove it.
 - **Or the portable zip**, by hand: extract it, put your `.iso` in the `mc3port` folder (it is found there without
   asking) or choose it in the launcher, then run `wine mc3.exe` from that folder. Your files are then in
@@ -381,6 +382,9 @@ GitHub releases. **Report a problem** only opens GitHub's bug form in your brows
 yourself. The game's online play is not available.
 
 ## Supporting the project
+
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support_the_project-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
 mc3port is free and always will be: no paid builds, no early access, no locked features. If you enjoy it and want to
 say thanks, you can support its author on [GitHub Sponsors](https://github.com/sponsors/SickSartori) or

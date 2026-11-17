@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.3.8
+
+### New
+
+- **Support the project** from the About page of the launcher and of the in-game menu: a row with the links to GitHub
+  Sponsors and Ko-fi. It is never needed to play and it unlocks nothing; there are no reminders.
+
+### Improved
+
+- Choosing a file that is not a disc image (one of mc3port's own files, for example) now says that the game is not
+  included and that your own `.iso` or `.cci` is needed, instead of only "not an Xbox disc image".
+- **When Direct3D 11 does not start**, mc3port says so and what to do (the graphics driver on Windows, the 32-bit
+  Vulkan libraries under Wine) instead of showing a black window.
+- **Linux**: the install script checks that Direct3D 11 starts in your Wine and lists the packages to install when it
+  does not. The log says which Direct3D is in use (Windows', Wine's or DXVK's) and whether Steam started the game.
 
 ### Fixed
 
@@ -10,6 +24,7 @@
 - Started by RecompLauncher, mc3port uses only the disc the launcher gives: no other disc in its place and no file
   dialog, but exit code 2, so the launcher asks for it again. Quitting the launcher reopened by "Back to the launcher"
   no longer ends with code 2.
+- The display no longer turns off while playing with a controller: Windows saw no input and let it sleep.
 
 ## 0.3.7 (2026-11-11)
 
