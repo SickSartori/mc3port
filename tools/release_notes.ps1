@@ -19,5 +19,6 @@ $notes = $section.Trim() + @"
 - **Installer**: ``mc3port-$Version-windows-x86-setup.zip`` (extract it and run the setup; it installs for your user, and the launcher downloads its updates). The same installer is also attached as ``-setup.exe``, which some browsers block because it is not signed yet.
 - **Portable**: ``mc3port-$Version-windows-x86.zip`` (extract anywhere and start ``mc3.exe``).
 - Check a download against ``SHA256SUMS``. You need your own disc image of the European or USA Xbox release: see the README.
+- [Code signing policy](https://github.com/SickSartori/mc3port#code-signing-policy) and [Privacy](https://github.com/SickSartori/mc3port#privacy).
 "@
 Set-Content -Path $Out -Value $notes -Encoding utf8NoBOM
