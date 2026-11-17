@@ -21,10 +21,10 @@
 
 ### Fixed
 
-- **The headlights light the road again** (issue #20): a soft, warm pool of light in front of the car at night, as
-  on the Xbox. The game counts its headlights' light volumes in a small surface against a copy of the scene's depth;
-  the port tested them against an empty depth buffer, counted each face as a whole step instead of a small one, and
-  then faded the result out as if it were the light streaks.
+- **The headlights light the road again** (issue #20): a soft, warm pool of light in front of the car at night, a
+  little brighter than on the Xbox (up to 15% added instead of 12.5%). The game counts its headlights' light volumes
+  in a small surface against a copy of the scene's depth; the port tested them against an empty depth buffer, counted
+  each face as a whole step instead of a small one, and then faded the result out as if it were the light streaks.
 - **RecompLauncher**: `recomplauncher.json` follows the schema again (the launcher skipped it), keeps the settings,
   saves and logs where mc3port keeps them (`Documents\mc3port` unless portable) and adds Window, V-Sync, Language and
   5K. It also comes with the installer.
