@@ -13,6 +13,9 @@ licences:
 
 The Barlow fonts and the music are built into `mc3runtime.dll` as resources; SDL is linked into it.
 
+The launcher music was made with ElevenLabs Music: if you reuse it, the [ElevenLabs Music Terms](https://elevenlabs.io/music-terms)
+apply too (for example, no film, TV, radio or commercial games, and no music libraries).
+
 Not included, and never distributed: anything from Midnight Club 3: DUB Edition Remix. The launcher's logo and
 pictures, and all of the game, are read from the player's own disc image at run time. They belong to Take-Two
 Interactive / Rockstar Games.
