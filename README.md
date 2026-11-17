@@ -375,15 +375,9 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by
-[SignPath Foundation](https://signpath.org). The application is under review: until it is approved, the releases are
-not signed yet.
-
-- Committers and reviewers: [SickSartori](https://github.com/SickSartori)
-- Approvers: [SickSartori](https://github.com/SickSartori)
-
-The Windows files are built from this repository and [xport](https://github.com/SickSartori/xport) by GitHub Actions
-([release workflow](.github/workflows/release.yml)); each release lists their SHA-256 in `SHA256SUMS`.
+The releases are not code signed yet. Every Windows file is built from this repository and
+[xport](https://github.com/SickSartori/xport) by GitHub Actions ([release workflow](.github/workflows/release.yml));
+each release lists their SHA-256 in `SHA256SUMS`.
 
 ## Privacy
 
