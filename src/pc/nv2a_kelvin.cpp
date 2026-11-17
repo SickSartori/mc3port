@@ -1136,7 +1136,7 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
         log_line("frame draw %llu: %s prim %u n %u surf %08X %ux%u zeta %08X | tex0 %s %08X fmt %08X | blend %d %X %X | z %d %X w %d | "
                  "atest %d %X ref %02X | mask %08X | clip (%.3g %.3g %.3g %.3g) d0 (%.2f %.2f %.2f %.2f) | comb %08X %08X %08X"
                  " | stages %05X ctl %08X | alpha %08X %08X out %08X | stencil %d %X ref %02X rm %02X wm %02X ops %X %X %X"
-                 " | cull %d %X front %X eq %X",
+                 " | cull %d %X front %X eq %X | offset %d %g %g",
                  static_cast<unsigned long long>(g_draws), fixed_function ? "ff" : "vp", g_k.primitive, count,
                  target.color_address, target.width, target.height, target.zeta_address, d.textures[0].enabled ? "on" : "off", d.textures[0].descriptor.address,
                  d.textures[0].descriptor.format, d.blend_enable, d.blend_source, d.blend_destination, d.depth_test,
@@ -1147,7 +1147,7 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
                  d.program.control, d.program.alpha_input[0], d.program.alpha_output[0], d.program.color_output[0],
                  d.stencil_test, d.stencil_function, d.stencil_reference, d.stencil_read_mask, d.stencil_write_mask,
                  d.stencil_fail, d.stencil_depth_fail, d.stencil_pass, d.cull_enable, d.cull_face, d.front_face,
-                 d.blend_equation);
+                 d.blend_equation, d.offset_fill, d.offset_scale, d.offset_bias);
     }
 }
 
@@ -1395,6 +1395,10 @@ __declspec(noinline) static bool kelvin_other_method(uint32_t method, uint32_t a
         case 0x0350: d.blend_equation = argument; return true;
         case 0x0354: d.depth_function = argument; return true;
         case 0x0308: d.cull_enable = argument != 0; return true;
+        case 0x0338: d.offset_fill = argument != 0; return true;  // NV097_SET_POLY_OFFSET_FILL_ENABLE
+        case 0x0380: return true;  // line width
+        case 0x0384: d.offset_scale = as_float(argument); return true;
+        case 0x0388: d.offset_bias = as_float(argument); return true;
         case 0x039C: d.cull_face = argument; return true;
         case 0x03A0: d.front_face = argument; return true;
         case 0x032C: d.stencil_test = argument != 0; return true;

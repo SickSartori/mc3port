@@ -7,6 +7,11 @@
 - **Faster where the PC works hardest**: the work that turns each frame's Xbox drawing commands into Direct3D takes about
   15% less time, which counts most in two-player split screen, where the city is drawn twice.
 
+### Fixed
+
+- **No pale box around pedestrians and lamp posts at night**: the ambient occlusion lightened the shaded wall behind
+  anything standing in front of it, in a rectangle as wide as its radius. It now shades the wall right up to the figure.
+
 ## 0.3.9 (2026-11-17)
 
 ### Improved
