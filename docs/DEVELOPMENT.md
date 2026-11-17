@@ -34,10 +34,9 @@ cmake --build --preset pc-x86-debug
 
 Pacchetto della release (zip e SHA256SUMS in `dist/`): `pwsh -File tools/package.ps1`.
 
-`shader_cache/` sono gli shader compilati durante le prove, copiati da `Documenti\mc3port\shader_cache`: il pacchetto
-li mette accanto a `mc3.exe` e il renderer li prepara all'avvio, così anche alla prima partita non compila niente mentre
-si gioca. Prima di una release che cambia il renderer: svuotare la cache in Documenti, giocare menu, garage, città e una
-gara, poi ricopiarla qui. Il log dice `combiner shader ... compiled` per ogni shader che mancava.
+Il pacchetto non contiene shader compilati: sono derivati da quelli del gioco e non nascono dalla build (SignPath firma
+solo ciò che la build produce dal sorgente). Ogni PC li compila la prima volta e li tiene in `Documenti\mc3port\shader_cache`.
+Il renderer di xport legge ancora anche `shader_cache` accanto a `mc3.exe`, se esiste.
 
 ## Branch e rilasci
 

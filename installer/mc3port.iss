@@ -77,6 +77,10 @@ Name: "checkupdates"; Description: "{cm:CheckUpdates}"
 Filename: "{app}\setup_choices.ini"; Section: "mc3port"; Key: "check_updates"; String: "1"; Tasks: checkupdates; Flags: uninsdeletesection
 Filename: "{app}\setup_choices.ini"; Section: "mc3port"; Key: "check_updates"; String: "0"; Tasks: not checkupdates; Flags: uninsdeletesection
 
+[UninstallDelete]
+; uninsdeletesection leaves the file, empty, and so the folder.
+Type: files; Name: "{app}\setup_choices.ini"
+
 [InstallDelete]
 ; Up to 0.3.0 the documents were next to mc3.exe; they are in docs now.
 Type: files; Name: "{app}\README.md"
@@ -84,7 +88,7 @@ Type: files; Name: "{app}\CHANGELOG.md"
 Type: files; Name: "{app}\LICENSE"
 Type: files; Name: "{app}\THIRD_PARTY.md"
 Type: filesandordirs; Name: "{app}\licenses"
-; The shipped shaders are replaced whole on each update: an older renderer's are never read again.
+; 0.3.7 to 0.3.8 shipped compiled shaders here; they are no longer shipped (each PC compiles its own, in Documents).
 Type: filesandordirs; Name: "{app}\shader_cache"
 
 [Files]
@@ -97,7 +101,6 @@ Source: "{#SourceDir}\docs\CHANGELOG.md"; DestDir: "{app}\docs"; Flags: ignoreve
 Source: "{#SourceDir}\docs\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\THIRD_PARTY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\licenses\*"; DestDir: "{app}\docs\licenses"; Flags: ignoreversion
-Source: "{#SourceDir}\shader_cache\*"; DestDir: "{app}\shader_cache"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{cm:ShortcutName}"; Filename: "{app}\mc3.exe"
