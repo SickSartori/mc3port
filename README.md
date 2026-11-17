@@ -367,7 +367,8 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 - [Dear ImGui](https://github.com/ocornut/imgui) by Omar Cornut, MIT licence: the launcher's interface.
 - [SDL](https://github.com/libsdl-org/SDL) by Sam Lantinga and contributors, zlib licence: the controllers.
 - [Barlow](https://github.com/jpt/barlow) by Jeremy Tribby, SIL Open Font License: the launcher's font.
-- The launcher's background music was generated for mc3port with ElevenLabs Music (through Magnific).
+- The launcher's background music was generated for mc3port with ElevenLabs Music (through Magnific), and is under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - The program icon and logo are mc3port's own (`tools/make_icon.py`), in the spirit of the game's logo.
 - The launcher's logo and pictures are the game's own, read from your disc while it runs; they are not part of
   mc3port.

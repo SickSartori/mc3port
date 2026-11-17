@@ -7,6 +7,17 @@
 - **RecompLauncher** marks a disc image as verified when it is a Redump copy of a supported release: `recomplauncher.json`
   lists their size and CRC32. Other images (trimmed ones, for example) play as before.
 
+### Changed
+
+- **The compiled shaders no longer ship with mc3port**: they are made from the game's own and are not built from this
+  repository's source, which code signing needs. Your PC compiles each one the first time it is needed (a short pause,
+  for example on entering a city) and keeps it in `Documents\mc3port\shader_cache`, as before 0.3.7.
+- **The launcher music is under CC BY 4.0**, so every part of mc3port has an open licence.
+
+### Fixed
+
+- **Uninstalling removes the whole folder**: an empty `setup_choices.ini` kept it there.
+
 ## 0.3.8 (2026-11-17)
 
 ### New
