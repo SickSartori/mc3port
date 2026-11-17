@@ -624,7 +624,9 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
         skip_launcher ? open_game_disc(exe_directory) : run_launcher(nv2a_open_window(), exe_directory);
     if (!disc) {
         log_line("no game disc: exiting");
-        ExitProcess(command_line_disc().empty() ? 0 : 2);  // 2: the disc given was refused (recomplauncher.json explains it)
+        // 2: the disc given was refused (recomplauncher.json explains it); quitting the launcher shown again by "Back
+        // to the launcher" is a normal end, even with a disc on the command line.
+        ExitProcess(command_line_disc().empty() || show_launcher ? 0 : 2);
     }
     log_line("disc image: %s", reinterpret_cast<const char*>(disc->path.u8string().c_str()));
     settings_freeze();  // from here on, keys the game reads once change only for the next start
