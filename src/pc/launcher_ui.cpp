@@ -10,6 +10,8 @@
 #include <wrl/client.h>
 #include <xinput.h>
 
+#include <SDL3/SDL.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -49,6 +51,7 @@
 #include "pc/paths.h"
 #include "pc/hud.h"
 #include "pc/renderer_d3d11.h"
+#include "pc/restart_codes.h"
 #include "pc/launcher_style.h"
 #include "pc/settings.h"
 #include "pc/soundtracks.h"
@@ -1811,6 +1814,64 @@ void Launcher::style_summary() {
     }
 }
 
+// The controller's own symbols in the launcher and the menu: PlayStation's for a DualSense, DualShock 4 or 3 (SDL's
+// type of the first pad), or RecompLauncher's {pad} (RECOMPLAUNCHER_PAD) while none is connected. Looked up at most
+// once a second.
+SDL_GamepadType pad_type() {
+    static ULONGLONG next = 0;
+    static SDL_GamepadType type = SDL_GAMEPAD_TYPE_UNKNOWN;
+    const ULONGLONG now = GetTickCount64();
+    if (now < next) return type;
+    next = now + 1000;
+    type = SDL_GAMEPAD_TYPE_UNKNOWN;
+    int count = 0;
+    if (SDL_JoystickID* ids = SDL_GetGamepads(&count)) {
+        if (count > 0) type = SDL_GetGamepadTypeForID(ids[0]);
+        SDL_free(ids);
+    }
+    wchar_t pad[16] = {};
+    if (type == SDL_GAMEPAD_TYPE_UNKNOWN && GetEnvironmentVariableW(L"RECOMPLAUNCHER_PAD", pad, 16) &&
+        std::wcscmp(pad, L"playstation") == 0) {
+        type = SDL_GAMEPAD_TYPE_PS5;
+    }
+    return type;
+}
+
+bool playstation_pad() {
+    const SDL_GamepadType type = pad_type();
+    return type == SDL_GAMEPAD_TYPE_PS3 || type == SDL_GAMEPAD_TYPE_PS4 || type == SDL_GAMEPAD_TYPE_PS5;
+}
+
+// An Xbox button's name as PlayStation calls the same button ("A" is the cross, "LB" is L1); nullptr for the others.
+const char* playstation_name(const std::string& xbox) {
+    static const char* const names[][2] = {
+        {"A", "\xE2\x9C\x95"}, {"B", "\xE2\x97\x8B"}, {"X", "\xE2\x96\xA1"}, {"Y", "\xE2\x96\xB3"},
+        {"LB", "L1"},          {"RB", "R1"},          {"White", "L1"},       {"Black", "R1"},
+        {"LT", "L2"},          {"RT", "R2"},          {"Start", "Options"}};
+    for (const auto& name : names) {
+        if (xbox == name[0]) return name[1];
+    }
+    if (xbox == "Back") return pad_type() == SDL_GAMEPAD_TYPE_PS5 ? "Create" : pad_type() == SDL_GAMEPAD_TYPE_PS4 ? "Share" : "Select";
+    return nullptr;
+}
+
+// A line of button names ("D-pad · A · B · LB RB · Start", "F1 · Back+Start") with the pad's own names.
+std::string pad_text(const char* text) {
+    if (!playstation_pad()) return text;
+    std::string out, word;
+    for (const char* c = text;; ++c) {
+        if (*c && *c != ' ' && *c != '+') {
+            word += *c;
+            continue;
+        }
+        const char* name = playstation_name(word);
+        out += name ? name : word;
+        word.clear();
+        if (!*c) return out;
+        out += *c;
+    }
+}
+
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
     for (const char* key :
@@ -1820,10 +1881,21 @@ bool restart_pending() {
     return false;
 }
 
+// Started by RecompLauncher, mc3.exe starts the next process itself (restart_codes.h), so the one it watches lasts.
+static bool supervised() {
+    if (!GetEnvironmentVariableW(L"MC3_SUPERVISED", nullptr, 0)) return false;
+    AllowSetForegroundWindow(ASFW_ANY);  // this window is in front: the next process's may come in front too
+    return true;
+}
+
 // A new mc3.exe, with the same command line, straight into the game (MC3_SKIP_LAUNCHER); it waits for this one to
 // end (MC3_RESTART_FROM, runtime.cpp) before it opens the log, the settings and the saves.
 // A new mc3.exe that moves the old data folder before it opens anything there, back in the launcher.
 void restart_to_move_old_data() {
+    if (supervised()) {
+        log_line("launcher: restart to move the old data");
+        end_process(MC3_EXIT_MOVE_OLD_DATA);
+    }
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     std::wstring command = GetCommandLineW();
@@ -1844,6 +1916,10 @@ void restart_to_move_old_data() {
 // The game closes and the launcher opens again, as at the first start: settings that need a restart, the disc and your
 // music can all be changed there. The command line stays (a frontend's disc is still the one shown).
 void back_to_launcher() {
+    if (supervised()) {
+        log_line("game menu: back to the launcher");
+        end_process(MC3_EXIT_BACK_TO_LAUNCHER);
+    }
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     std::wstring command = GetCommandLineW();
@@ -1863,6 +1939,10 @@ void back_to_launcher() {
 }
 
 void restart_game() {
+    if (supervised()) {
+        log_line("game menu: restart");
+        end_process(MC3_EXIT_RESTART_GAME);
+    }
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     std::wstring command = GetCommandLineW();
@@ -2246,8 +2326,9 @@ void Launcher::page_controls() {
         std::snprintf(alt_enter, sizeof(alt_enter), "F11 \xC2\xB7 Alt+%s", enter);
         char navigation[48];
         std::snprintf(navigation, sizeof(navigation), "%s \xC2\xB7 %s \xC2\xB7 Esc \xC2\xB7 Q E", in_language("Arrows", "Frecce", "Setas", "Flechas"), enter);
-        const char* system[][2] = {{"F1 \xC2\xB7 Back+Start", t.menu_key}, {alt_enter, t.full_screen_key}, {"F10", t.effects_key},
-                                   {navigation, t.launcher_keys}, {t.pad_keys, t.pad_menu_keys}};
+        const std::string menu_keys = pad_text("F1 \xC2\xB7 Back+Start"), pad_keys = pad_text(t.pad_keys);
+        const char* system[][2] = {{menu_keys.c_str(), t.menu_key}, {alt_enter, t.full_screen_key}, {"F10", t.effects_key},
+                                   {navigation, t.launcher_keys}, {pad_keys.c_str(), t.pad_menu_keys}};
         const float line = px(44);
         for (const auto& [keys, action] : system) {
             const ImVec2 size = measure(body_bold_, px(18), keys);
@@ -3133,6 +3214,39 @@ float Launcher::pad_icon(ImDrawList* list, const char* name, ImVec2 at, float h,
         else if (arrow == "\xE2\x86\x90") direction = ImVec2(-1, 0);
         else if (arrow == "\xE2\x86\x92") direction = ImVec2(1, 0);
     }
+    if (playstation_pad()) {  // the same buttons with PlayStation's symbols and names; the bindings keep Xbox's
+        const auto face = [&](int shape, ImU32 colour) {  // the cross, circle, square and triangle on a chrome disc
+            if (!draw) return h;
+            const ImVec2 c(at.x + h / 2, cy);
+            const float r = h * 0.22f, width = h * 0.085f;
+            const ImU32 symbol = fade(colour);
+            list->AddCircleFilled(c, h / 2, chrome);
+            if (shape == 0) {
+                list->AddLine(ImVec2(c.x - r, c.y - r), ImVec2(c.x + r, c.y + r), symbol, width);
+                list->AddLine(ImVec2(c.x - r, c.y + r), ImVec2(c.x + r, c.y - r), symbol, width);
+            } else if (shape == 1) {
+                list->AddCircle(c, r * 1.05f, symbol, 0, width);
+            } else if (shape == 2) {
+                list->AddRect(ImVec2(c.x - r * 0.9f, c.y - r * 0.9f), ImVec2(c.x + r * 0.9f, c.y + r * 0.9f), symbol, 0, 0, width);
+            } else {
+                list->AddTriangle(ImVec2(c.x, c.y - r * 1.1f), ImVec2(c.x + r * 1.1f, c.y + r * 0.8f),
+                                  ImVec2(c.x - r * 1.1f, c.y + r * 0.8f), symbol, width);
+            }
+            return h;
+        };
+        if (n == "A") return face(0, IM_COL32(45, 110, 220, 255));
+        if (n == "B") return face(1, IM_COL32(220, 45, 60, 255));
+        if (n == "X") return face(2, IM_COL32(200, 70, 170, 255));
+        if (n == "Y") return face(3, IM_COL32(0, 160, 120, 255));
+        if (n == "LB" || n == "White") return bumper("L1", at.x);
+        if (n == "RB" || n == "Black") return bumper("R1", at.x);
+        if (n == "LB RB") {
+            const float w = bumper("L1", at.x);
+            return w + h * 0.25f + bumper("R1", at.x + w + h * 0.25f);
+        }
+        if (n == "LT" || n == "RT") return trigger(playstation_name(n));
+        if (n == "Back") name = playstation_name(n);  // drawn as a named pill below; Start's three lines are Options'
+    }
     if (n == "A") return circle("A", kGreen);
     if (n == "B") return circle("B", IM_COL32(255, 90, 90, 255));
     if (n == "X") return circle("X", IM_COL32(90, 150, 255, 255));
@@ -3144,7 +3258,7 @@ float Launcher::pad_icon(ImDrawList* list, const char* name, ImVec2 at, float h,
         return w + h * 0.25f + bumper("RB", at.x + w + h * 0.25f);
     }
     if (n == "LT" || n == "RT") return trigger(name);
-    if (n == "Start" || n == "Back") {
+    if (n == "Start" || (n == "Back" && name == n)) {
         if (draw) {
             const ImVec2 c(at.x + h / 2, cy);
             list->AddCircleFilled(c, h / 2, chrome);
