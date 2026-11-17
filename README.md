@@ -7,21 +7,25 @@
 **An unofficial native PC port of Midnight Club 3: DUB Edition Remix for the original Xbox.**<br>
 16:9 widescreen, 60 fps, up to 5K internal resolution and optional modern effects, running from your own disc image.
 
-[![Get it on RecompLauncher](https://recomplauncher.com/assets/press/launcher/badge-dark.svg)](https://recomplauncher.com/game/mc3port)
+<a href="https://recomplauncher.com/game/mc3port"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
 
 [![Latest release](https://img.shields.io/github/v/release/SickSartori/mc3port?label=release)](https://github.com/SickSartori/mc3port/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/SickSartori/mc3port/total)](https://github.com/SickSartori/mc3port/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20(Wine)-blue)](#installing)
 [![Licence](https://img.shields.io/github/license/SickSartori/mc3port)](LICENSE)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
 [Download](https://github.com/SickSartori/mc3port/releases/latest) ·
+[How to play](#how-to-play) ·
 [Features](#features) ·
 [Install](#installing) ·
 [Controls](#controls) ·
 [Settings](#settings) ·
 [FAQ](#faq) ·
 [Troubleshooting](#troubleshooting) ·
-[Changelog](CHANGELOG.md)
+[Changelog](CHANGELOG.md) ·
+[Support the project](#supporting-the-project)
 
 </div>
 
@@ -32,6 +36,16 @@
 > **No game data is included or distributed**: no disc images, no executables, no textures, sounds, music or films.
 > To play you need your own, legally obtained copy of the game. mc3port reads everything it needs from your disc
 > image while it runs. Please do not ask for game files or disc images, and do not share them.
+
+## How to play
+
+1. You need a disc image (`.iso` or `.cci`) of your own copy of **Midnight Club 3: DUB Edition Remix** for the Xbox,
+   the European or the USA release ([which ones work](#requirements)). It can stay wherever it is: nothing is copied.
+2. Get mc3port from [RecompLauncher](https://recomplauncher.com/game/mc3port), or download the installer or the
+   portable zip from the [latest release](https://github.com/SickSartori/mc3port/releases/latest)
+   ([Installing](#installing)).
+3. Start it and choose your disc image (in RecompLauncher, on the game's page): mc3port checks it and remembers it.
+   Press **PLAY**.
 
 ## Screenshots
 
@@ -125,7 +139,8 @@ and **PLAY** (or Enter, or A on a controller) starts the game.
 ### Where your files are
 
 Settings (`mc3port.ini`), saves (`xbox_hdd`), logs (`logs`) and the shader cache live in **`Documents\mc3port`**, so
-updates and uninstalling never touch them. With RecompLauncher they are in the game's own folder.
+updates and uninstalling never touch them, with RecompLauncher too. A `portable.txt` (or an earlier `mc3port.ini`)
+next to `mc3.exe` keeps them in the game's own folder instead.
 
 <details>
 <summary>Portable data, older versions and backups</summary>
@@ -154,8 +169,8 @@ installer and the update check. If something goes wrong, please
   `libvulkan1:i386`); without them Wine has no Direct3D 11 and the window stays black. The packages from
   [WineHQ](https://gitlab.winehq.org/wine/wine/-/wikis/Download) bring the rest.
 - **The Linux package**, `mc3port-<version>-linux.tar.gz`: extract it and run `sh mc3port/install.sh`. It copies
-  mc3port to `~/.local/share/mc3port`, makes a Wine prefix of its own there, and adds the `mc3port` command and an
-  applications menu entry. Run it again to update. Settings and saves are in that one folder; the script says how to
+  mc3port to `~/.local/share/mc3port`, makes a Wine prefix of its own there, checks that Direct3D 11 starts (and says
+  what to install if it does not), and adds the `mc3port` command and an applications menu entry. Run it again to update. Settings and saves are in that one folder; the script says how to
   remove it.
 - **Or the portable zip**, by hand: extract it, put your `.iso` in the `mc3port` folder (it is found there without
   asking) or choose it in the launcher, then run `wine mc3.exe` from that folder. Your files are then in
@@ -378,6 +393,9 @@ GitHub releases. **Report a problem** only opens GitHub's bug form in your brows
 yourself. The game's online play is not available.
 
 ## Supporting the project
+
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support_the_project-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
 mc3port is free and always will be: no paid builds, no early access, no locked features. If you enjoy it and want to
 say thanks, you can support its author on [GitHub Sponsors](https://github.com/sponsors/SickSartori) or

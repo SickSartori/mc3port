@@ -180,9 +180,18 @@ fallisce.
 
 ## RecompLauncher
 
-`recomplauncher.json` nella radice del repo finisce in cima alla zip (`tools/package.ps1`): il launcher controlla il
-disco del giocatore, lo passa come primo argomento, scrive `mc3port.ini` nella cartella del gioco (che così è
-portatile) e mostra sette impostazioni sulla pagina del gioco. Avviato dal launcher (`RECOMPLAUNCHER=1`), mc3port
-non cerca aggiornamenti; con `RECOMPLAUNCHER_MODE=bigpicture` parte a schermo intero. Un disco dato da riga di
-comando e rifiutato fa uscire con codice 2, che il file traduce in un messaggio. Il file si controlla nel tab
+`recomplauncher.json` nella radice del repo finisce accanto a `mc3.exe`, nella zip e nel setup (`tools/package.ps1`,
+`installer/mc3port.iss`): il launcher controlla il
+disco del giocatore, lo passa come primo argomento, scrive `mc3port.ini` dove mc3port lo cerca (`Documenti\mc3port`,
+o la cartella del gioco se è portatile: la lista `file` rispecchia `paths.cpp`) e mostra undici impostazioni sulla
+pagina del gioco. Avviato dal launcher (`RECOMPLAUNCHER=1`), mc3port non cerca aggiornamenti; con
+`RECOMPLAUNCHER_MODE=bigpicture` parte a schermo intero. Il disco dato dal launcher è l'unico provato (né quello
+dell'ini né uno vicino all'exe, né la finestra di scelta): se è rifiutato, il motivo va nel log (e in un messaggio,
+tranne in Big Picture) e mc3port esce con codice 2, che il file traduce in un messaggio. Il launcher segue il processo
+che ha avviato, quindi sotto `RECOMPLAUNCHER` `mc3.exe` (`launcher.c`) avvia il gioco come figlio e resta in attesa: i
+riavvii (riavvio dal menu, "Torna al launcher", spostamento dei vecchi dati) finiscono con un codice di
+`restart_codes.h` e il processo successivo lo avvia lui, poi esce con il codice dell'ultimo figlio. Vale anche per
+il riavvio dopo una scheda video persa (`device_lost` in xport), che in Big Picture non mostra il messaggio. Con
+`RECOMPLAUNCHER_PAD=playstation`, o un controller PlayStation collegato, il launcher e il menu mostrano i tasti
+PlayStation. Il file si controlla nel tab
 Developer del launcher ("Add a build" sulla cartella della build).

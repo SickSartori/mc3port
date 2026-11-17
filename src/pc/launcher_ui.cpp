@@ -10,6 +10,8 @@
 #include <wrl/client.h>
 #include <xinput.h>
 
+#include <SDL3/SDL.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -49,6 +51,7 @@
 #include "pc/paths.h"
 #include "pc/hud.h"
 #include "pc/renderer_d3d11.h"
+#include "pc/restart_codes.h"
 #include "pc/launcher_style.h"
 #include "pc/settings.h"
 #include "pc/soundtracks.h"
@@ -106,6 +109,7 @@ struct Texts {
         *music_page, *music_previous, *music_next, *music_dialog, *music_files_dialog, *music_new_name;
     const char *back_to_launcher, *back_to_launcher_sub, *back_to_launcher_button, *menu_launcher;
     const char *menu_music, *music_lead;
+    const char *support, *support_sub;
 };
 
 const Texts kEnglish = {
@@ -175,6 +179,7 @@ const Texts kEnglish = {
     "The game closes and the launcher opens again, as at the start: every setting, the disc and your music can be changed there. Progress since the last save is lost.",
     "OPEN THE LAUNCHER", "LAUNCHER",
     "MUSIC", "Your own songs on the game's radio. Make your playlists here (MP3, FLAC, WAV, WMA, M4A); in the game choose one in Pause > Options > Audio Options, the Music selector.",
+    "Support the project", "Free, and always will be. A thank-you keeps it going.",
 };
 
 const Texts kItalian = {
@@ -249,6 +254,7 @@ const Texts kItalian = {
     "Il gioco si chiude e si riapre il launcher, come all'avvio: l\xC3\xAC si cambiano tutte le impostazioni, il disco e la tua musica. I progressi dall'ultimo salvataggio andranno persi.",
     "APRI IL LAUNCHER", "LAUNCHER",
     "MUSICA", "I tuoi brani alla radio del gioco. Crea qui le tue playlist (MP3, FLAC, WAV, WMA, M4A); nel gioco scegline una in Pausa > Opzioni > Opzioni audio, selettore Musica.",
+    "Sostieni il progetto", "Gratis, e lo rester\xC3\xA0. Un grazie lo fa andare avanti.",
 };
 
 // Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
@@ -320,6 +326,7 @@ const Texts kPortuguese = {
     "O jogo fecha e o launcher abre de novo, como no início: lá se mudam todas as configurações, o disco e a sua música. O progresso desde o último save será perdido.",
     "ABRIR O LAUNCHER", "LAUNCHER",
     "MÚSICA", "Suas próprias músicas no rádio do jogo. Crie aqui as suas playlists (MP3, FLAC, WAV, WMA, M4A); no jogo escolha uma em Pause > Options > Audio Options, seletor Music.",
+    "Apoie o projeto", "Gratuito, e sempre será. Um obrigado o mantém vivo.",
 };
 
 const Texts kSpanish = {
@@ -390,6 +397,7 @@ const Texts kSpanish = {
     "El juego se cierra y el launcher se abre de nuevo, como al empezar: allí se cambian todos los ajustes, el disco y tu música. Se perderá el progreso desde la última partida guardada.",
     "ABRIR EL LAUNCHER", "LAUNCHER",
     "MÚSICA", "Tus propias canciones en la radio del juego. Crea aquí tus listas (MP3, FLAC, WAV, WMA, M4A); en el juego elige una en Pausa > Opciones > Opciones de audio, el selector de música.",
+    "Apoya el proyecto", "Gratis, y siempre lo será. Un gracias lo mantiene vivo.",
 };
 
 // The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
@@ -999,8 +1007,10 @@ private:
     // Panel content: cursor_ moves down.
     void title(const char* str);
     void lead(const char* str);
+    // `second_label`: one more button on the row, to the left of the first; `second_pressed` tells when it is pressed.
     bool status(bool good, const char* heading, const char* detail, const char* button_label, const char* id,
-                bool pulse = false);
+                bool pulse = false, const char* second_label = nullptr, const char* second_id = nullptr,
+                bool* second_pressed = nullptr);
     bool small_button(const char* label, ImVec2 at, const char* id, ImVec2* size_out = nullptr);
     bool big_button(const char* label, const char* id, bool pulse);
     bool tabs(const char* const* labels, int count, int* current);
@@ -1551,7 +1561,7 @@ bool Launcher::small_button(const char* label, ImVec2 at, const char* id, ImVec2
 }
 
 bool Launcher::status(bool good, const char* heading, const char* detail, const char* button_label, const char* id,
-                      bool pulse) {
+                      bool pulse, const char* second_label, const char* second_id, bool* second_pressed) {
     const float height = px(64);
     const ImVec2 a(origin_.x, origin_.y + cursor_), b(origin_.x + panel_width_, a.y + height);
     const ImU32 accent = good ? kGreen : kAmber;
@@ -1564,12 +1574,16 @@ bool Launcher::status(bool good, const char* heading, const char* detail, const 
         list_->AddCircle(dot, px(12) + px(14) * p, fade(accent, 0.6f * (1 - p)), 0, px(2));
     }
     const float button_x = button_label ? b.x - measure(body_bold_, px(18), button_label).x - px(28) - px(14) : b.x;
-    list_->PushClipRect(a, ImVec2(button_x - px(12), b.y), true);  // texts stop before the button
+    const float second_x = second_label ? button_x - measure(body_bold_, px(18), second_label).x - px(28) - px(10) : button_x;
+    list_->PushClipRect(a, ImVec2(second_x - px(12), b.y), true);  // texts stop before the buttons
     text(body_bold_, px(21), ImVec2(a.x + px(46), a.y + px(9)), kInk, heading);
     text(body_, px(17), ImVec2(a.x + px(46), a.y + px(35)), kDim, detail);
     list_->PopClipRect();
     const bool keep_focus_request = focus_panel_ && status_keeps_focus_;
     if (keep_focus_request) focus_panel_ = false;
+    if (second_label && small_button(second_label, ImVec2(second_x, a.y + px(14)), second_id) && second_pressed) {
+        *second_pressed = true;
+    }
     const bool pressed = button_label && small_button(button_label, ImVec2(button_x, a.y + px(14)), id);
     if (button_label) focus_frame(ImVec2(a.x - px(24), a.y), ImVec2(b.x + px(14), b.y));
     if (keep_focus_request) focus_panel_ = true;
@@ -1800,6 +1814,64 @@ void Launcher::style_summary() {
     }
 }
 
+// The controller's own symbols in the launcher and the menu: PlayStation's for a DualSense, DualShock 4 or 3 (SDL's
+// type of the first pad), or RecompLauncher's {pad} (RECOMPLAUNCHER_PAD) while none is connected. Looked up at most
+// once a second.
+SDL_GamepadType pad_type() {
+    static ULONGLONG next = 0;
+    static SDL_GamepadType type = SDL_GAMEPAD_TYPE_UNKNOWN;
+    const ULONGLONG now = GetTickCount64();
+    if (now < next) return type;
+    next = now + 1000;
+    type = SDL_GAMEPAD_TYPE_UNKNOWN;
+    int count = 0;
+    if (SDL_JoystickID* ids = SDL_GetGamepads(&count)) {
+        if (count > 0) type = SDL_GetGamepadTypeForID(ids[0]);
+        SDL_free(ids);
+    }
+    wchar_t pad[16] = {};
+    if (type == SDL_GAMEPAD_TYPE_UNKNOWN && GetEnvironmentVariableW(L"RECOMPLAUNCHER_PAD", pad, 16) &&
+        std::wcscmp(pad, L"playstation") == 0) {
+        type = SDL_GAMEPAD_TYPE_PS5;
+    }
+    return type;
+}
+
+bool playstation_pad() {
+    const SDL_GamepadType type = pad_type();
+    return type == SDL_GAMEPAD_TYPE_PS3 || type == SDL_GAMEPAD_TYPE_PS4 || type == SDL_GAMEPAD_TYPE_PS5;
+}
+
+// An Xbox button's name as PlayStation calls the same button ("A" is the cross, "LB" is L1); nullptr for the others.
+const char* playstation_name(const std::string& xbox) {
+    static const char* const names[][2] = {
+        {"A", "\xE2\x9C\x95"}, {"B", "\xE2\x97\x8B"}, {"X", "\xE2\x96\xA1"}, {"Y", "\xE2\x96\xB3"},
+        {"LB", "L1"},          {"RB", "R1"},          {"White", "L1"},       {"Black", "R1"},
+        {"LT", "L2"},          {"RT", "R2"},          {"Start", "Options"}};
+    for (const auto& name : names) {
+        if (xbox == name[0]) return name[1];
+    }
+    if (xbox == "Back") return pad_type() == SDL_GAMEPAD_TYPE_PS5 ? "Create" : pad_type() == SDL_GAMEPAD_TYPE_PS4 ? "Share" : "Select";
+    return nullptr;
+}
+
+// A line of button names ("D-pad · A · B · LB RB · Start", "F1 · Back+Start") with the pad's own names.
+std::string pad_text(const char* text) {
+    if (!playstation_pad()) return text;
+    std::string out, word;
+    for (const char* c = text;; ++c) {
+        if (*c && *c != ' ' && *c != '+') {
+            word += *c;
+            continue;
+        }
+        const char* name = playstation_name(word);
+        out += name ? name : word;
+        word.clear();
+        if (!*c) return out;
+        out += *c;
+    }
+}
+
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
     for (const char* key :
@@ -1809,10 +1881,21 @@ bool restart_pending() {
     return false;
 }
 
+// Started by RecompLauncher, mc3.exe starts the next process itself (restart_codes.h), so the one it watches lasts.
+static bool supervised() {
+    if (!GetEnvironmentVariableW(L"MC3_SUPERVISED", nullptr, 0)) return false;
+    AllowSetForegroundWindow(ASFW_ANY);  // this window is in front: the next process's may come in front too
+    return true;
+}
+
 // A new mc3.exe, with the same command line, straight into the game (MC3_SKIP_LAUNCHER); it waits for this one to
 // end (MC3_RESTART_FROM, runtime.cpp) before it opens the log, the settings and the saves.
 // A new mc3.exe that moves the old data folder before it opens anything there, back in the launcher.
 void restart_to_move_old_data() {
+    if (supervised()) {
+        log_line("launcher: restart to move the old data");
+        end_process(MC3_EXIT_MOVE_OLD_DATA);
+    }
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     std::wstring command = GetCommandLineW();
@@ -1833,6 +1916,10 @@ void restart_to_move_old_data() {
 // The game closes and the launcher opens again, as at the first start: settings that need a restart, the disc and your
 // music can all be changed there. The command line stays (a frontend's disc is still the one shown).
 void back_to_launcher() {
+    if (supervised()) {
+        log_line("game menu: back to the launcher");
+        end_process(MC3_EXIT_BACK_TO_LAUNCHER);
+    }
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     std::wstring command = GetCommandLineW();
@@ -1852,6 +1939,10 @@ void back_to_launcher() {
 }
 
 void restart_game() {
+    if (supervised()) {
+        log_line("game menu: restart");
+        end_process(MC3_EXIT_RESTART_GAME);
+    }
     wchar_t exe[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, exe, MAX_PATH);
     std::wstring command = GetCommandLineW();
@@ -2235,8 +2326,9 @@ void Launcher::page_controls() {
         std::snprintf(alt_enter, sizeof(alt_enter), "F11 \xC2\xB7 Alt+%s", enter);
         char navigation[48];
         std::snprintf(navigation, sizeof(navigation), "%s \xC2\xB7 %s \xC2\xB7 Esc \xC2\xB7 Q E", in_language("Arrows", "Frecce", "Setas", "Flechas"), enter);
-        const char* system[][2] = {{"F1 \xC2\xB7 Back+Start", t.menu_key}, {alt_enter, t.full_screen_key}, {"F10", t.effects_key},
-                                   {navigation, t.launcher_keys}, {t.pad_keys, t.pad_menu_keys}};
+        const std::string menu_keys = pad_text("F1 \xC2\xB7 Back+Start"), pad_keys = pad_text(t.pad_keys);
+        const char* system[][2] = {{menu_keys.c_str(), t.menu_key}, {alt_enter, t.full_screen_key}, {"F10", t.effects_key},
+                                   {navigation, t.launcher_keys}, {pad_keys.c_str(), t.pad_menu_keys}};
         const float line = px(44);
         for (const auto& [keys, action] : system) {
             const ImVec2 size = measure(body_bold_, px(18), keys);
@@ -2492,6 +2584,12 @@ void Launcher::page_about() {
     if (status(true, t.saves, t.saves_sub, t.open, "##saves")) show_saves();
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
     if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
+    // Never needed to play, and it buys nothing (README, "Supporting the project"): a row among the others, no reminders.
+    bool sponsors = false;
+    if (status(true, t.support, t.support_sub, "Ko-fi", "##kofi", false, "GitHub Sponsors", "##sponsors", &sponsors)) {
+        ShellExecuteA(nullptr, "open", "https://ko-fi.com/sicksartori", nullptr, nullptr, SW_SHOWNORMAL);
+    }
+    if (sponsors) ShellExecuteA(nullptr, "open", "https://github.com/sponsors/SickSartori", nullptr, nullptr, SW_SHOWNORMAL);
     cursor_ += px(8);
     const ImVec2 size = measure(body_, px(16), t.legal, panel_width_);
     text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.legal, panel_width_);
@@ -3116,6 +3214,39 @@ float Launcher::pad_icon(ImDrawList* list, const char* name, ImVec2 at, float h,
         else if (arrow == "\xE2\x86\x90") direction = ImVec2(-1, 0);
         else if (arrow == "\xE2\x86\x92") direction = ImVec2(1, 0);
     }
+    if (playstation_pad()) {  // the same buttons with PlayStation's symbols and names; the bindings keep Xbox's
+        const auto face = [&](int shape, ImU32 colour) {  // the cross, circle, square and triangle on a chrome disc
+            if (!draw) return h;
+            const ImVec2 c(at.x + h / 2, cy);
+            const float r = h * 0.22f, width = h * 0.085f;
+            const ImU32 symbol = fade(colour);
+            list->AddCircleFilled(c, h / 2, chrome);
+            if (shape == 0) {
+                list->AddLine(ImVec2(c.x - r, c.y - r), ImVec2(c.x + r, c.y + r), symbol, width);
+                list->AddLine(ImVec2(c.x - r, c.y + r), ImVec2(c.x + r, c.y - r), symbol, width);
+            } else if (shape == 1) {
+                list->AddCircle(c, r * 1.05f, symbol, 0, width);
+            } else if (shape == 2) {
+                list->AddRect(ImVec2(c.x - r * 0.9f, c.y - r * 0.9f), ImVec2(c.x + r * 0.9f, c.y + r * 0.9f), symbol, 0, 0, width);
+            } else {
+                list->AddTriangle(ImVec2(c.x, c.y - r * 1.1f), ImVec2(c.x + r * 1.1f, c.y + r * 0.8f),
+                                  ImVec2(c.x - r * 1.1f, c.y + r * 0.8f), symbol, width);
+            }
+            return h;
+        };
+        if (n == "A") return face(0, IM_COL32(45, 110, 220, 255));
+        if (n == "B") return face(1, IM_COL32(220, 45, 60, 255));
+        if (n == "X") return face(2, IM_COL32(200, 70, 170, 255));
+        if (n == "Y") return face(3, IM_COL32(0, 160, 120, 255));
+        if (n == "LB" || n == "White") return bumper("L1", at.x);
+        if (n == "RB" || n == "Black") return bumper("R1", at.x);
+        if (n == "LB RB") {
+            const float w = bumper("L1", at.x);
+            return w + h * 0.25f + bumper("R1", at.x + w + h * 0.25f);
+        }
+        if (n == "LT" || n == "RT") return trigger(playstation_name(n));
+        if (n == "Back") name = playstation_name(n);  // drawn as a named pill below; Start's three lines are Options'
+    }
     if (n == "A") return circle("A", kGreen);
     if (n == "B") return circle("B", IM_COL32(255, 90, 90, 255));
     if (n == "X") return circle("X", IM_COL32(90, 150, 255, 255));
@@ -3127,7 +3258,7 @@ float Launcher::pad_icon(ImDrawList* list, const char* name, ImVec2 at, float h,
         return w + h * 0.25f + bumper("RB", at.x + w + h * 0.25f);
     }
     if (n == "LT" || n == "RT") return trigger(name);
-    if (n == "Start" || n == "Back") {
+    if (n == "Start" || (n == "Back" && name == n)) {
         if (draw) {
             const ImVec2 c(at.x + h / 2, cy);
             list->AddCircleFilled(c, h / 2, chrome);

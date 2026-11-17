@@ -62,6 +62,9 @@ void letter_shoulder_buttons(TextureImage& atlas) {
 }
 
 std::unordered_set<uint32_t> g_frame_copies;  // surfaces drawn from a shown one: the speed blur's buffer
+std::unordered_set<uint32_t> g_light_surfaces;  // counted with the signed blend, until their pass to the frame
+// The headlights' light, a little brighter than the Xbox's: at most 15% added instead of 12.5% (asked for, 17 Nov 2026).
+constexpr float kHeadlightGain = 1.2f;
 
 }  // namespace
 
@@ -138,6 +141,7 @@ RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float lef
 // The radar's clear of the alpha stays where it is while its quads are narrowed towards the left: the strip they
 // gained kept the scene's alpha, and the map showed there, outside the ring. So it reaches that far too.
 void renderer_game_clear(const SurfaceState& surface, uint32_t channels, int& x0, int& y0, int& x1, int& y1) {
+    if (channels) g_light_surfaces.erase(surface.color_address);  // counted again after each clear
     const ShownPicture picture = renderer_shown_picture();
     if (channels == 8 && hud_aspect() && picture.width && picture.height && x1 - x0 <= 200 && y1 - y0 <= 200 &&
         x1 <= static_cast<int>(picture.width / 2) && y0 >= static_cast<int>(picture.height / 2) &&
@@ -174,12 +178,24 @@ void renderer_game_draw(const SurfaceState& surface, const DrawState& state, flo
     // are drawn into it, stretched the same way and added to the frame (SRC_ALPHA, ONE): setting light_streaks.
     const bool reads_frame = state.textures[0].enabled && renderer_surface_shown(state.textures[0].descriptor.address);
     const bool draws_frame = renderer_surface_shown(surface.color_address);
-    if (reads_frame && !draws_frame) g_frame_copies.insert(surface.color_address);
-    if (draws_frame && state.blend_enable && state.blend_source == 0x302 &&
+    if (reads_frame && !draws_frame) {
+        g_frame_copies.insert(surface.color_address);
+        g_light_surfaces.erase(surface.color_address);  // the light streaks' turn now
+    }
+    // The headlights' light (issue #20) is counted in the speed blur's surface too, earlier in the frame, and added to
+    // the frame the same way as the light streaks (SRC_ALPHA, ONE): it was faded out with them (light_streaks 0, the
+    // default). A pass from a surface counted since its clear is the headlights'.
+    if (draws_frame && state.blend_enable && state.blend_source == 0x302 && state.blend_destination == 1 &&
+        state.textures[0].enabled && g_light_surfaces.erase(state.textures[0].descriptor.address)) {
+        alpha_reference[2] = 1 - kHeadlightGain;  // the shader keeps alpha * (1 - this): a gain above 1
+    } else if (draws_frame && state.blend_enable && state.blend_source == 0x302 &&
         (state.blend_destination == 0x303 || state.blend_destination == 1) && state.textures[0].enabled &&
         g_frame_copies.count(state.textures[0].descriptor.address)) {
         const char* key = state.blend_destination == 1 ? "light_streaks" : "motion_blur";
         alpha_reference[2] = 1 - std::clamp(setting(key), 0.0f, 1.0f);
+    }
+    if (state.blend_enable && (state.blend_equation == 0xF005 || state.blend_equation == 0xF006)) {
+        g_light_surfaces.insert(surface.color_address);
     }
 }
 

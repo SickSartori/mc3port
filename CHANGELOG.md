@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.3.8 (2026-11-17)
+
+### New
+
+- **Support the project** from the About page of the launcher and of the in-game menu: a row with the links to GitHub
+  Sponsors and Ko-fi. It is never needed to play and it unlocks nothing; there are no reminders.
+- **PlayStation buttons**: with a DualSense, DualShock 4 or DualShock 3 connected (or RecompLauncher's PlayStation
+  pad when none is), the launcher and the in-game menu show the cross, circle, square and triangle, L1, R1, L2, R2,
+  Options and Create (Share, Select) instead of the Xbox's buttons. The game's own prompts stay the Xbox's.
+
+### Improved
+
+- Choosing a file that is not a disc image (one of mc3port's own files, for example) now says that the game is not
+  included and that your own `.iso` or `.cci` is needed, instead of only "not an Xbox disc image".
+- **When Direct3D 11 does not start**, mc3port says so and what to do (the graphics driver on Windows, the 32-bit
+  Vulkan libraries under Wine) instead of showing a black window.
+- **Linux**: the install script checks that Direct3D 11 starts in your Wine and lists the packages to install when it
+  does not. The log says which Direct3D is in use (Windows', Wine's or DXVK's) and whether Steam started the game.
+
+### Fixed
+
+- **The headlights light the road again** (issue #20): a soft, warm pool of light in front of the car at night, a
+  little brighter than on the Xbox (up to 15% added instead of 12.5%). The game counts its headlights' light volumes
+  in a small surface against a copy of the scene's depth; the port tested them against an empty depth buffer, counted
+  each face as a whole step instead of a small one, and then faded the result out as if it were the light streaks.
+- **RecompLauncher**: `recomplauncher.json` follows the schema again (the launcher skipped it), keeps the settings,
+  saves and logs where mc3port keeps them (`Documents\mc3port` unless portable) and adds Window, V-Sync, Language and
+  5K. It also comes with the installer.
+- Started by RecompLauncher, mc3port uses only the disc the launcher gives: no other disc in its place and no file
+  dialog, but exit code 2, so the launcher asks for it again. Quitting the launcher reopened by "Back to the launcher"
+  no longer ends with code 2.
+- Started by RecompLauncher, the game's restarts (the in-game menu's restart, "Back to the launcher", moving the old
+  data folder, a lost graphics card) no longer look to the launcher like the game had ended: `mc3.exe` stays as the
+  process it started, starts each new one itself and ends with the game's exit code. In Big Picture mode the lost
+  graphics card's message is not shown (a controller could not close it), only logged.
+- The display no longer turns off while playing with a controller: Windows saw no input and let it sleep.
+
 ## 0.3.7 (2026-11-11)
 
 ### New

@@ -82,6 +82,14 @@ std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::
     if (!entry) {
         log_line("disc: %s is not an Xbox disc image (%s)", utf8(path).c_str(), image ? "no default.xbe" : error.c_str());
         problem = text("This file is not an Xbox disc image.", "Questo file non e' un'immagine di un disco Xbox.");
+        // A file of the port itself, or any other that is not an image (players look for the game in the program's
+        // folder): said plainly that the game is not in the download.
+        std::wstring extension = path.extension().wstring();
+        for (wchar_t& c : extension) c = static_cast<wchar_t>(std::towlower(c));
+        if (extension != L".iso" && extension != L".cci") {
+            problem = text("This is not a disc image. The game is not included: choose your own copy, an .iso or .cci file.",
+                           "Questo non e' un'immagine disco. Il gioco non e' incluso: scegli la tua copia, un file .iso o .cci.");
+        }
         return std::nullopt;
     }
     std::vector<uint8_t> file = image->read_all(*entry);
@@ -182,11 +190,13 @@ std::filesystem::path ask_for_disc_image(void* owner_window) {
 std::optional<GameDisc> find_game_disc(const std::filesystem::path& exe_directory, std::string& problem) {
     std::vector<std::filesystem::path> candidates;
     if (const std::filesystem::path argument = command_line_disc(); !argument.empty()) candidates.push_back(argument);
+    // RecompLauncher's disc only: never another one in its place (the player picks again on the game's page).
+    const bool only_given = GetEnvironmentVariableW(L"RECOMPLAUNCHER", nullptr, 0) && !candidates.empty();
     const std::string remembered = setting_text("disc_image");
-    if (!remembered.empty()) {
+    if (!remembered.empty() && !only_given) {
         candidates.push_back(std::filesystem::path(std::u8string(remembered.begin(), remembered.end())));
     }
-    for (const std::filesystem::path& nearby : nearby_discs(exe_directory)) candidates.push_back(nearby);
+    if (!only_given) for (const std::filesystem::path& nearby : nearby_discs(exe_directory)) candidates.push_back(nearby);
     for (const std::filesystem::path& candidate : candidates) {
         std::error_code ignored;
         if (!std::filesystem::is_regular_file(candidate, ignored)) {
@@ -206,6 +216,16 @@ std::optional<GameDisc> open_game_disc(const std::filesystem::path& exe_director
     const bool dialogs = !GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0);
     if (!dialogs) {
         log_line("disc: no usable disc image, and MC3_NO_DIALOG forbids asking");
+        return std::nullopt;
+    }
+    if (GetEnvironmentVariableW(L"RECOMPLAUNCHER", nullptr, 0) && !command_line_disc().empty()) {
+        // Why it was refused, then exit code 2: RecompLauncher asks for the disc again, not a file dialog here. No box
+        // in Big Picture mode, where a controller can't close it behind the launcher's full screen: the log says why.
+        wchar_t mode[16] = {};
+        GetEnvironmentVariableW(L"RECOMPLAUNCHER_MODE", mode, 16);
+        if (!problem.empty() && wcscmp(mode, L"bigpicture") != 0) MessageBoxW(nullptr, wide(problem).c_str(), L"mc3port", MB_ICONWARNING | MB_OK);
+        log_line("disc: %s", problem.c_str());
+        log_line("disc: RecompLauncher's disc image was refused");
         return std::nullopt;
     }
     if (!problem.empty()) {

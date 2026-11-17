@@ -10,6 +10,7 @@
 #include <cstring>
 #include <map>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -688,6 +689,36 @@ void run_push_buffer(uint32_t put) {
     s.get = get;
 }
 
+// Direct3D 11 did not start: nothing would be drawn (the game's pictures exist only there), so the player is told
+// why, and what to do, where there was only a black window and a line in the log. Exit code 3 (recomplauncher.json).
+// MC3_NO_DIALOG: automated runs carry on without a picture, as before.
+[[noreturn]] void no_direct3d() {
+    const bool italian = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_ITALIAN;
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    const bool wine = ntdll && GetProcAddress(ntdll, "wine_get_version");
+    std::wstring message = italian ? L"mc3port non riesce ad avviare Direct3D 11, che gli serve per disegnare il gioco.\n\n"
+                                   : L"mc3port could not start Direct3D 11, which it needs to draw the game.\n\n";
+    if (wine) {
+        message += italian ? L"Con Wine o Proton, Direct3D 11 passa da Vulkan (o OpenGL) per i programmi a 32 bit: installa le "
+                             L"librerie Vulkan e OpenGL a 32 bit della tua distribuzione (su Debian e Ubuntu: "
+                             L"libvulkan1:i386 e libgl1:i386) e i driver della scheda video, poi riprova. Vedi README, "
+                             L"\"Linux\"."
+                           : L"With Wine or Proton, Direct3D 11 goes through Vulkan (or OpenGL) for 32-bit programs: install "
+                             L"your distribution's 32-bit Vulkan and OpenGL libraries (on Debian and Ubuntu: libvulkan1:i386 "
+                             L"and libgl1:i386) and your graphics drivers, then try again. See README, \"Linux\".";
+    } else {
+        message += italian ? L"Serve una scheda video con Direct3D 11 (feature level 11_0): aggiorna i driver della scheda "
+                             L"video. Se il PC ha due schede, in Impostazioni di Windows > Schermo > Grafica scegli quella "
+                             L"ad alte prestazioni per mc3.exe."
+                           : L"A graphics card with Direct3D 11 (feature level 11_0) is needed: update the graphics driver. If "
+                             L"the PC has two graphics cards, in Windows Settings > Display > Graphics choose the "
+                             L"high-performance one for mc3.exe.";
+    }
+    log_line("nv2a: Direct3D 11 did not start%s: the player is told and the game ends", wine ? " (under Wine)" : "");
+    MessageBoxW(g_window, message.c_str(), L"mc3port", MB_ICONERROR | MB_OK);
+    end_process(3);
+}
+
 void gpu_thread() {
     // The GPU is a processor of its own: off the game's core when there is another one. Above the game's threads
     // anyway: when it has to share the core, it must preempt a thread spinning on a register.
@@ -695,6 +726,7 @@ void gpu_thread() {
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
     profile_name_thread(false, "gpu");
     g_renderer_ready = renderer_start(g_window);
+    if (!g_renderer_ready && !GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0)) no_direct3d();
     bool started = false;
     for (;;) {
         {
