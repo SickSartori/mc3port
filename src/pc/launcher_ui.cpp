@@ -96,7 +96,7 @@ struct Texts {
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
     const char *light_streaks;
     const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
-    const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub;
+    const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub, *sharp_textures, *sharp_textures_sub;
     const char *cheats, *cheats_lead, *cheat_money, *cheat_money_sub, *add_money, *game_codes, *game_codes_lead;
     const char *loading_screens, *loading_screens_sub;
     const char *crash_heading, *crash_sub, *crash_button, *crash_link;
@@ -159,6 +159,7 @@ const Texts kEnglish = {
     "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
     "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
     "Sharp pictures", "The radar's map, icons, letters and car stickers enlarged with clean edges",
+    "Sharp textures", "Roads, buildings and cars from close: enlarged with clean edges (more graphics memory)",
     "CHEATS", "mc3port's own, with a career loaded, from the menu during the game; and the game's codes, to look up.",
     "Money", "Added to the career: it stays once the game saves", "+ $10,000", "The game's codes",
     "Type them in the game's menu, Options > Cheat Codes (as found in the game's own check).",
@@ -233,6 +234,7 @@ const Texts kItalian = {
     "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
     "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
     "Immagini nitide", "Mappa del radar, icone, lettere e adesivi delle auto ingranditi con bordi puliti",
+    "Texture nitide", "Strade, edifici e auto da vicino: ingranditi con bordi puliti (pi\xC3\xB9 memoria grafica)",
     "CHEAT", "Quelli di mc3port, con una carriera caricata, dal menu durante il gioco; e i codici del gioco, da consultare.",
     "Soldi", "Si aggiungono alla carriera: restano quando il gioco salva", "+ 10.000 $", "Codici del gioco",
     "Da scrivere nel menu del gioco, Opzioni > Codici (come li controlla il gioco stesso).",
@@ -305,6 +307,7 @@ const Texts kPortuguese = {
     "Reinício necessário", "Para as mudanças que valem no início; o progresso não salvo é perdido", "Reiniciar agora",
     "HUD", "O do mc3port: mostradores redesenhados, nítidos em qualquer resolução", "O do jogo", "Unidade de velocidade",
     "Imagens nítidas", "Mapa do radar, ícones, letras e adesivos dos carros ampliados com bordas limpas",
+    "Texturas nítidas", "Ruas, prédios e carros de perto: ampliados com bordas limpas (mais memória gráfica)",
     "TRAPAÇAS", "As do mc3port, com uma carreira carregada, pelo menu durante o jogo; e os códigos do jogo, para consultar.",
     "Dinheiro", "Somado à carreira: fica quando o jogo salva", "+ US$ 10.000", "Códigos do jogo",
     "Digite-os no menu do jogo, Options > Cheat Codes (como o próprio jogo os confere).",
@@ -376,6 +379,7 @@ const Texts kSpanish = {
     "Hace falta reiniciar", "Para los cambios que se aplican al empezar; se pierde el progreso no guardado", "Reiniciar ahora",
     "HUD", "El de mc3port: indicadores redibujados, nítidos a cualquier resolución", "El del juego", "Unidad de velocidad",
     "Imágenes nítidas", "El mapa del radar, iconos, letras y pegatinas de los coches ampliados con bordes limpios",
+    "Texturas nítidas", "Calles, edificios y coches de cerca: ampliados con bordes limpios (más memoria gráfica)",
     "TRUCOS", "Los de mc3port, con una carrera cargada, desde el menú durante el juego; y los códigos del juego, para consultar.",
     "Dinero", "Se suma a la carrera: se queda cuando el juego guarda", "+ 10.000 $", "Códigos del juego",
     "Escríbelos en el menú del juego, en las opciones de trucos (tal como los comprueba el propio juego).",
@@ -1875,7 +1879,7 @@ std::string pad_text(const char* text) {
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
     for (const char* key :
-         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "anisotropy", "hud_style", "sharp_2d"}) {
+         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "anisotropy", "hud_style", "sharp_2d", "sharp_textures"}) {
         if (setting(key) != setting_at_start(key)) return true;
     }
     return false;
@@ -2119,6 +2123,9 @@ void Launcher::page_settings() {
         row(t.sharp_2d, t.sharp_2d_sub, true);
         int sharp = setting("sharp_2d") != 0 ? 1 : 0;
         if (segmented("##sharp_2d", toggle, 2, &sharp)) set_setting("sharp_2d", static_cast<float>(sharp));
+        row(t.sharp_textures, t.sharp_textures_sub, true);
+        int sharp_scene = setting("sharp_textures") != 0 ? 1 : 0;
+        if (segmented("##sharp_textures", toggle, 2, &sharp_scene)) set_setting("sharp_textures", static_cast<float>(sharp_scene));
         row(t.gpu_vertices, t.gpu_vertices_sub);
         int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
         if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));

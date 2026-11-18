@@ -8,6 +8,10 @@
   game runs at the same speed, with twice the frames of 60. It needs a fast processor (one of its cores does the
   work twice as often) and a screen of 120 Hz or more to show them; where the PC cannot keep up, the game stays smooth
   at the frames it reaches.
+- **Sharp textures** (off by default, in the same settings): the textures of roads, buildings and cars enlarged two
+  times with their edges kept, as Sharp pictures does for the HUD. It shows from close: signs and markings lose their
+  steps. Nothing is added that the game does not have, and from afar the picture is the game's own. The textures
+  sharpen a few seconds after a place loads, and take more graphics memory.
 
 ### Improved
 

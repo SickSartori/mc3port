@@ -248,6 +248,7 @@ The quickest choice is the **style**, above the tabs:
 | Frame counter | frames per second in a corner while playing; off by default |
 | HUD | the game's, or mc3port's: speedometer, rev counter, gear, nitrous and special ability drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |
 | Sharp pictures | the radar's map, the icons, the letters and the cars' stickers enlarged with clean edges; on by default |
+| Sharp textures | the textures of roads, buildings and cars enlarged two times with clean edges, for when you see them from close: nothing is added that the game does not have, and from afar the picture is the game's own. They sharpen a few seconds after a place loads and take more graphics memory; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 | Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
 | Loading screens | how long the game waits before loading, with the screen animating: 2 seconds (off, the default), or 4, 8 or 12; any other number in `mc3port.ini` (`loading_screen_seconds`), never less than 2 |
