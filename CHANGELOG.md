@@ -15,6 +15,10 @@
 
 ### Improved
 
+- **Fewer pauses the first time you reach a place**: the shaders a scene needs the first time are made on two helper
+  threads instead of in the middle of a frame; a frame waits for them at most 8 ms, and what is still missing is
+  drawn a frame or two later. Entering the city with no shaders made yet ran at about 42 fps instead of 32 in tests.
+
 - **Faster where the PC works hardest**: the work that turns each frame's Xbox drawing commands into Direct3D takes about
   a quarter less time than in 0.3.9, which counts most in two-player split screen, where the city is drawn twice, and at 120
   frames per second.
