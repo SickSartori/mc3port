@@ -618,6 +618,7 @@ void update_debug_window() {
     if (g_window_requested.exchange(false)) {
         g_window_start = now;
         g_window_end = now + 1000;
+        g_draw_dumped = false;  // MC3_DUMP_DRAW: the first matching draw of this window
         log_line("debug: F9, one second of draws");
     }
     g_debug_window_open = now >= g_window_start && now < g_window_end;
@@ -646,13 +647,13 @@ void debug_vertex_work(int kind, uint64_t elapsed, uint32_t count) {
 }
 
 // Setting gpu_vertices: the fixed-function transform in a vertex shader instead of on the CPU. The debugging
-// switches that look at or filter the transformed vertices (MC3_DEBUG_DRAWS, MC3_SKIP, MC3_DUMP_DRAW) keep the CPU.
+// switches that look at or filter the transformed vertices (MC3_DEBUG_DRAWS, MC3_SKIP) keep the CPU.
 bool gpu_fixed_function() {
     static const bool enabled = [] {
         char value[64];
+        // MC3_DUMP_DRAW acts inside the MC3_DEBUG_FRAME_AT window only, where the CPU does the vertices anyway.
         const bool debugging = GetEnvironmentVariableA("MC3_DEBUG_DRAWS", value, sizeof(value)) ||
-                               GetEnvironmentVariableA("MC3_SKIP", value, sizeof(value)) ||
-                               GetEnvironmentVariableA("MC3_DUMP_DRAW", value, sizeof(value));
+                               GetEnvironmentVariableA("MC3_SKIP", value, sizeof(value));
         const bool on = setting("gpu_vertices") != 0 && !debugging && renderer_has_fixed_function();
         log_line("vertices: fixed-function transform on the %s", on ? "GPU" : "CPU");
         return on;
