@@ -413,10 +413,12 @@ void restrict_to_one_core() {
     if (GetEnvironmentVariableW(L"MC3_MULTICORE", nullptr, 0)) return;
     DWORD_PTR process_mask = 0, system_mask = 0;
     if (!GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask) || !process_mask) return;
+    run_at_full_speed();
+    if (const DWORD_PTR fastest = fastest_cores()) process_mask = fastest;  // a fast core, where there are slow ones
     const DWORD_PTR first_core = process_mask & (~process_mask + 1);
     set_game_cores(first_core);
-    log_line("game code runs on one CPU core (mask %08lX), like the Xbox; the GPU on mask %08lX",
-             static_cast<unsigned long>(first_core), emulation_cores());
+    log_line("game code runs on one CPU core (mask %08lX), like the Xbox; the GPU on mask %08lX, other work on %08lX",
+             static_cast<unsigned long>(first_core), gpu_cores(), emulation_cores());
 }
 
 // The game installs its own exception handlers (its crash screen exits to the dashboard), so faults would

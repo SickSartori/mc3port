@@ -307,30 +307,40 @@ Vec4 read_attribute(const uint8_t* p, uint32_t format) {
 // --- primitive assembly ---
 
 void append_triangles(uint32_t primitive, uint32_t count, std::vector<uint32_t>& out) {
+    // Written straight into the vector's memory: no primitive gives more than three indices for each vertex, and
+    // inserting three at a time was a call and a capacity check for each triangle of every draw.
+    const size_t before = out.size();
+    out.resize(before + size_t{count} * 3);
+    uint32_t* next = out.data() + before;
+    const auto triangle = [&next](uint32_t a, uint32_t b, uint32_t c) {
+        next[0] = a, next[1] = b, next[2] = c;
+        next += 3;
+    };
     switch (primitive) {
         case kTriangles:
-            for (uint32_t i = 0; i + 2 < count; i += 3) out.insert(out.end(), {i, i + 1, i + 2});
+            for (uint32_t i = 0; i + 2 < count; i += 3) triangle(i, i + 1, i + 2);
             break;
         case kTriangleStrip:
             for (uint32_t i = 2; i < count; ++i) {
-                if (i & 1) out.insert(out.end(), {i - 1, i - 2, i});
-                else out.insert(out.end(), {i - 2, i - 1, i});
+                if (i & 1) triangle(i - 1, i - 2, i);
+                else triangle(i - 2, i - 1, i);
             }
             break;
         case kTriangleFan:
         case kPolygon:
-            for (uint32_t i = 2; i < count; ++i) out.insert(out.end(), {0u, i - 1, i});
+            for (uint32_t i = 2; i < count; ++i) triangle(0u, i - 1, i);
             break;
         case kQuads:
-            for (uint32_t i = 0; i + 3 < count; i += 4) out.insert(out.end(), {i, i + 1, i + 2, i, i + 2, i + 3});
+            for (uint32_t i = 0; i + 3 < count; i += 4) triangle(i, i + 1, i + 2), triangle(i, i + 2, i + 3);
             break;
         case kQuadStrip:
-            for (uint32_t i = 0; i + 3 < count; i += 2) out.insert(out.end(), {i, i + 1, i + 2, i + 1, i + 3, i + 2});
+            for (uint32_t i = 0; i + 3 < count; i += 2) triangle(i, i + 1, i + 2), triangle(i + 1, i + 3, i + 2);
             break;
         default:
             log_once(0x1000 + primitive, "points and lines are not drawn yet");
             break;
     }
+    out.resize(static_cast<size_t>(next - out.data()));
 }
 
 // Screen-space position from the vertex program (pixels) to the renderer's form: pixels times w, depth 0..1.
@@ -1224,123 +1234,182 @@ void kelvin_array_elements16(const uint32_t* words, uint32_t count) {
 
 static bool kelvin_other_method(uint32_t method, uint32_t argument);
 
+// What a method is, for kelvin_method's switch: the arrays of methods by range, kOther for the rest. A table read and
+// one jump, where a chain of 32 range checks ran for every word (the textures' and combiners' methods, at its end,
+// paid for all of them, and so did every method of kelvin_other_method).
+enum MethodKind : uint8_t {
+    kOther, kProgram, kConstant, kArrayOffset, kArrayFormat, kData4ub, kData4f, kData2f, kModelView, kComposite,
+    kTextureMatrix, kTextureMatrixEnable, kTexgen, kTexgenPlane, kViewportOffset, kViewportScale, kFogPlane,
+    kFogParams, kInverseModelView, kLight, kIgnored, kSpecularParams, kSceneAmbient, kMaterialEmission, kEyePosition,
+    kAlphaInput, kFactor0, kFactor1, kAlphaOutput, kColorInput, kColorOutput, kTexture,
+};
+
+struct MethodKinds {
+    uint8_t kind[0x2000 / 4];
+    constexpr MethodKinds() : kind() {
+        struct Range {
+            uint32_t from, to;
+            MethodKind kind;
+        };
+        constexpr Range ranges[] = {
+            {0x0B00, 0x0B80, kProgram},        // SET_TRANSFORM_PROGRAM
+            {0x0B80, 0x0C00, kConstant},       // SET_TRANSFORM_CONSTANT
+            {0x1720, 0x1760, kArrayOffset},
+            {0x1760, 0x17A0, kArrayFormat},
+            {0x1940, 0x1980, kData4ub},        // SET_VERTEX_DATA4UB
+            {0x1A00, 0x1B00, kData4f},         // SET_VERTEX_DATA4F_M
+            {0x1880, 0x1900, kData2f},         // SET_VERTEX_DATA2F_M
+            {0x0480, 0x0580, kModelView},      // SET_MODEL_VIEW_MATRIX0..3
+            {0x0680, 0x06C0, kComposite},
+            {0x06C0, 0x07C0, kTextureMatrix},  // SET_TEXTURE_MATRIX0..3
+            {0x0420, 0x0430, kTextureMatrixEnable},
+            {0x03C0, 0x0400, kTexgen},         // SET_TEXGEN_S/T/R/Q, 0x10 per stage
+            {0x0840, 0x0940, kTexgenPlane},    // SET_TEXGEN_PLANE_S/T/R/Q, 0x40 per stage
+            {0x0A20, 0x0A30, kViewportOffset},
+            {0x0AF0, 0x0B00, kViewportScale},
+            {0x09D0, 0x09E0, kFogPlane},
+            {0x09C0, 0x09CC, kFogParams},
+            {0x0580, 0x0680, kInverseModelView},  // SET_INVERSE_MODEL_VIEW_MATRIX0..3
+            {0x1000, 0x1400, kLight},             // SET_LIGHT_*, 0x80 per light
+            {0x0C00, 0x0E00, kIgnored},           // SET_BACK_LIGHT_*: two-sided lighting, not yet
+            {0x09E0, 0x09F8, kSpecularParams},
+            {0x1E28, 0x1E40, kIgnored},           // SET_SPECULAR_PARAMS_BACK
+            {0x0A10, 0x0A1C, kSceneAmbient},
+            {0x03A8, 0x03B4, kMaterialEmission},
+            {0x0A50, 0x0A60, kEyePosition},
+            {0x0260, 0x0280, kAlphaInput},
+            {0x0A60, 0x0A80, kFactor0},
+            {0x0A80, 0x0AA0, kFactor1},
+            {0x0AA0, 0x0AC0, kAlphaOutput},
+            {0x0AC0, 0x0AE0, kColorInput},
+            {0x1E40, 0x1E60, kColorOutput},
+            {0x1B00, 0x1C00, kTexture},           // SET_TEXTURE_*, 0x40 per stage
+        };
+        for (const Range& range : ranges) {
+            for (uint32_t method = range.from; method < range.to; method += 4) kind[method / 4] = range.kind;
+        }
+    }
+};
+constexpr MethodKinds kMethodKinds;
+
+// A byte as a colour component: the same values as byte / 255.0f, without four divisions for every colour.
+struct UnitBytes {
+    float value[256];
+    constexpr UnitBytes() : value() {
+        for (int i = 0; i < 256; ++i) value[i] = static_cast<float>(i) / 255.0f;
+    }
+};
+constexpr UnitBytes kUnitBytes;
+
 bool kelvin_method(uint32_t method, uint32_t argument) {
     DrawState& d = g_k.draw;
     CombinerProgram& p = d.program;
 
-    // Arrays of methods.
-    if (method >= 0x0B00 && method < 0x0B80) {  // SET_TRANSFORM_PROGRAM
-        const uint32_t slot = (method - 0x0B00) / 4;
-        if (g_k.program_load < kVshProgramSlots) g_k.program[g_k.program_load * 4 + slot % 4] = argument;
-        if (slot % 4 == 3) ++g_k.program_load;
-        g_k.program_dirty = true;
-        return true;
-    }
-    if (method >= 0x0B80 && method < 0x0C00) {  // SET_TRANSFORM_CONSTANT
-        const uint32_t slot = (method - 0x0B80) / 4;
-        if (g_k.constant_load < kVshConstants) g_k.constants[g_k.constant_load][slot % 4] = as_float(argument);
-        if (slot % 4 == 3) ++g_k.constant_load;
-        return true;
-    }
-    if (method >= 0x1720 && method < 0x1760) { g_k.array_offset[(method - 0x1720) / 4] = argument; return true; }
-    if (method >= 0x1760 && method < 0x17A0) { g_k.array_format[(method - 0x1760) / 4] = argument; return true; }
-    if (method >= 0x1940 && method < 0x1980) {  // SET_VERTEX_DATA4UB
-        Vec4& v = g_k.attribute[(method - 0x1940) / 4];
-        for (int i = 0; i < 4; ++i) v[i] = ((argument >> (i * 8)) & 0xFF) / 255.0f;
-        return true;
-    }
-    if (method >= 0x1A00 && method < 0x1B00) {  // SET_VERTEX_DATA4F_M
-        g_k.attribute[(method - 0x1A00) / 16][((method - 0x1A00) / 4) % 4] = as_float(argument);
-        return true;
-    }
-    if (method >= 0x1880 && method < 0x1900) {  // SET_VERTEX_DATA2F_M
-        Vec4& v = g_k.attribute[(method - 0x1880) / 8];
-        v[((method - 0x1880) / 4) % 2] = as_float(argument);
-        v[2] = 0;
-        v[3] = 1;
-        return true;
-    }
-    // Fixed-function transform state.
-    if (method >= 0x0480 && method < 0x0580) {  // SET_MODEL_VIEW_MATRIX0..3
-        g_k.model_view[(method - 0x0480) / 0x40][((method - 0x0480) % 0x40) / 4] = as_float(argument);
-        return true;
-    }
-    // The fixed-function state lives in the same constant memory the vertex programs read (NV_IGRAPH_XF_XFCTX_*):
-    // D3D's vertex shaders end with a screen transform that uses the viewport scale and offset as c[-38], c[-37].
-    if (method >= 0x0680 && method < 0x06C0) {
-        const uint32_t i = (method - 0x0680) / 4;
-        g_k.composite[i] = as_float(argument);
-        g_k.constants[kXfComposite + i / 4][i % 4] = as_float(argument);
-        return true;
-    }
-    if (method >= 0x06C0 && method < 0x07C0) {  // SET_TEXTURE_MATRIX0..3
-        g_k.texture_matrix[(method - 0x06C0) / 0x40][((method - 0x06C0) % 0x40) / 4] = as_float(argument);
-        return true;
-    }
-    if (method >= 0x0420 && method < 0x0430) { g_k.texture_matrix_enable[(method - 0x0420) / 4] = argument != 0; return true; }
-    if (method >= 0x03C0 && method < 0x0400) {  // SET_TEXGEN_S/T/R/Q, 0x10 per stage
-        g_k.texgen[(method - 0x03C0) / 0x10][((method - 0x03C0) % 0x10) / 4] = argument;
-        return true;
-    }
-    if (method >= 0x0840 && method < 0x0940) {  // SET_TEXGEN_PLANE_S/T/R/Q, 0x40 per stage
-        const uint32_t offset = method - 0x0840;
-        g_k.texgen_plane[offset / 0x40][(offset % 0x40) / 0x10][(offset % 0x10) / 4] = as_float(argument);
-        return true;
-    }
-    if (method >= 0x0A20 && method < 0x0A30) {
-        g_k.viewport_offset[(method - 0x0A20) / 4] = as_float(argument);
-        g_k.constants[kXfViewportOffset][(method - 0x0A20) / 4] = as_float(argument);
-        return true;
-    }
-    if (method >= 0x0AF0 && method < 0x0B00) {
-        g_k.viewport_scale[(method - 0x0AF0) / 4] = as_float(argument);
-        g_k.constants[kXfViewportScale][(method - 0x0AF0) / 4] = as_float(argument);
-        return true;
-    }
-    if (method >= 0x09D0 && method < 0x09E0) { g_k.fog_plane[(method - 0x09D0) / 4] = as_float(argument); return true; }
-    if (method >= 0x09C0 && method < 0x09CC) { g_k.fog_params[(method - 0x09C0) / 4] = as_float(argument); return true; }
-
-    // Lighting state.
-    if (method >= 0x0580 && method < 0x0680) {  // SET_INVERSE_MODEL_VIEW_MATRIX0..3
-        g_k.inverse_model_view[(method - 0x0580) / 0x40][((method - 0x0580) % 0x40) / 4] = as_float(argument);
-        return true;
-    }
-    if (method >= 0x1000 && method < 0x1400) {  // SET_LIGHT_*, 0x80 per light
-        g_k.light[(method - 0x1000) / 0x80][((method - 0x1000) % 0x80) / 4] = as_float(argument);
-        return true;
-    }
-    if (method >= 0x0C00 && method < 0x0E00) return true;  // SET_BACK_LIGHT_*: two-sided lighting, not yet
-    if (method >= 0x09E0 && method < 0x09F8) { g_k.specular_params[(method - 0x09E0) / 4] = as_float(argument); return true; }
-    if (method >= 0x1E28 && method < 0x1E40) return true;  // SET_SPECULAR_PARAMS_BACK
-    if (method >= 0x0A10 && method < 0x0A1C) { g_k.scene_ambient[(method - 0x0A10) / 4] = as_float(argument); return true; }
-    if (method >= 0x03A8 && method < 0x03B4) { g_k.material_emission[(method - 0x03A8) / 4] = as_float(argument); return true; }
-    if (method >= 0x0A50 && method < 0x0A60) {
-        g_k.eye_position[(method - 0x0A50) / 4] = as_float(argument);
-        g_k.constants[kXfEyePosition][(method - 0x0A50) / 4] = as_float(argument);
-        return true;
-    }
-
-    if (method >= 0x0260 && method < 0x0280) { p.alpha_input[(method - 0x0260) / 4] = argument; return true; }
-    if (method >= 0x0A60 && method < 0x0A80) { g_k.combiner_factor0[(method - 0x0A60) / 4] = argument; return true; }
-    if (method >= 0x0A80 && method < 0x0AA0) { g_k.combiner_factor1[(method - 0x0A80) / 4] = argument; return true; }
-    if (method >= 0x0AA0 && method < 0x0AC0) { p.alpha_output[(method - 0x0AA0) / 4] = argument; return true; }
-    if (method >= 0x0AC0 && method < 0x0AE0) { p.color_input[(method - 0x0AC0) / 4] = argument; return true; }
-    if (method >= 0x1E40 && method < 0x1E60) { p.color_output[(method - 0x1E40) / 4] = argument; return true; }
-    if (method >= 0x1B00 && method < 0x1C00) {  // SET_TEXTURE_*, 0x40 per stage
-        const uint32_t stage = (method - 0x1B00) / 0x40;
-        switch ((method - 0x1B00) % 0x40) {
-            case 0x00: g_k.texture_offset[stage] = argument; return true;
-            case 0x04: g_k.texture_format[stage] = argument; return true;
-            case 0x08: d.textures[stage].address_mode = argument; return true;
-            case 0x0C: g_k.texture_control0[stage] = argument; return true;
-            case 0x10: g_k.texture_control1[stage] = argument; return true;
-            case 0x14: d.textures[stage].filter = argument; return true;
-            case 0x1C: g_k.texture_rect[stage] = argument; return true;
-            case 0x20: g_k.texture_palette[stage] = argument; return true;
-            default: return true;  // border colour, bump-map matrices: not used yet
+    switch (method < 0x2000 ? kMethodKinds.kind[method / 4] : kOther) {
+        // Arrays of methods.
+        case kProgram: {
+            const uint32_t slot = (method - 0x0B00) / 4;
+            if (g_k.program_load < kVshProgramSlots) g_k.program[g_k.program_load * 4 + slot % 4] = argument;
+            if (slot % 4 == 3) ++g_k.program_load;
+            g_k.program_dirty = true;
+            return true;
         }
+        case kConstant: {
+            const uint32_t slot = (method - 0x0B80) / 4;
+            if (g_k.constant_load < kVshConstants) g_k.constants[g_k.constant_load][slot % 4] = as_float(argument);
+            if (slot % 4 == 3) ++g_k.constant_load;
+            return true;
+        }
+        case kArrayOffset: g_k.array_offset[(method - 0x1720) / 4] = argument; return true;
+        case kArrayFormat: g_k.array_format[(method - 0x1760) / 4] = argument; return true;
+        case kData4ub: {
+            Vec4& v = g_k.attribute[(method - 0x1940) / 4];
+            for (int i = 0; i < 4; ++i) v[i] = kUnitBytes.value[(argument >> (i * 8)) & 0xFF];
+            return true;
+        }
+        case kData4f:
+            g_k.attribute[(method - 0x1A00) / 16][((method - 0x1A00) / 4) % 4] = as_float(argument);
+            return true;
+        case kData2f: {
+            Vec4& v = g_k.attribute[(method - 0x1880) / 8];
+            v[((method - 0x1880) / 4) % 2] = as_float(argument);
+            v[2] = 0;
+            v[3] = 1;
+            return true;
+        }
+        // Fixed-function transform state.
+        case kModelView:
+            g_k.model_view[(method - 0x0480) / 0x40][((method - 0x0480) % 0x40) / 4] = as_float(argument);
+            return true;
+        // The fixed-function state lives in the same constant memory the vertex programs read (NV_IGRAPH_XF_XFCTX_*):
+        // D3D's vertex shaders end with a screen transform that uses the viewport scale and offset as c[-38], c[-37].
+        case kComposite: {
+            const uint32_t i = (method - 0x0680) / 4;
+            g_k.composite[i] = as_float(argument);
+            g_k.constants[kXfComposite + i / 4][i % 4] = as_float(argument);
+            return true;
+        }
+        case kTextureMatrix:
+            g_k.texture_matrix[(method - 0x06C0) / 0x40][((method - 0x06C0) % 0x40) / 4] = as_float(argument);
+            return true;
+        case kTextureMatrixEnable: g_k.texture_matrix_enable[(method - 0x0420) / 4] = argument != 0; return true;
+        case kTexgen:
+            g_k.texgen[(method - 0x03C0) / 0x10][((method - 0x03C0) % 0x10) / 4] = argument;
+            return true;
+        case kTexgenPlane: {
+            const uint32_t offset = method - 0x0840;
+            g_k.texgen_plane[offset / 0x40][(offset % 0x40) / 0x10][(offset % 0x10) / 4] = as_float(argument);
+            return true;
+        }
+        case kViewportOffset:
+            g_k.viewport_offset[(method - 0x0A20) / 4] = as_float(argument);
+            g_k.constants[kXfViewportOffset][(method - 0x0A20) / 4] = as_float(argument);
+            return true;
+        case kViewportScale:
+            g_k.viewport_scale[(method - 0x0AF0) / 4] = as_float(argument);
+            g_k.constants[kXfViewportScale][(method - 0x0AF0) / 4] = as_float(argument);
+            return true;
+        case kFogPlane: g_k.fog_plane[(method - 0x09D0) / 4] = as_float(argument); return true;
+        case kFogParams: g_k.fog_params[(method - 0x09C0) / 4] = as_float(argument); return true;
+
+        // Lighting state.
+        case kInverseModelView:
+            g_k.inverse_model_view[(method - 0x0580) / 0x40][((method - 0x0580) % 0x40) / 4] = as_float(argument);
+            return true;
+        case kLight:
+            g_k.light[(method - 0x1000) / 0x80][((method - 0x1000) % 0x80) / 4] = as_float(argument);
+            return true;
+        case kIgnored: return true;
+        case kSpecularParams: g_k.specular_params[(method - 0x09E0) / 4] = as_float(argument); return true;
+        case kSceneAmbient: g_k.scene_ambient[(method - 0x0A10) / 4] = as_float(argument); return true;
+        case kMaterialEmission: g_k.material_emission[(method - 0x03A8) / 4] = as_float(argument); return true;
+        case kEyePosition:
+            g_k.eye_position[(method - 0x0A50) / 4] = as_float(argument);
+            g_k.constants[kXfEyePosition][(method - 0x0A50) / 4] = as_float(argument);
+            return true;
+
+        case kAlphaInput: p.alpha_input[(method - 0x0260) / 4] = argument; return true;
+        case kFactor0: g_k.combiner_factor0[(method - 0x0A60) / 4] = argument; return true;
+        case kFactor1: g_k.combiner_factor1[(method - 0x0A80) / 4] = argument; return true;
+        case kAlphaOutput: p.alpha_output[(method - 0x0AA0) / 4] = argument; return true;
+        case kColorInput: p.color_input[(method - 0x0AC0) / 4] = argument; return true;
+        case kColorOutput: p.color_output[(method - 0x1E40) / 4] = argument; return true;
+        case kTexture: {
+            const uint32_t stage = (method - 0x1B00) / 0x40;
+            switch ((method - 0x1B00) % 0x40) {
+                case 0x00: g_k.texture_offset[stage] = argument; return true;
+                case 0x04: g_k.texture_format[stage] = argument; return true;
+                case 0x08: d.textures[stage].address_mode = argument; return true;
+                case 0x0C: g_k.texture_control0[stage] = argument; return true;
+                case 0x10: g_k.texture_control1[stage] = argument; return true;
+                case 0x14: d.textures[stage].filter = argument; return true;
+                case 0x1C: g_k.texture_rect[stage] = argument; return true;
+                case 0x20: g_k.texture_palette[stage] = argument; return true;
+                default: return true;  // border colour, bump-map matrices: not used yet
+            }
+        }
+        default: return kelvin_other_method(method, argument);
     }
-    return kelvin_other_method(method, argument);
 }
 
 // Draws, clears and the state that needs more than a store. Apart, so that the stores above (a million a second in a

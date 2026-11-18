@@ -652,6 +652,33 @@ void run_push_buffer(uint32_t put) {
                 continue;
             }
         }
+        // The other words of a Kelvin run (state, matrices, constants: a million a second in a city) go straight to
+        // kelvin_method, the checks above made once for the run and not for every word. The methods execute_method
+        // answers itself (flips, semaphores, below 0x180) and those Kelvin does not know end the block: the word
+        // path below takes them.
+        if (s.method_count && put > get && g_subchannel_class[s.subchannel & 7] == kClassKelvin &&
+            !g_collect_statistics && g_trace_budget <= 0) {
+            const uint32_t count = std::min(s.method_count, (put - get) / 4);
+            if (count && physical_pointer(get + count * 4 - 1)) {
+                const auto* words = reinterpret_cast<const uint32_t*>(pointer);
+                const uint32_t step = s.non_increasing ? 0 : 4;
+                uint32_t method = s.method, done = 0;
+                for (; done < count; ++done, method += step) {
+                    if (method < 0x0180 || method == kSetContextDmaSemaphore || method == kSetSemaphoreOffset ||
+                        method == kBackEndWriteSemaphoreRelease) {
+                        break;
+                    }
+                    if (!g_pgraph_fifo_enabled) wait_for_pgraph_access();
+                    if (!kelvin_method(method, words[done])) break;
+                }
+                if (done) {
+                    get += done * 4;
+                    s.method = method;
+                    s.method_count -= done;
+                    continue;
+                }
+            }
+        }
         const uint32_t word = *reinterpret_cast<const uint32_t*>(pointer);
         get += 4;
 
@@ -722,7 +749,7 @@ void run_push_buffer(uint32_t put) {
 void gpu_thread() {
     // The GPU is a processor of its own: off the game's core when there is another one. Above the game's threads
     // anyway: when it has to share the core, it must preempt a thread spinning on a register.
-    if (const unsigned long cores = emulation_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
+    if (const unsigned long cores = gpu_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
     profile_name_thread(false, "gpu");
     g_renderer_ready = renderer_start(g_window);

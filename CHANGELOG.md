@@ -5,7 +5,12 @@
 ### Improved
 
 - **Faster where the PC works hardest**: the work that turns each frame's Xbox drawing commands into Direct3D takes about
-  15% less time, which counts most in two-player split screen, where the city is drawn twice.
+  a quarter less time than in 0.3.9, which counts most in two-player split screen, where the city is drawn twice, and at 120
+  frames per second.
+- **Processors with fast and slow cores** (Intel's P and E cores): the game and its drawing work stay on the fast ones,
+  each on a core of its own. They could land on a slow core, or share one, and the frame rate swung with it.
+- **Full speed in the background**: Windows no longer slows mc3port down when its window is not in front or the
+  battery saver is on.
 
 ### Fixed
 
