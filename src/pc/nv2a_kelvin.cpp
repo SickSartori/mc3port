@@ -338,8 +338,9 @@ RenderVertex to_render_vertex(const Vec4* o) {
     RenderVertex v{};
     float w = o[kOutPosition][3];
     if (!std::isfinite(w) || std::fabs(w) < 5.42101e-20f) w = w < 0 ? -5.42101e-20f : 5.42101e-20f;
-    const float x = o[kOutPosition][0];
-    const float y = o[kOutPosition][1];
+    // 4 fractional bits, as the NV2A keeps (and clip_position in the renderer's vertex shaders).
+    const float x = std::trunc(o[kOutPosition][0] * 16) / 16;
+    const float y = std::trunc(o[kOutPosition][1] * 16) / 16;
     const float z = g_k.clip_max != 0 ? o[kOutPosition][2] / g_k.clip_max : o[kOutPosition][2];
     v.position[0] = x * w;
     v.position[1] = y * w;
