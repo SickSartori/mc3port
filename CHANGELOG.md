@@ -2,6 +2,13 @@
 
 ## 0.3.10
 
+### New
+
+- **120 frames per second**: a third choice next to 30 and 60 in the launcher's and the in-game menu's settings. The
+  game runs at the same speed, with twice the frames of 60. It needs a fast processor (one of its cores does the
+  work twice as often) and a screen of 120 Hz or more to show them; where the PC cannot keep up, the game stays smooth
+  at the frames it reaches.
+
 ### Improved
 
 - **Faster where the PC works hardest**: the work that turns each frame's Xbox drawing commands into Direct3D takes about

@@ -109,8 +109,13 @@ void __cdecl set_fixed_step(float rate, uint32_t count) {
     use_fixed_step(period > 0 ? period : 1.0f / (static_cast<float>(count) * rate));
     *g_step = *g_fixed_step;
 }
-constexpr float kSixtieth = 1.0f / 60;
+// The shortest step and the unit steps are whole multiples of: 1/60 s as on the Xbox, 1/120 s at 120 fps
+// (apply_hle_patches sets it before the game runs).
+float g_step_unit = 1.0f / 60;
 constexpr float kMaximumCarry = 1.0f / 20;
+
+// Steps a second at the shortest step: 60, or 120 with frame_rate 120.
+float step_rate() { return nv2a_vblank_hz() >= 240 ? 120.0f : 60.0f; }
 float g_step_carry = 0;
 
 // Replaces the round-up (0x20B737, measured seconds in xmm0); stores the step and continues at 0x20B776 like it.
@@ -118,14 +123,14 @@ __declspec(naked) void quantize_frame_step() {
     __asm {
         addss xmm0, g_step_carry  // wanted = measured + carry
         movss xmm1, xmm0
-        divss xmm1, kSixtieth
+        divss xmm1, g_step_unit
         cvtss2si eax, xmm1        // nearest whole sixtieths, at least one
         cmp eax, 1
         jge whole
         mov eax, 1
     whole:
         cvtsi2ss xmm1, eax
-        mulss xmm1, kSixtieth
+        mulss xmm1, g_step_unit
         subss xmm0, xmm1          // carry = wanted - step, kept small
         movss xmm2, kMaximumCarry
         minss xmm0, xmm2
@@ -313,8 +318,8 @@ void time_frame_shown(uint32_t vblanks) {
     }();
     const float average = static_cast<float>(total) / 8.0f / static_cast<float>(nv2a_vblank_hz());
     static float sixtieths = 0;
-    sixtieths = step_sixtieths(sixtieths, average * 60.0f);
-    const float period = std::max(sixtieths / 60.0f, floor);
+    sixtieths = step_sixtieths(sixtieths, average * step_rate());  // in 1/120 s at 120 fps
+    const float period = std::max(sixtieths / step_rate(), floor);
     g_frame_period = period;
     if (*g_fixed_mode == 1) use_fixed_step(period);
 }
@@ -339,6 +344,7 @@ int32_t* career_money() {
 
 void apply_hle_patches(const Xbe& /*xbe*/) {
     g_game_loaded = true;
+    g_step_unit = 1.0f / step_rate();
     for (const Patch& patch : kPatches) {
         auto* code = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(patch.address));
         if (std::memcmp(code, patch.original.data(), patch.original.size()) != 0) {

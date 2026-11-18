@@ -69,7 +69,7 @@ NV2A graphics chip (on Direct3D 11), the sound chip (on XAudio2) and the control
 | | Xbox | mc3port |
 |---|---|---|
 | Aspect ratio | 4:3, or 16:9 with a stretched HUD | **True 16:9**: the game's widescreen mode, wider view, HUD kept round |
-| Frame rate | 30 fps | **60 fps**, or 30 like the Xbox |
+| Frame rate | 30 fps | **60 fps**, 30 like the Xbox, or 120 on a fast processor |
 | Resolution | 480p | **Up to 5K**, or as many lines as your screen, with 16x anisotropic filtering |
 | Picture | as shipped | **Modern effects**, all optional: glow, sharpening, colour, vignette, ambient occlusion (F10 to compare) |
 | Controllers | Xbox pads | Xbox, **PlayStation, Switch** and most USB or Bluetooth pads, or the **keyboard** with rebindable keys |

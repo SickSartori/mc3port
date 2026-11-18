@@ -43,7 +43,10 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
   arrivano con una chiamata. Le eccezioni scendono da circa 14.000 a 2.400 al secondo in città.
 - **Push buffer**: salti, chiamate, metodi; oggetti risolti tramite RAMHT; semafori e reference per i fence. Gli
   argomenti di `ARRAY_ELEMENT16` e `INLINE_ARRAY`, due terzi delle parole, si prendono a blocchi.
-- **Vblank** a 60 Hz verso l'ISR del driver; la finestra Win32 mostra il front buffer (`PCRTC_START`).
+- **Vblank** a 60 Hz verso l'ISR del driver; la finestra Win32 mostra il front buffer (`PCRTC_START`). Il gioco mostra
+  un frame ogni due blank, quindi `frame_rate` sceglie la frequenza dei blank: 60 Hz per 30 fps, 120 Hz per 60,
+  240 Hz per 120 (`nv2a_vblank_hz`). Il passo fisso del gioco segue il tempo vero dei frame in multipli di 1/60 s,
+  di 1/120 s a 120 fps (`hle_patches.cpp`).
 - **Rendering** (`nv2a_kelvin.cpp` -> `renderer_d3d11.cpp`): i vertici passano dal vertex program NV2A interpretato
   sulla CPU (`nv2a_vsh.cpp`) oppure dalla pipeline fixed-function (matrice composita, offset del viewport, texgen
   lineari, matrici delle texture, 8 luci infinite/locali/spot con color material, speculare separato o sommato);

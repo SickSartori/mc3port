@@ -1072,7 +1072,11 @@ void nv2a_set_window_hook(WindowHook hook) { g_window_hook = hook; }
 
 uint32_t nv2a_frames_shown() { return g_frames_shown; }
 
-int nv2a_vblank_hz() { return setting_at_start("frame_rate") >= 60 ? 120 : 60; }
+// Two blanks for each game frame: 60 Hz for the Xbox's 30 fps, 120 Hz for 60 fps, 240 Hz for 120 fps.
+int nv2a_vblank_hz() {
+    const float rate = setting_at_start("frame_rate");
+    return rate >= 120 ? 240 : rate >= 60 ? 120 : 60;
+}
 
 void nv2a_set_full_screen(bool full_screen) {
     if (g_window) PostMessageW(g_window, kSetFullScreenMessage, full_screen, 0);
