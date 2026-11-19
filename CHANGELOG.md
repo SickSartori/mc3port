@@ -27,7 +27,8 @@
   sight with the keys and the controller): the Picture tab's last rows were hidden under the bottom bar on a 720p
   window. In a 4:3 or smaller window everything is larger than before (it was sized for 16:9 and shrank). A slider's
   value now sits beside its grab instead of under it, the rows of a page come in one after another, a light runs round
-  Play when the game is ready and along the menu's selected item.
+  Play when the game is ready and along the menu's selected item. The internal resolution is a drop-down list, like
+  the game language, instead of seven narrow buttons.
 - **The launcher's light trails** run on three planes, the nearer ones lower, thicker and brighter, and come more
   often and faster when the music gets louder.
 
