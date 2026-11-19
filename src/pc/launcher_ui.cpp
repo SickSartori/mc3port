@@ -877,16 +877,22 @@ Output vs(uint id : SV_VertexID) {
     o.uv = t;
     return o;
 }
+// A point of the picture over black: the disc's artwork has cut-out shapes whose transparent texels hold any colour
+// (white blotches when drawn as they are).
+float3 at(Texture2D picture, float2 uv) {
+    const float4 s = picture.Sample(linear_clamp, uv);
+    return s.rgb * s.a;
+}
 // The artwork is small: its blocks would show on a big screen, so each point is a little of its neighbours.
 float3 soft(Texture2D picture, float2 uv) {
     float width, height;
     picture.GetDimensions(width, height);
     const float2 d = 1.25 / float2(width, height);
-    float3 c = picture.Sample(linear_clamp, uv).rgb * 0.25;
-    c += (picture.Sample(linear_clamp, uv + float2(d.x, 0)).rgb + picture.Sample(linear_clamp, uv - float2(d.x, 0)).rgb +
-          picture.Sample(linear_clamp, uv + float2(0, d.y)).rgb + picture.Sample(linear_clamp, uv - float2(0, d.y)).rgb) * 0.125;
-    c += (picture.Sample(linear_clamp, uv + d).rgb + picture.Sample(linear_clamp, uv - d).rgb +
-          picture.Sample(linear_clamp, uv + float2(d.x, -d.y)).rgb + picture.Sample(linear_clamp, uv - float2(d.x, -d.y)).rgb) * 0.0625;
+    float3 c = at(picture, uv) * 0.25;
+    c += (at(picture, uv + float2(d.x, 0)) + at(picture, uv - float2(d.x, 0)) + at(picture, uv + float2(0, d.y)) +
+          at(picture, uv - float2(0, d.y))) * 0.125;
+    c += (at(picture, uv + d) + at(picture, uv - d) + at(picture, uv + float2(d.x, -d.y)) + at(picture, uv - float2(d.x, -d.y))) *
+         0.0625;
     return c;
 }
 float3 grade(float3 c, float colour) {

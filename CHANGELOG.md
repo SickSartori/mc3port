@@ -45,6 +45,8 @@
 
 ### Fixed
 
+- **White blotches over the launcher's background**: some of the disc's pictures have cut-out shapes, whose hidden
+  parts were drawn in white. They are now dark, as the rest of the background.
 - **No pale box around pedestrians and lamp posts at night**: the ambient occlusion lightened the shaded wall behind
   anything standing in front of it, in a rectangle as wide as its radius. It now shades the wall right up to the figure.
 
