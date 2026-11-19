@@ -20,3 +20,7 @@ buffer-*.bin
 # Release packages (tools/package.ps1)
 /dist/
 /quiver_submission/
+
+# Copyrighted PS2 audio must never be committed
+loading_music/*.wav
+loading_music/*.raw
