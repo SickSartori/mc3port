@@ -29,6 +29,9 @@
   value now sits beside its grab instead of under it, the rows of a page come in one after another, a light runs round
   Play when the game is ready and along the menu's selected item. The internal resolution is a drop-down list, like
   the game language, instead of seven narrow buttons.
+- **Settings in five shorter tabs**: Picture, with ten rows, is now Display (aspect ratio, field of view, window, frames
+  per second, VSync) and Graphics (internal resolution, texture filter, sharp pictures and textures, vertices on the
+  graphics card), next to Effects, Game and Audio.
 - **The launcher's light trails** run on three planes, the nearer ones lower, thicker and brighter, and come more
   often and faster when the music gets louder.
 

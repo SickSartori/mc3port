@@ -76,7 +76,7 @@ struct Texts {
     const char *play, *settings, *controls, *about, *quit;
     const char *ready, *ready_lead, *disc_ok, *disc_none, *disc_none_sub, *change, *choose_iso;
     const char *pad_on, *pad_on_sub, *pad_off, *pad_off_sub, *edit;
-    const char *tab_picture, *tab_effects, *tab_game, *tab_audio;
+    const char *tab_display, *tab_graphics, *tab_effects, *tab_game, *tab_audio;
     const char *game_language, *game_language_sub, *like_windows, *fps, *fps_sub, *volume, *music_volume, *music_volume_sub;
     const char *aspect, *aspect_sub, *field_of_view, *field_of_view_sub, *window_mode, *window_mode_sub, *windowed, *fullscreen;
     const char *style, *original_sub, *enhanced_sub, *custom_sub, *original, *enhanced, *custom, *scale, *scale_sub;
@@ -117,7 +117,7 @@ const Texts kEnglish = {
     "READY TO RACE", "The streets of San Diego, Atlanta, Detroit and Tokyo are waiting.", "Disc verified",
     "No disc chosen", "Choose the disc image (ISO) of your Xbox copy (Europe or USA).", "Change", "Choose the ISO",
     "Controller connected", "Xbox, PlayStation and other pads", "No controller", "The keyboard works too", "Edit",
-    "Picture", "Effects", "Game", "Audio",
+    "Display", "Graphics", "Effects", "Game", "Audio",
     "Game language", "The game's text and speech", "Like Windows", "Frames per second", "60 is smoother; 30 like the Xbox; 120 for a fast processor",
     "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
     "Aspect ratio", "16:9 is the game's own widescreen mode; 21:9 fills a wider screen",
@@ -189,7 +189,7 @@ const Texts kItalian = {
     "PRONTO A CORRERE", "Le strade di San Diego, Atlanta, Detroit e Tokyo ti aspettano.", "Disco verificato",
     "Nessun disco scelto", "Scegli l'immagine del disco (ISO) della tua copia Xbox (Europa o USA).", "Cambia", "Scegli l'ISO",
     "Controller collegato", "Controller Xbox, PlayStation e altri", "Nessun controller", "Anche la tastiera funziona", "Modifica",
-    "Immagine", "Effetti", "Gioco", "Audio",
+    "Schermo", "Grafica", "Effetti", "Gioco", "Audio",
     "Lingua del gioco", "Testi e voci del gioco", "Come Windows", "Fotogrammi al secondo",
     "60 \xC3\xA8 pi\xC3\xB9 fluido; 30 come l'Xbox; 120 per un processore veloce", "Volume del gioco", "Musica del launcher",
     "La musica di sottofondo di questa schermata; 0 la spegne",
@@ -267,7 +267,7 @@ const Texts kPortuguese = {
     "PRONTO PARA CORRER", "As ruas de San Diego, Atlanta, Detroit e Tóquio esperam por você.", "Disco verificado",
     "Nenhum disco escolhido", "Escolha a imagem do disco (ISO) da sua cópia de Xbox (Europa ou EUA).", "Trocar", "Escolher a ISO",
     "Controle conectado", "Xbox, PlayStation e outros controles", "Nenhum controle", "O teclado também funciona", "Editar",
-    "Imagem", "Efeitos", "Jogo", "Áudio",
+    "Tela", "Gráficos", "Efeitos", "Jogo", "Áudio",
     "Idioma do jogo", "Textos e vozes do jogo (não há português)", "Como o Windows", "Quadros por segundo", "60 é mais fluido; 30 como no Xbox; 120 para um processador rápido",
     "Volume do jogo", "Música do launcher", "A música de fundo desta tela; 0 desliga",
     "Proporção", "16:9 é o modo widescreen do próprio jogo; 21:9 preenche uma tela mais larga",
@@ -340,7 +340,7 @@ const Texts kSpanish = {
     "LISTO PARA CORRER", "Las calles de San Diego, Atlanta, Detroit y Tokio te esperan.", "Disco verificado",
     "Ningún disco elegido", "Elige la imagen del disco (ISO) de tu copia de Xbox (Europa o EE. UU.).", "Cambiar", "Elegir la ISO",
     "Mando conectado", "Mandos de Xbox, PlayStation y otros", "Ningún mando", "El teclado también funciona", "Editar",
-    "Imagen", "Efectos", "Juego", "Audio",
+    "Pantalla", "Gráficos", "Efectos", "Juego", "Audio",
     "Idioma del juego", "Textos y voces del juego", "Como Windows", "Fotogramas por segundo", "60 es más fluido; 30 como en Xbox; 120 para un procesador rápido",
     "Volumen del juego", "Música del launcher", "La música de fondo de esta pantalla; 0 la apaga",
     "Relación de aspecto", "16:9 es el modo panorámico del propio juego; 21:9 llena una pantalla más ancha",
@@ -2145,11 +2145,11 @@ void Launcher::page_settings() {
     title(t.settings);
     // LB and RB (L1 and R1), Q and E: the previous and next tab.
     if (rebinding_ < 0 && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
-        const int step = key_pressed({ImGuiKey_GamepadL1, ImGuiKey_Q, ImGuiKey_PageUp})     ? 3
+        const int step = key_pressed({ImGuiKey_GamepadL1, ImGuiKey_Q, ImGuiKey_PageUp})     ? 4
                          : key_pressed({ImGuiKey_GamepadR1, ImGuiKey_E, ImGuiKey_PageDown}) ? 1
                                                                                             : 0;
         if (step) {
-            settings_tab_ = (settings_tab_ + step) % 4;
+            settings_tab_ = (settings_tab_ + step) % 5;
             if (!menu_has_focus_) focus_panel_ = true;
         }
     }
@@ -2158,8 +2158,9 @@ void Launcher::page_settings() {
     if (to_tabs) focus_panel_ = false;
     style_row();
     if (to_tabs) focus_panel_ = true;
-    const char* tab_labels[] = {t.tab_picture, t.tab_effects, t.tab_game, t.tab_audio};
-    tabs(tab_labels, 4, &settings_tab_);
+    // Five short tabs: the screen's and the graphics' rows were one tab, longer than a 720p window.
+    const char* tab_labels[] = {t.tab_display, t.tab_graphics, t.tab_effects, t.tab_game, t.tab_audio};
+    tabs(tab_labels, 5, &settings_tab_);
     if (settings_tab_ != tab_before) tab_since_ = now;
     // The tab's content comes in like a page: fading, from a little to the right.
     const float tab_enter = ease_out((now - tab_since_) / 0.3f);
@@ -2184,6 +2185,15 @@ void Launcher::page_settings() {
             set_setting("fullscreen", static_cast<float>(mode));
             nv2a_set_full_screen(mode != 0);
         }
+        row(t.fps, t.fps_sub, true);
+        const char* rates[] = {"30", "60", "120"};
+        static const float kRates[] = {30, 60, 120};
+        int rate = setting("frame_rate") >= 120 ? 2 : setting("frame_rate") >= 60 ? 1 : 0;
+        if (segmented("##fps", rates, 3, &rate)) set_setting("frame_rate", kRates[rate]);
+        row(t.vsync, t.vsync_sub, true);
+        int vsync = setting("vsync") != 0 ? 1 : 0;
+        if (segmented("##vsync", toggle, 2, &vsync)) set_setting("vsync", static_cast<float>(vsync));
+    } else if (settings_tab_ == 1) {
         row(t.scale, t.scale_sub, true);
         MONITORINFO monitor{sizeof(MONITORINFO)};
         GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTOPRIMARY), &monitor);
@@ -2201,14 +2211,6 @@ void Launcher::page_settings() {
         if (combo("##scale", names, kResolutionCount, &resolution)) {
             set_setting("render_scale", kResolutions[resolution].scale);
         }
-        row(t.fps, t.fps_sub, true);
-        const char* rates[] = {"30", "60", "120"};
-        static const float kRates[] = {30, 60, 120};
-        int rate = setting("frame_rate") >= 120 ? 2 : setting("frame_rate") >= 60 ? 1 : 0;
-        if (segmented("##fps", rates, 3, &rate)) set_setting("frame_rate", kRates[rate]);
-        row(t.vsync, t.vsync_sub, true);
-        int vsync = setting("vsync") != 0 ? 1 : 0;
-        if (segmented("##vsync", toggle, 2, &vsync)) set_setting("vsync", static_cast<float>(vsync));
         row(t.anisotropy, nullptr, true);
         const char* levels[] = {"1x", "4x", "8x", "16x"};
         static const float kLevels[] = {1, 4, 8, 16};
@@ -2226,7 +2228,7 @@ void Launcher::page_settings() {
         row(t.gpu_vertices, t.gpu_vertices_sub);
         int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
         if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));
-    } else if (settings_tab_ == 1) {
+    } else if (settings_tab_ == 2) {
         row(t.effects, t.effects_sub);
         int modern = setting("effects") != 0 ? 1 : 0;
         if (segmented("##effects", toggle, 2, &modern)) {
@@ -2259,7 +2261,7 @@ void Launcher::page_settings() {
             }
         }
         cursor_ += px(62);
-    } else if (settings_tab_ == 2) {
+    } else if (settings_tab_ == 3) {
         row(t.game_language, t.game_language_sub, true);
         static const int kLanguages[] = {0, 1, 4, 3, 5, 6};
         const char* names[] = {t.like_windows, "English", "Fran\xC3\xA7" "ais", "Deutsch", "Espa\xC3\xB1ol", "Italiano"};
