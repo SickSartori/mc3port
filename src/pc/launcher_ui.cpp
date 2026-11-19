@@ -1697,10 +1697,12 @@ void Launcher::row(const char* heading, const char* detail, bool restart, float 
     const bool next_start = restart && in_game_;
     if (next_start) detail = T().next_start;
     if (!detail) return;
-    // Left of the control (`control` wide): a longer detail wraps, and the row grows by the extra lines.
-    const float wrap = panel_width_ - px(control + 20);
-    text(body_, px(17), ImVec2(origin_.x, origin_.y + cursor_ + px(29)), next_start ? kAmber : kDim, detail, wrap);
-    row_extra_ = std::max(0.0f, measure(body_, px(17), detail, wrap).y - px(22));
+    // Left of the control (`control` wide), or under a wide one across the whole row (squeezed beside it, it took four
+    // lines): a longer detail wraps, and the row grows by the extra lines.
+    const bool under = control >= 330;
+    const float wrap = under ? panel_width_ : panel_width_ - px(control + 20), top = px(under ? 60 : 29);
+    text(body_, px(17), ImVec2(origin_.x, origin_.y + cursor_ + top), next_start ? kAmber : kDim, detail, wrap);
+    row_extra_ = std::max(0.0f, measure(body_, px(17), detail, wrap).y - px(22) + top - px(29));
 }
 
 bool Launcher::segmented(const char* id, const char* const* labels, int count, int* current, const char* const* details,
