@@ -924,7 +924,7 @@ struct BackgroundConstants {
 // --- the launcher ---
 
 struct Trail {
-    float x, y, speed, length;
+    float x, y, speed, length, depth;  // depth: 0.25 far .. 1 near
     ImU32 colour;
 };
 
@@ -1171,6 +1171,7 @@ private:
     float item_shift_ = 0, page_alpha_ = 1;
     std::unordered_map<ImGuiID, float> anims_;
     std::vector<Trail> trails_;
+    float beat_ = 0;  // the music's loudness, smoothed: the trails follow it
     std::vector<ImVec4> drops_;
 };
 
@@ -2721,18 +2722,21 @@ void Launcher::frame(float now, float dt) {
     const ImVec2 screen(static_cast<float>(width_), static_cast<float>(height_));
     ImDrawList* back = ImGui::GetBackgroundDrawList();
 
-    // Light trails and rain over the background.
-    if (static_cast<float>(std::rand()) / RAND_MAX < dt * 5) {
-        const float pick = static_cast<float>(std::rand()) / RAND_MAX;
+    // Light trails on three planes, and rain, over the background. Nearer trails run lower, thicker, brighter and
+    // quicker; with the music louder they come more often and faster.
+    const auto random = [] { return static_cast<float>(std::rand()) / RAND_MAX; };
+    beat_ += ((music_ ? music_->loudness() : 0.0f) - beat_) * std::min(1.0f, dt * 12);
+    if (random() < dt * (4 + 10 * beat_)) {
+        const float pick = random(), depth = 0.25f + 0.375f * static_cast<float>(std::rand() % 3);
         const ImU32 colour = pick < 0.55f ? IM_COL32(255, 64, 64, 255) : pick < 0.8f ? IM_COL32(255, 210, 122, 255) : IM_COL32(255, 255, 255, 255);
-        trails_.push_back({-px(300), screen.y * (0.55f + 0.37f * static_cast<float>(std::rand()) / RAND_MAX),
-                           px(1400 + 1600 * static_cast<float>(std::rand()) / RAND_MAX),
-                           px(200 + 320 * static_cast<float>(std::rand()) / RAND_MAX), colour});
+        trails_.push_back({-px(300), screen.y * (0.5f + 0.38f * depth + 0.05f * random()), px((900 + 2200 * depth) * (0.85f + 0.3f * random())),
+                           px(140 + 420 * depth), depth, colour});
     }
     for (Trail& trail : trails_) {
-        trail.x += trail.speed * dt;
-        back->AddRectFilledMultiColor(ImVec2(trail.x - trail.length, trail.y), ImVec2(trail.x, trail.y + px(2.5f)),
-                                      trail.colour & ~IM_COL32_A_MASK, trail.colour, trail.colour, trail.colour & ~IM_COL32_A_MASK);
+        trail.x += trail.speed * dt * (1 + 1.2f * beat_);
+        const ImU32 colour = (trail.colour & ~IM_COL32_A_MASK) | (static_cast<ImU32>(255 * (0.35f + 0.65f * trail.depth)) << IM_COL32_A_SHIFT);
+        back->AddRectFilledMultiColor(ImVec2(trail.x - trail.length, trail.y), ImVec2(trail.x, trail.y + px(1 + 2.5f * trail.depth)),
+                                      colour & ~IM_COL32_A_MASK, colour, colour, colour & ~IM_COL32_A_MASK);
     }
     trails_.erase(std::remove_if(trails_.begin(), trails_.end(), [&](const Trail& trail) { return trail.x - trail.length > screen.x; }),
                   trails_.end());
