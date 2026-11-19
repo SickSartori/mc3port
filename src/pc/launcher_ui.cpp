@@ -78,7 +78,7 @@ struct Texts {
     const char *pad_on, *pad_on_sub, *pad_off, *pad_off_sub, *edit;
     const char *tab_picture, *tab_effects, *tab_game, *tab_audio;
     const char *game_language, *game_language_sub, *like_windows, *fps, *fps_sub, *volume, *music_volume, *music_volume_sub;
-    const char *aspect, *aspect_sub, *window_mode, *window_mode_sub, *windowed, *fullscreen;
+    const char *aspect, *aspect_sub, *field_of_view, *field_of_view_sub, *window_mode, *window_mode_sub, *windowed, *fullscreen;
     const char *style, *original_sub, *enhanced_sub, *custom_sub, *original, *enhanced, *custom, *scale, *scale_sub;
     const char *anisotropy, *gpu_vertices, *gpu_vertices_sub, *effects, *effects_sub, *on, *off;
     const char *sharpen, *bloom, *bloom_threshold, *saturation, *contrast, *vignette, *occlusion, *occlusion_radius;
@@ -120,7 +120,8 @@ const Texts kEnglish = {
     "Picture", "Effects", "Game", "Audio",
     "Game language", "The game's text and speech", "Like Windows", "Frames per second", "60 is smoother; 30 like the Xbox; 120 for a fast processor",
     "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
-    "Aspect ratio", "16:9 uses the game's own widescreen mode", "Window mode", "Alt+Enter or F11 while playing",
+    "Aspect ratio", "16:9 is the game's own widescreen mode; 21:9 fills a wider screen",
+    "Field of view", "How wide the camera sees: 100% is the game's own", "Window mode", "Alt+Enter or F11 while playing",
     "Window", "Full screen",
     "Style", "As on the Xbox: 30 fps, 4:3, 480p, no modern effects", "60 fps, 16:9, your screen's resolution, modern effects", "Your own choices",
     "Original", "Enhanced", "Custom",
@@ -192,7 +193,8 @@ const Texts kItalian = {
     "Lingua del gioco", "Testi e voci del gioco", "Come Windows", "Fotogrammi al secondo",
     "60 \xC3\xA8 pi\xC3\xB9 fluido; 30 come l'Xbox; 120 per un processore veloce", "Volume del gioco", "Musica del launcher",
     "La musica di sottofondo di questa schermata; 0 la spegne",
-    "Formato", "16:9 usa la modalit\xC3\xA0 panoramica del gioco", "Modalit\xC3\xA0 finestra",
+    "Formato", "16:9 \xC3\xA8 la modalit\xC3\xA0 panoramica del gioco; 21:9 riempie uno schermo pi\xC3\xB9 largo",
+    "Campo visivo", "Quanto vede la telecamera: 100% \xC3\xA8 quello del gioco", "Modalit\xC3\xA0 finestra",
     "Alt+Invio o F11 durante il gioco", "Finestra", "Schermo intero",
     "Stile", "Come sull'Xbox: 30 fps, 4:3, 480p, senza effetti moderni", "60 fps, 16:9, risoluzione dello schermo, effetti moderni", "Le tue scelte",
     "Originale", "Migliorata", "Personalizzata", "Risoluzione interna", "Bordi pi\xC3\xB9 lisci, pi\xC3\xB9 lavoro per la scheda video",
@@ -268,7 +270,8 @@ const Texts kPortuguese = {
     "Imagem", "Efeitos", "Jogo", "Áudio",
     "Idioma do jogo", "Textos e vozes do jogo (não há português)", "Como o Windows", "Quadros por segundo", "60 é mais fluido; 30 como no Xbox; 120 para um processador rápido",
     "Volume do jogo", "Música do launcher", "A música de fundo desta tela; 0 desliga",
-    "Proporção", "16:9 usa o modo widescreen do próprio jogo", "Modo de janela", "Alt+Enter ou F11 durante o jogo",
+    "Proporção", "16:9 é o modo widescreen do próprio jogo; 21:9 preenche uma tela mais larga",
+    "Campo de visão", "O quanto a câmera vê: 100% é o do próprio jogo", "Modo de janela", "Alt+Enter ou F11 durante o jogo",
     "Janela", "Tela cheia",
     "Estilo", "Como no Xbox: 30 fps, 4:3, 480p, sem efeitos modernos", "60 fps, 16:9, a resolução da sua tela, efeitos modernos", "As suas escolhas",
     "Original", "Melhorado", "Personalizado",
@@ -340,7 +343,8 @@ const Texts kSpanish = {
     "Imagen", "Efectos", "Juego", "Audio",
     "Idioma del juego", "Textos y voces del juego", "Como Windows", "Fotogramas por segundo", "60 es más fluido; 30 como en Xbox; 120 para un procesador rápido",
     "Volumen del juego", "Música del launcher", "La música de fondo de esta pantalla; 0 la apaga",
-    "Relación de aspecto", "16:9 usa el modo panorámico del propio juego", "Modo de ventana", "Alt+Intro o F11 mientras juegas",
+    "Relación de aspecto", "16:9 es el modo panorámico del propio juego; 21:9 llena una pantalla más ancha",
+    "Campo de visión", "Cuánto ve la cámara: 100% es el del propio juego", "Modo de ventana", "Alt+Intro o F11 mientras juegas",
     "Ventana", "Pantalla completa",
     "Estilo", "Como en Xbox: 30 fps, 4:3, 480p, sin efectos modernos", "60 fps, 16:9, la resolución de tu pantalla, efectos modernos", "Tus elecciones",
     "Original", "Mejorado", "Personalizado",
@@ -1810,7 +1814,7 @@ void Launcher::style_summary() {
     char summary[160];
     std::snprintf(summary, sizeof(summary), "%s: %s", t.style, current == kStyleOriginal ? t.original : current == kStyleEnhanced ? t.enhanced : t.custom);
     char detail[160];
-    std::snprintf(detail, sizeof(detail), "%s \xC2\xB7 %.0f fps%s%s", setting("widescreen") != 0 ? "16:9" : "4:3",
+    std::snprintf(detail, sizeof(detail), "%s \xC2\xB7 %.0f fps%s%s", setting("widescreen") >= 2 ? "21:9" : setting("widescreen") != 0 ? "16:9" : "4:3",
                   setting("frame_rate") >= 120 ? 120.0f : setting("frame_rate") >= 60 ? 60.0f : 30.0f, setting("effects") != 0 ? " \xC2\xB7 " : "", setting("effects") != 0 ? t.effects : "");
     if (status(true, summary, detail, t.edit, "##edit")) {
         page_ = Page::kSettings;
@@ -2078,9 +2082,12 @@ void Launcher::page_settings() {
     const char* toggle[] = {t.off, t.on};
     if (settings_tab_ == 0) {
         row(t.aspect, t.aspect_sub, true);
-        const char* aspects[] = {"4:3", "16:9"};
-        int aspect = setting("widescreen") != 0 ? 1 : 0;
-        if (segmented("##aspect", aspects, 2, &aspect)) set_setting("widescreen", static_cast<float>(aspect));
+        const char* aspects[] = {"4:3", "16:9", "21:9"};
+        int aspect = std::clamp(static_cast<int>(setting("widescreen")), 0, 2);
+        if (segmented("##aspect", aspects, 3, &aspect)) set_setting("widescreen", static_cast<float>(aspect));
+        row(t.field_of_view, t.field_of_view_sub);
+        float view = setting("field_of_view");
+        if (slider("##field_of_view", &view, 75, 130, "%.0f%%")) set_setting("field_of_view", std::round(view));
         row(t.window_mode, t.window_mode_sub);
         const char* modes[] = {t.windowed, t.fullscreen};
         int mode = setting("fullscreen") != 0 ? 1 : 0;

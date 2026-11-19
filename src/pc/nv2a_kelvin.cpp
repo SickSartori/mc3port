@@ -850,6 +850,19 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
     const SurfaceState target = surface();
     if (!target.width || !target.height) return;
 
+    // Setting widescreen 2: a frame with a vertex in perspective is a 3D scene, shown as wide as the screen; films and
+    // loading screens are flat (w 1) and stay 16:9. The first vertex of each draw, until one is in perspective.
+    static const bool wider = renderer_aspect() > 16.0f / 9.0f + 0.01f;
+    if (wider && target.width >= 640 && count && !renderer_scene_noted()) {
+        Vec4 inputs[kVshAttributes];
+        std::copy(std::begin(g_k.attribute), std::end(g_k.attribute), inputs);
+        fetch(0, inputs);
+        Vec4 outputs[kVshOutputs];
+        if (!fixed_function) g_k.vertex_program.execute(inputs, g_k.constants, outputs);
+        const Vec4 first = fixed_function ? fixed_function_position(inputs[kInPosition]) : outputs[kOutPosition];
+        if (first[3] != 1) renderer_note_scene();
+    }
+
     // Setting hud_aspect: where a flat draw over the 3D scene falls on the screen. Flat: w 1 on every vertex and one
     // z for all, 0 when the draw compares or writes depth (the HUD: some of it does, at z 0, to stack its pieces);
     // glows and halos of lights over the scene have a z each, and the scene's other flat passes a z of their own.

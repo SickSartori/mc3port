@@ -239,7 +239,8 @@ The quickest choice is the **style**, above the tabs:
 | Game language | English, French, German, Spanish or Italian; by default like Windows |
 | Frames per second | 60, or 30 like the Xbox |
 | VSync | off by default: more frames per second, but the picture can tear (a horizontal line where two frames meet). On: it never tears, but a PC that cannot keep up may drop to 30 fps |
-| Aspect ratio | 16:9 (the game's widescreen mode) or 4:3 |
+| Aspect ratio | 16:9 (the game's widescreen mode), 4:3, or 21:9: your screen's own shape when it is wider than 16:9 (21:9, 32:9), with the view widened to the sides; films and loading screens stay 16:9, with bars at the sides |
+| Field of view | how wide the camera sees, 75% to 130% of the game's own (100%, the default); it changes at once, also from the in-game menu |
 | Texture filter | anisotropic filtering, 1x to 16x |
 | Internal resolution | Auto (as many lines as your screen; at most 1080 on integrated graphics), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p, 4K 2160p or 5K 2880p |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
@@ -286,7 +287,7 @@ a city. The results are kept in the `shader_cache` folder, so later runs do not 
 
 - Only the European and USA releases of the Remix are supported.
 - Online play (Xbox Live) is not available. Split screen works.
-- On monitors wider than 16:9 there are thin black bars at the sides.
+- On screens wider than 16:9, choose 21:9 in the settings: the game's own texts and prompts are then a little wider than they should be, and films and loading screens keep bars at the sides.
 - The Xbox sound chip's own effects, such as reverb, are not reproduced: the sound can be drier than on the console.
 - Linux (Wine, Proton) is experimental and only partly tested: see [Linux](#linux-experimental).
 

@@ -4,6 +4,13 @@
 
 ### New
 
+- **21:9** (issue 18): a third aspect ratio next to 4:3 and 16:9 in the launcher's and the in-game menu's settings. On a
+  screen wider than 16:9 (21:9, 32:9) the game takes your screen's shape and sees more to the sides, as it does in 16:9
+  compared with 4:3; the radar and the dials stay round. Films and loading screens are made for 16:9 and keep bars
+  at the sides. The game's own texts and prompts come out a little wider than they should.
+- **Field of view**, in the same settings: how wide the camera sees, from 75% to 130% of the game's own. It changes at
+  once, also from the in-game menu.
+
 - **120 frames per second**: a third choice next to 30 and 60 in the launcher's and the in-game menu's settings. The
   game runs at the same speed, with twice the frames of 60. It needs a fast processor (one of its cores does the
   work twice as often) and a screen of 120 Hz or more to show them; where the PC cannot keep up, the game stays smooth
