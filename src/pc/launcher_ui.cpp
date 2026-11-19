@@ -89,7 +89,7 @@ struct Texts {
     const char *update_now, *update_install_sub, *downloading, *update_failed;
     const char *update_title, *update_lead, *update_big, *update_install, *update_install_note, *update_page,
         *update_portable_note, *update_later, *update_progress, *update_ready, *update_install_small;
-    const char *welcome, *welcome_lead, *next, *style_title, *style_lead, *all_set, *all_set_lead;
+    const char *welcome, *welcome_lead, *next, *style_title, *style_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
     const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint, *tabs_hint, *play_hint;
@@ -146,8 +146,7 @@ const Texts kEnglish = {
     "This copy is portable: download the new version from the release page.", "Later", "%.1f of %.1f MB",
     "Update ready", "Install",
     "WELCOME", "You need your own copy: a disc image (ISO) of the Xbox Midnight Club 3: DUB Edition Remix, Europe or USA.",
-    "NEXT", "STYLE", "Original is the game as it was on the Xbox, Enhanced the best this port can show. You can change it any time in the settings.", "ALL SET",
-    "Disc verified. Connect a controller or use the keyboard.",
+    "NEXT", "STYLE", "Original is the game as it was on the Xbox, Enhanced the best this port can show. You can change it any time in the settings.",
     "Disc", "Xbox \xC2\xB7 Europe or USA", "none", "Controller", "connected", "not connected", "Version", "Select", "Back",
     "RESUME", "BACK TO GAME", "PAUSED", "The game is paused. F1 or Esc takes you back.", "EXIT GAME",
     "Progress since the last save will be lost.", "EXIT", "Applies the next time the game starts", "In-game menu",
@@ -221,8 +220,7 @@ const Texts kItalian = {
     "%.1f di %.1f MB", "Aggiornamento pronto", "Installa",
     "BENVENUTO",
     "Per giocare serve la tua copia: l'immagine ISO del disco Xbox di Midnight Club 3: DUB Edition Remix, Europa o USA.",
-    "AVANTI", "STILE", "Originale \xC3\xA8 il gioco com'era sull'Xbox, Migliorata il meglio che questo port sa mostrare. Potrai cambiarlo quando vuoi nelle impostazioni.", "TUTTO PRONTO",
-    "Disco verificato. Collega un controller o usa la tastiera.",
+    "AVANTI", "STILE", "Originale \xC3\xA8 il gioco com'era sull'Xbox, Migliorata il meglio che questo port sa mostrare. Potrai cambiarlo quando vuoi nelle impostazioni.",
     "Disco", "Xbox \xC2\xB7 Europa", "nessuno", "Controller", "collegato", "non collegato", "Versione", "Seleziona",
     "Indietro",
     "RIPRENDI", "TORNA AL GIOCO", "IN PAUSA", "Il gioco \xC3\xA8 in pausa. F1 o Esc per tornare.", "ESCI DAL GIOCO",
@@ -296,8 +294,7 @@ const Texts kPortuguese = {
     "Esta cópia é portátil: baixe a nova versão na página da versão.", "Mais tarde", "%.1f de %.1f MB",
     "Atualização pronta", "Instalar",
     "BEM-VINDO", "Você precisa da sua cópia: uma imagem de disco (ISO) do Midnight Club 3: DUB Edition Remix de Xbox, Europa ou EUA.",
-    "AVANÇAR", "ESTILO", "Original é o jogo como era no Xbox, Melhorado o melhor que este port consegue mostrar. Você pode mudar quando quiser nas configurações.", "TUDO PRONTO",
-    "Disco verificado. Conecte um controle ou use o teclado.",
+    "AVANÇAR", "ESTILO", "Original é o jogo como era no Xbox, Melhorado o melhor que este port consegue mostrar. Você pode mudar quando quiser nas configurações.",
     "Disco", "Xbox · Europa ou EUA", "nenhum", "Controle", "conectado", "não conectado", "Versão", "Selecionar", "Voltar",
     "CONTINUAR", "VOLTAR AO JOGO", "PAUSADO", "O jogo está pausado. F1 ou Esc para voltar.", "SAIR DO JOGO",
     "O progresso desde o último save será perdido.", "SAIR", "Vale a partir do próximo início do jogo", "Menu do jogo",
@@ -369,8 +366,7 @@ const Texts kSpanish = {
     "Esta copia es portátil: descarga la nueva versión desde la página de la versión.", "Más tarde", "%.1f de %.1f MB",
     "Actualización lista", "Instalar",
     "BIENVENIDO", "Necesitas tu copia: una imagen de disco (ISO) de Midnight Club 3: DUB Edition Remix de Xbox, Europa o EE. UU.",
-    "SIGUIENTE", "ESTILO", "Original es el juego como era en Xbox, Mejorado lo mejor que este port puede mostrar. Puedes cambiarlo cuando quieras en los ajustes.", "TODO LISTO",
-    "Disco verificado. Conecta un mando o usa el teclado.",
+    "SIGUIENTE", "ESTILO", "Original es el juego como era en Xbox, Mejorado lo mejor que este port puede mostrar. Puedes cambiarlo cuando quieras en los ajustes.",
     "Disco", "Xbox · Europa o EE. UU.", "ninguno", "Mando", "conectado", "no conectado", "Versión", "Elegir", "Volver",
     "CONTINUAR", "VOLVER AL JUEGO", "EN PAUSA", "El juego está en pausa. F1 o Esc para volver.", "SALIR DEL JUEGO",
     "Se perderá el progreso desde la última partida guardada.", "SALIR", "Se aplica la próxima vez que empiece el juego", "Menú del juego",
@@ -1096,6 +1092,7 @@ private:
     int style() const;
     void apply_style(int style);
     void style_row();
+    void style_cards();
     void style_summary();
 
     HWND window_;
@@ -1895,6 +1892,51 @@ void Launcher::style_row() {
     if (segmented("##style", styles, 3, &current, nullptr, 330)) apply_style(current);
 }
 
+// The first-run guide's choice: the three styles side by side, each with its name and what it turns on.
+// One item, like segmented(): left and right change the style, the mouse picks a card.
+void Launcher::style_cards() {
+    const Texts& t = T();
+    enter_item();
+    int current = style();
+    const char* names[] = {t.original, t.enhanced, t.custom};
+    const char* details[] = {t.original_sub, t.enhanced_sub, t.custom_sub};
+    const float gap = px(12), card = (panel_width_ - 2 * gap) / 3, height = px(118);
+    const ImVec2 a(origin_.x, origin_.y + cursor_);
+    ImGui::PushID("##style_cards");
+    ImGui::SetCursorScreenPos(a);
+    claim_focus();
+    const bool pressed = ImGui::InvisibleButton("##value", ImVec2(panel_width_, height), kNavigable);
+    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride);
+    if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    const bool selected = nav_selected();  // the frame of the other rows would cross the cards: a border on the chosen one
+    const int hovered_card =
+        hovered ? std::clamp(static_cast<int>((ImGui::GetIO().MousePos.x - a.x) / (card + gap)), 0, 2) : -1;
+    int next = current;
+    if (pressed && hovered_card >= 0) next = hovered_card;
+    next = std::clamp(next + value_step(), 0, 2);
+    if (next != current) {
+        apply_style(next);
+        current = next;
+        value_moved_frame_ = ImGui::GetFrameCount();
+    }
+    for (int i = 0; i < 3; ++i) {
+        const ImVec2 c(a.x + static_cast<float>(i) * (card + gap), a.y), d(c.x + card, a.y + height);
+        ImGui::PushID(i);
+        const float hot = anim(ImGui::GetID("##hot"), hovered_card == i);
+        const float on = anim(ImGui::GetID("##on"), current == i, 16);
+        ImGui::PopID();
+        const ImU32 idle = IM_COL32(255, 255, 255, 14 + static_cast<int>(16 * hot));
+        list_->AddRectFilledMultiColor(c, d, fade(mix(idle, kRed, on)), fade(mix(idle, kRedDark, on)),
+                                       fade(mix(idle, kRedDark, on)), fade(mix(idle, kRed, on)));
+        if (selected && current == i) list_->AddRect(c, d, fade(IM_COL32(255, 255, 255, 230)), 0, 0, px(2));
+        const ImU32 ink = mix(kDim, IM_COL32(255, 255, 255, 255), std::max(on, hot));
+        text(body_bold_, px(21), ImVec2(c.x + px(18), c.y + px(16)), ink, names[i]);
+        text(body_, px(15), ImVec2(c.x + px(18), c.y + px(48)), fade(ink, 0.85f), details[i], card - px(32));
+    }
+    ImGui::PopID();
+    cursor_ += height + px(28);
+}
+
 // On the first page and the pause page: what is on, and the way to the settings.
 void Launcher::style_summary() {
     const Texts& t = T();
@@ -2681,11 +2723,9 @@ void Launcher::page_about() {
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
     if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
     // Never needed to play, and it buys nothing (README, "Supporting the project"): a row among the others, no reminders.
-    bool sponsors = false;
-    if (status(true, t.support, t.support_sub, "Ko-fi", "##kofi", false, "GitHub Sponsors", "##sponsors", &sponsors)) {
+    if (status(true, t.support, t.support_sub, "Ko-fi", "##kofi")) {
         ShellExecuteA(nullptr, "open", "https://ko-fi.com/sicksartori", nullptr, nullptr, SW_SHOWNORMAL);
     }
-    if (sponsors) ShellExecuteA(nullptr, "open", "https://github.com/sponsors/SickSartori", nullptr, nullptr, SW_SHOWNORMAL);
     cursor_ += px(8);
     const ImVec2 size = measure(body_, px(16), t.legal, panel_width_);
     text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.legal, panel_width_);
@@ -2698,7 +2738,7 @@ void Launcher::page_wizard() {
         return;
     }
     const Texts& t = T();
-    steps(wizard_step_, 3);
+    steps(wizard_step_, 2);
     if (wizard_step_ == 0) {
         title(t.welcome);
         lead(t.welcome_lead);
@@ -2721,16 +2761,13 @@ void Launcher::page_wizard() {
     } else if (wizard_step_ == 1) {
         title(t.style_title);
         lead(t.style_lead);
-        style_row();
+        style_cards();
         if (big_button(t.next, "##next", false)) {
-            wizard_step_ = 2;
+            wizard_ = false;  // the menu next, with every page, not straight into the game
+            page_ = Page::kPlay;
             focus_panel_ = true;
             page_since_ = static_cast<float>(ImGui::GetTime());
         }
-    } else {
-        title(t.all_set);
-        lead(t.all_set_lead);
-        if (big_button(t.play, "##play", true)) play_ = done_ = true;
     }
 }
 
@@ -3121,19 +3158,90 @@ void Launcher::bottom_bar(float since) {
         text(body_bold_, px(18), ImVec2(x, text_y), kInk, value);
         x += measure(body_bold_, px(18), value).x + px(28);
     };
+    if (!in_game_) {  // first in the bar: the launcher's music on and off; the game's own volume stays in the settings
+        const bool muted = setting("launcher_mute") != 0;
+        const ImVec2 at(x - px(10), bar_y + px(12)), end(at.x + px(40), bar_y + px(44));
+        const bool hover = ImGui::IsMouseHoveringRect(at, end);
+        if (hover) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            list_->AddRectFilled(at, end, fade(IM_COL32(255, 255, 255, 28)), px(16));
+        }
+        const ImU32 ink = fade(hover ? kInk : kDim);
+        const float cx = at.x + px(10), cy = at.y + px(16), s = px(14);
+        list_->AddRectFilled(ImVec2(cx, cy - s * 0.2f), ImVec2(cx + s * 0.3f, cy + s * 0.2f), ink);
+        const ImVec2 cone[] = {ImVec2(cx + s * 0.3f, cy - s * 0.2f), ImVec2(cx + s * 0.7f, cy - s * 0.5f),
+                               ImVec2(cx + s * 0.7f, cy + s * 0.5f), ImVec2(cx + s * 0.3f, cy + s * 0.2f)};
+        list_->AddConvexPolyFilled(cone, 4, ink);
+        if (muted) {
+            list_->AddLine(ImVec2(cx + s * 0.95f, cy - s * 0.25f), ImVec2(cx + s * 1.45f, cy + s * 0.25f), ink, px(1.8f));
+            list_->AddLine(ImVec2(cx + s * 0.95f, cy + s * 0.25f), ImVec2(cx + s * 1.45f, cy - s * 0.25f), ink, px(1.8f));
+        } else {
+            for (const float r : {0.45f, 0.8f}) {
+                list_->PathArcTo(ImVec2(cx + s * 0.7f, cy), s * r, -0.9f, 0.9f);
+                list_->PathStroke(ink, 0, px(1.6f));
+            }
+        }
+        if (hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) set_setting("launcher_mute", muted ? 0.0f : 1.0f);
+        x = end.x + px(20);
+    }
     if (!in_game_) field(t.bar_disc, disc_ ? t.bar_disc_ok : t.bar_disc_none);
     field(t.bar_pad, pad_connected_ ? t.bar_pad_on : t.bar_pad_off);
     field(t.bar_version, MC3PORT_VERSION);
     // In sight on every page, in the in-game menu too: a newer version (to About, which installs it) and the report.
-    const auto link = [&](const char* label, ImU32 colour) {
-        const ImVec2 at(x, text_y), size = measure(body_bold_, px(18), label);
-        const bool hover = ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size.x, at.y + size.y));
-        if (hover) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        text(body_bold_, px(18), at, hover ? kInk : colour, label);
-        list_->AddLine(ImVec2(at.x, at.y + size.y), ImVec2(at.x + size.x, at.y + size.y), fade(hover ? kInk : colour, 0.5f),
-                       px(1));
-        x += size.x + px(28);
-        return hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    // Over the bar, bottom left, apart from its fields: rounded buttons to the update, the report, the support, the music.
+    float button_x = px(86);
+    const float button_y = bar_y - px(52);
+    struct BarButton {
+        ImVec2 at;
+        bool hover, clicked;
+    };
+    // Pills with a soft shadow that rise a little under the mouse: glass (`fill` 0) or solid in `fill`.
+    const auto button = [&](float width, ImU32 fill) {
+        BarButton b{ImVec2(button_x, button_y), false, false};
+        b.hover = ImGui::IsMouseHoveringRect(b.at, ImVec2(button_x + width, button_y + px(36)));
+        if (b.hover) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            b.at.y -= px(2);
+        }
+        const ImVec2 end(b.at.x + width, b.at.y + px(36));
+        list_->AddRectFilled(ImVec2(b.at.x, b.at.y + px(4)), ImVec2(end.x, end.y + px(4)), fade(IM_COL32(0, 0, 0, b.hover ? 120 : 80)), px(18));
+        if (fill) {
+            list_->AddRectFilled(b.at, end, fade(b.hover ? mix(fill, IM_COL32(255, 255, 255, 255), 0.15f) : fill), px(18));
+            list_->AddRectFilled(ImVec2(b.at.x + px(10), b.at.y + px(1)), ImVec2(end.x - px(10), b.at.y + px(2)), fade(IM_COL32(255, 255, 255, 70)));
+        } else {
+            list_->AddRectFilled(b.at, end, fade(IM_COL32(18, 18, 22, 190)), px(18));
+            list_->AddRectFilled(b.at, end, fade(IM_COL32(255, 255, 255, b.hover ? 40 : 20)), px(18));
+            list_->AddRect(b.at, end, fade(IM_COL32(255, 255, 255, b.hover ? 70 : 36)), px(18), 0, px(1));
+        }
+        b.clicked = b.hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        button_x = end.x + px(10);
+        return b;
+    };
+    enum { kNoIcon, kFlag, kMug };
+    const auto link = [&](const char* label, ImU32 colour, int icon = kNoIcon, ImU32 fill = 0) {
+        const ImVec2 size = measure(body_bold_, px(16), label);
+        const float icon_width = icon == kNoIcon ? 0 : px(26);
+        const BarButton b = button(size.x + px(36) + icon_width, fill);
+        const ImU32 ink = fade(colour);
+        const float s = px(16), ix = b.at.x + px(16), cy = b.at.y + px(18);
+        if (icon == kFlag) {  // a flag on its pole
+            list_->AddLine(ImVec2(ix + s * 0.12f, cy - s * 0.55f), ImVec2(ix + s * 0.12f, cy + s * 0.55f), ink, px(1.8f));
+            const ImVec2 flag[] = {ImVec2(ix + s * 0.12f, cy - s * 0.55f), ImVec2(ix + s * 0.95f, cy - s * 0.45f),
+                                   ImVec2(ix + s * 0.95f, cy + s * 0.05f), ImVec2(ix + s * 0.12f, cy - s * 0.05f)};
+            list_->AddConvexPolyFilled(flag, 4, ink);
+        } else if (icon == kMug) {  // Ko-fi's cup with its heart
+            list_->AddRect(ImVec2(ix, cy - s * 0.42f), ImVec2(ix + s * 0.78f, cy + s * 0.45f), ink, s * 0.14f, 0, px(1.7f));
+            list_->PathArcTo(ImVec2(ix + s * 0.8f, cy - s * 0.02f), s * 0.24f, -1.5708f, 1.5708f);
+            list_->PathStroke(ink, 0, px(1.7f));
+            const ImU32 heart = ink;
+            const float hx = ix + s * 0.39f, hy = cy - s * 0.02f, r = s * 0.1f;
+            list_->AddCircleFilled(ImVec2(hx - r * 0.95f, hy - r * 0.35f), r, heart);
+            list_->AddCircleFilled(ImVec2(hx + r * 0.95f, hy - r * 0.35f), r, heart);
+            list_->AddTriangleFilled(ImVec2(hx - r * 1.9f, hy - r * 0.05f), ImVec2(hx + r * 1.9f, hy - r * 0.05f),
+                                     ImVec2(hx, hy + r * 1.9f), heart);
+        }
+        text(body_bold_, px(16), ImVec2(b.at.x + px(18) + icon_width, b.at.y + (px(36) - size.y) / 2), ink, label);
+        return b.clicked;
     };
     if (update_available()) {
         std::string version;
@@ -3148,7 +3256,10 @@ void Launcher::bottom_bar(float since) {
             page_since_ = static_cast<float>(ImGui::GetTime());
         }
     }
-    if (crash_report_ready() && link(t.crash_link, kAmber)) report_problem();
+    if (crash_report_ready() ? link(t.crash_link, kAmber, kFlag) : link(t.report, kInk, kFlag)) report_problem();
+    if (link(t.support, IM_COL32(255, 255, 255, 255), kMug, IM_COL32(255, 94, 91, 255))) {  // Ko-fi's colour
+        ShellExecuteA(nullptr, "open", "https://ko-fi.com/sicksartori", nullptr, nullptr, SW_SHOWNORMAL);
+    }
     float right = screen.x - px(86);
     const bool pad = pad_connected_;
     const auto hint = [&](const char* key, ImU32 colour, const char* label) {
@@ -3159,12 +3270,29 @@ void Launcher::bottom_bar(float since) {
             const float key_width = pad_icon(list_, key, ImVec2(0, 0), px(22), false);
             right -= key_width + px(8);
             pad_icon(list_, key, ImVec2(right, text_y), px(22));
-        } else {  // the key's name in a pill
-            const float key_width = std::max(px(24), measure(body_bold_, px(15), key).x + px(12));
-            right -= key_width + px(8);
-            list_->AddRectFilled(ImVec2(right, text_y), ImVec2(right + key_width, text_y + px(22)), fade(colour), px(11));
-            const ImVec2 key_size = measure(body_bold_, px(15), key);
-            text(body_bold_, px(15), ImVec2(right + (key_width - key_size.x) / 2, text_y + (px(22) - key_size.y) / 2), IM_COL32(6, 6, 7, 255), key);
+        } else {  // keycaps, one per key: "Q E" is two, the four arrows four
+            const std::string keys = key;
+            const bool arrows = keys.rfind("\xE2\x86", 0) == 0;
+            std::vector<std::string> caps;
+            for (size_t i = 0; i < keys.size();) {
+                const size_t end = arrows ? i + 3 : std::min(keys.find(' ', i), keys.size());
+                caps.push_back(keys.substr(i, end - i));
+                i = arrows ? end : end + 1;
+            }
+            const float cap_h = px(24), gap = px(4), depth = px(3);
+            float total = -gap;
+            for (const std::string& cap : caps) total += std::max(cap_h, measure(body_bold_, px(14), cap.c_str()).x + px(12)) + gap;
+            right -= total + px(8);
+            float cap_x = right;
+            const float top = text_y - px(2);
+            for (const std::string& cap : caps) {
+                const float w = std::max(cap_h, measure(body_bold_, px(14), cap.c_str()).x + px(12));
+                list_->AddRectFilled(ImVec2(cap_x, top + depth), ImVec2(cap_x + w, top + cap_h), fade(mix(colour, IM_COL32(0, 0, 0, 255), 0.5f)), px(5));
+                list_->AddRectFilled(ImVec2(cap_x, top), ImVec2(cap_x + w, top + cap_h - depth), fade(colour), px(5));
+                const ImVec2 size = measure(body_bold_, px(14), cap.c_str());
+                text(body_bold_, px(14), ImVec2(cap_x + (w - size.x) / 2, top + (cap_h - depth - size.y) / 2), IM_COL32(6, 6, 7, 255), cap.c_str());
+                cap_x += w + gap;
+            }
         }
         right -= px(24);
     };
@@ -4050,7 +4178,7 @@ std::optional<GameDisc> Launcher::run() {
             Sleep(30);
             continue;
         }
-        music_->update(dt, 1);
+        music_->update(dt, setting("launcher_mute") != 0 ? 0.0f : 1.0f);
         resize_if_needed();
         upload_art();
         {

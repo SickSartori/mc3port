@@ -9,7 +9,6 @@
 
 <a href="https://recomplauncher.com/game/mc3port"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
 
-<a href="https://github.com/sponsors/SickSartori"><img alt="Sponsor on GitHub" src="https://img.shields.io/badge/Sponsor-on_GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" height="36"></a>
 <a href="https://ko-fi.com/sicksartori"><img alt="Support me on Ko-fi" src="https://ko-fi.com/img/githubbutton_sm.svg" height="36"></a>
 
 [![Latest release](https://img.shields.io/github/v/release/SickSartori/mc3port?label=release)](https://github.com/SickSartori/mc3port/releases/latest)
@@ -395,12 +394,10 @@ yourself. The game's online play is not available.
 
 ## Supporting the project
 
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support_the_project-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
 mc3port is free and always will be: no paid builds, no early access, no locked features. If you enjoy it and want to
-say thanks, you can support its author on [GitHub Sponsors](https://github.com/sponsors/SickSartori) or
-[Ko-fi](https://ko-fi.com/sicksartori). It is never needed to play, and it buys nothing: it gives more time for fixes,
+say thanks, you can support its author on [Ko-fi](https://ko-fi.com/sicksartori). It is never needed to play, and it buys nothing: it gives more time for fixes,
 features and the next port.
 
 ## Licence

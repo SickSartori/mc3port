@@ -22,6 +22,12 @@
 
 ### Improved
 
+- **The launcher's buttons**: Report a problem and Support the project sit above the bottom bar, on every page and in
+  the in-game menu, and a speaker at the left of the bar turns the launcher's music off and on (`launcher_mute` in
+  `mc3port.ini`; the game's volume stays in the settings). The hints' keys are drawn as keyboard keys. Support goes to
+  Ko-fi only.
+- **First start**: after the disc and the style the launcher opens its menu, with every page, instead of starting the
+  game. The style is chosen from three cards that say what each one turns on.
 - **Drawing on two threads**: one reads the game's drawing commands, the other makes the picture with Direct3D; before,
   one thread did both and was the limit of the frame rate. On the PC it was measured on, with the two ways taking
   turns in the same race: 50 frames a second instead of 37 in two-player split screen, 68 instead of 54 with one
