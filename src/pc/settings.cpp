@@ -40,7 +40,7 @@ const Setting kSettings[] = {
     {"fps_counter", 0, "Frames per second shown in a corner while playing: 1 = yes, 0 = no."},
     {"loading_music", 1, "Play optional PS2 loading music from loading_music/1.wav through 18.wav beside mc3.exe: 1 = on, 0 = off."},
     {"loading_music_volume", 70, "PS2 loading music volume, 0 to 100 (also follows overall volume)."},
-    {"loading_music_fade_seconds", 0.75f, "Fade out PS2 loading music over this many seconds before the minimum loading time ends."},
+    {"loading_music_fade_seconds", 0.75f, "Fade out PS2 loading music over this many seconds near the end of playback."},
     {"loading_screen_seconds", 0, "The game's loading screens stay at least this many seconds, any number; never less than 2 (0 = the shortest)."},
     {"skip_intro", 1, "Skip the films at start (Rockstar logos and the game's intro): 1 = yes, 0 = show them."},
     {"pause_in_background", 1, "Pause the game (in-game menu) when its window goes to the background: 1 = yes, 0 = no."},
