@@ -69,6 +69,7 @@ if(WIN32)
         src/pc/keyboard_bindings.cpp
         src/pc/launcher_art.cpp
         src/pc/launcher_ui.cpp
+        src/pc/loading_music.cpp
         src/pc/nv2a.cpp
         src/pc/nv2a_kelvin.cpp
         src/pc/renderer_game.cpp
