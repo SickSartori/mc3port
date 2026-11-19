@@ -260,9 +260,12 @@ The quickest choice is the **style**, above the tabs:
 <details>
 <summary>Replacement pictures and mods</summary>
 
-**Replacement pictures**: a PNG or JPG in a folder `textures_replace` next to `mc3port.ini`, named after a 2D
+**Replacement pictures**: a PNG or JPG in a folder `textures_replace` next to `mc3port.ini`, named after a
 picture's hash (16 hex digits, for example `83E5DF1E4AC28289.png`), is drawn instead of the game's picture, at any
-size. `MC3_DUMP_2D=1` saves the HUD's pictures with their hash in the name (see `docs/DEVELOPMENT.md`). Pictures in a
+size: the HUD's pictures and the textures of roads, buildings and cars alike. Starting the game with the environment
+variable `MC3_DUMP_TEXTURE=all` saves every texture it draws with as `textures_dump\<hash>.png` next to `mc3port.ini`:
+enlarge or redraw them with a tool of your own (most of the game's are 128 x 128 pixels) and put them in
+`textures_replace` under the same name. `MC3_DUMP_2D=1` saves only the HUD's (see `docs/DEVELOPMENT.md`). Pictures in a
 folder `launcher_backgrounds` (PNG, JPG and the other formats Windows reads) become the launcher's backgrounds
 instead of the disc's artwork; the left part goes under the menu.
 

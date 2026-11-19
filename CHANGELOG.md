@@ -24,6 +24,10 @@
 
 - **A little faster again where the PC works hardest**: for each draw the textures and the vertex state are found
   without being looked up again, a few percent less work on the thread that limits the frame rate.
+- **Replacement pictures for any texture**, not only the HUD's: `MC3_DUMP_TEXTURE=all` saves every texture the
+  game draws with as a PNG in a folder `textures_dump` next to `mc3port.ini`. Redrawn or enlarged with a tool of
+  your own and put in `textures_replace` under the same name, at any size, they are drawn instead of the game's:
+  the way to textures with more detail than the game has (most of its own are 128 x 128 pixels).
 - **The launcher's new layout**, in the in-game menu too: each page sits in a column from the top of the window to the
   bottom bar, with Play at its foot. A page longer than the window scrolls (the mouse wheel, or the selection kept in
   sight with the keys and the controller): the Picture tab's last rows were hidden under the bottom bar on a 720p

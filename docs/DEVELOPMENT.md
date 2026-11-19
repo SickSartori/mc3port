@@ -137,6 +137,7 @@ Variabili d'ambiente:
 | `MC3_DEBUG_FULLSCREEN=1` | con `MC3_DEBUG_FRAME_AT`, solo i draw che coprono quasi tutta la superficie (gli effetti a schermo intero), così la finestra può durare a lungo |
 | `MC3_DEBUG_ADDITIVE=1` | con `MC3_DEBUG_FRAME_AT`, solo i draw che aggiungono luce (fusione con destinazione ONE: aloni, scie, bagliori) |
 | `MC3_DUMP_TEXTURE=<indirizzo hex>` | salva le texture decodificate di quella pagina di 4 KB come `texture-<indirizzo>.bmp` (con l'alfa) |
+| `MC3_DUMP_TEXTURE=all` | salva ogni texture che il gioco usa, una volta, come `textures_dump\<hash>.png` nella cartella dei dati (BGRA con l'alfa, qualunque sia il formato del gioco): `<hash>` è il nome da dare all'immagine in `textures_replace` |
 | `MC3_DUMP_2D=1` | salva ogni texture dei draw piatti dell'HUD come `texture-<indirizzo>-<hash>.bmp` (le compresse a blocchi così come sono, in `.dds`); l'hash è il nome da dare all'immagine in `textures_replace` |
 | `MC3_GPU_STATS=1` | ogni 10 s, i metodi GPU più usati |
 | `MC3_PROFILE=1` | ogni 10 s, oltre alla riga `profile:` sempre presente (fps del gioco, vblank per fotogramma, carico del core del gioco e del thread della GPU): tempo CPU e attese di ogni thread, registri della GPU letti o scritti dal gioco tramite eccezioni, con l'indirizzo del codice. Anche una riga `late frame` per ogni fotogramma che arriva dopo 4 vblank o più, con dove è andato il tempo |
