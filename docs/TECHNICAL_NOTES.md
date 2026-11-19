@@ -47,6 +47,16 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
   un frame ogni due blank, quindi `frame_rate` sceglie la frequenza dei blank: 60 Hz per 30 fps, 120 Hz per 60,
   240 Hz per 120 (`nv2a_vblank_hz`). Il passo fisso del gioco segue il tempo vero dei frame in multipli di 1/60 s,
   di 1/120 s a 120 fps (`hle_patches.cpp`).
+- **Due thread per la GPU** (impostazione `render_thread`, accesa di serie): il thread della GPU legge il push buffer
+  e copia ogni draw e ogni clear (stato, costanti, byte dei vertici, indici) in una coda; un thread di rendering li
+  esegue in ordine con Direct3D (`renderer_d3d11.cpp` di xport, "the render thread"). Tutto il resto (presentazione,
+  blit, letture di debug) avviene sul thread che chiama, a coda vuota: i due non toccano mai Direct3D insieme. Il gioco
+  sa a che punto è la GPU da GET e dai fence di Direct3D (`BACK_END_WRITE_SEMAPHORE_RELEASE`, più di venti per frame):
+  GET è pubblicato e i fence sono scritti quando il disegno è arrivato lì, non quando il comando è stato letto, così
+  il gioco non cambia una texture che un draw in coda deve ancora leggere. Prima di flip, trap e accessi a PGRAPH il
+  thread della GPU aspetta la coda (4-6 volte per frame). Misurato alternando i due modi ogni 4 s nella stessa gara
+  (`MC3_RENDER_THREAD=2`), su un i7-1360P con altri programmi attivi: 50 fps invece di 37 in due giocatori, 68 invece
+  di 54 con un giocatore a 120 fps.
 - **Rendering** (`nv2a_kelvin.cpp` -> `renderer_d3d11.cpp`): i vertici passano dal vertex program NV2A interpretato
   sulla CPU (`nv2a_vsh.cpp`) oppure dalla pipeline fixed-function (matrice composita, offset del viewport, texgen
   lineari, matrici delle texture, 8 luci infinite/locali/spot con color material, speculare separato o sommato);

@@ -22,6 +22,11 @@
 
 ### Improved
 
+- **Drawing on two threads**: one reads the game's drawing commands, the other makes the picture with Direct3D; before,
+  one thread did both and was the limit of the frame rate. On the PC it was measured on, with the two ways taking
+  turns in the same race: 50 frames a second instead of 37 in two-player split screen, 68 instead of 54 with one
+  player at 120 fps. It needs four processor threads or more; `render_thread = 0` in `mc3port.ini` goes back to one
+  thread, should the picture or the game misbehave.
 - **A little faster again where the PC works hardest**: for each draw the textures and the vertex state are found
   without being looked up again, a few percent less work on the thread that limits the frame rate.
 - **Replacement pictures for any texture**, not only the HUD's: `MC3_DUMP_TEXTURE=all` saves every texture the

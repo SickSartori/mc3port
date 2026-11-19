@@ -138,7 +138,10 @@ struct DisplayMode {
 };
 
 struct PushBufferState {
+    // What the game is told: how far the commands are done, drawing included. With the renderer's render thread that
+    // is behind `decoded`, how far the GPU thread has read them (publish_get).
     std::atomic<uint32_t> get{0};
+    uint32_t decoded = 0;
     uint32_t subroutine_return = 0;
     bool subroutine_active = false;
     uint32_t method = 0;
@@ -414,6 +417,7 @@ void set_flip_field(uint32_t shift, uint32_t value) {
 // While the driver keeps PGRAPH's FIFO access off (kPgraphFifo), no method runs.
 void wait_for_pgraph_access() {
     while (!g_pgraph_fifo_enabled) {
+        renderer_flush();  // the driver holds PGRAPH: nothing of it is still on its way
         {
             ProfileScope scope(ProfileTime::access_waits);
             WaitForSingleObject(g_gpu_resume, 1);
@@ -580,30 +584,43 @@ void execute_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
             return;
         }
         case kSetContextDmaSemaphore: g_kelvin.dma_semaphore = dma_base(argument); return;
+        // The methods by which the game learns how far the GPU has come (and after which it may change what the draws
+        // before them use): what was asked for so far is drawn first (renderer_flush).
         case kSetReference: {
+            renderer_flush();
             std::lock_guard<std::mutex> lock(g_register_mutex);
             reg(kUserRef) = argument;
             return;
         }
         case kNoOperation:
-            if (argument) trap_software_method(subchannel, method, argument);
+            if (argument) {
+                renderer_flush();
+                trap_software_method(subchannel, method, argument);
+            }
             return;
         case kSetFlipRead: set_flip_field(24, argument); return;
         case kSetFlipWrite: set_flip_field(20, argument); return;
         case kSetFlipModulo: set_flip_field(28, argument); return;
         case kFlipIncrementWrite: {
+            renderer_flush();
             std::lock_guard<std::mutex> lock(g_register_mutex);
             const uint32_t surface = reg(kPgraphSurface);
             const uint32_t modulo = std::max<uint32_t>(1, (surface >> 28) & 7);
             set_flip_field_locked(20, (((surface >> 20) & 7) + 1) % modulo);
             return;
         }
-        case kFlipStall: flip_stall(); return;
+        case kFlipStall:
+            renderer_flush();
+            flip_stall();
+            return;
         case kSetSemaphoreOffset: g_kelvin.semaphore_offset = argument; return;
         case kBackEndWriteSemaphoreRelease:
-            if (uint8_t* semaphore = physical_pointer(g_kelvin.dma_semaphore + g_kelvin.semaphore_offset)) {
-                *reinterpret_cast<volatile uint32_t*>(semaphore) = argument;
-            }
+            // Direct3D's fences, over twenty a frame: written when the drawing has come this far, without waiting for it.
+            renderer_after_drawing(
+                [](uint32_t address, uint32_t value) {
+                    if (uint8_t* semaphore = physical_pointer(address)) *reinterpret_cast<volatile uint32_t*>(semaphore) = value;
+                },
+                g_kelvin.dma_semaphore + g_kelvin.semaphore_offset, argument);
             return;
         default: {
             const uint8_t class_id = g_subchannel_class[subchannel & 7];
@@ -625,7 +642,7 @@ void execute_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
 // PUT are physical addresses; the driver leaves a jump to the real buffer at address 0.
 void run_push_buffer(uint32_t put) {
     PushBufferState& s = g_push;
-    uint32_t get = s.get;
+    uint32_t get = s.decoded;
     while (get != put) {
         // A vertical blank during a long run is presented at once, between two words, not when the run ends: a
         // flip shown a blank late makes the frame after it look early (uneven frames at the same frame rate).
@@ -711,9 +728,12 @@ void run_push_buffer(uint32_t put) {
         } else {
             log_line("nv2a: unknown push buffer command %08X at %08X", word, get - 4);
         }
-        s.get.store(get, std::memory_order_release);  // a plain store: the default one locks the bus, at every command
+        s.decoded = get;
+        renderer_progress(get);
     }
-    s.get.store(get, std::memory_order_release);  // a plain store: the default one locks the bus, at every command
+    s.decoded = get;
+    renderer_progress(get);
+    renderer_mark();  // what is still being drawn publishes it when done
 }
 
 // Direct3D 11 did not start: nothing would be drawn (the game's pictures exist only there), so the player is told
@@ -752,6 +772,8 @@ void gpu_thread() {
     if (const unsigned long cores = gpu_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
     profile_name_thread(false, "gpu");
+    // GET follows the drawing: a plain store (the default one locks the bus, at every command).
+    renderer_set_progress([](uint32_t get) { g_push.get.store(get, std::memory_order_release); });
     g_renderer_ready = renderer_start(g_window);
     if (!g_renderer_ready && !GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0)) no_direct3d();
     bool started = false;
@@ -771,7 +793,7 @@ void gpu_thread() {
             log_line("nv2a: first push buffer kick-off, PUT %08X", put);
             started = true;
         }
-        if (started && put != g_push.get) run_push_buffer(put);
+        if (started && put != g_push.decoded) run_push_buffer(put);
         static ULONGLONG last_statistics = GetTickCount64();
         if (g_collect_statistics && GetTickCount64() - last_statistics >= 10000) {
             last_statistics = GetTickCount64();
