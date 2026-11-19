@@ -614,6 +614,11 @@ float ease_out(float t) {
     return 1 - (1 - t) * (1 - t) * (1 - t);
 }
 
+// Everything scales with the window, designed on 1600x900: by its height, unless the logo, the menu and the page's
+// column (1230 design px side by side) need a smaller size to fit its width. Below 0.65 text would be too small to
+// read (very small windows crop).
+float launcher_scale(float width, float height) { return std::max(0.65f, std::min(width / 1230.0f, height / 900.0f)); }
+
 // Any of keys pressed this frame (with key repeat).
 bool key_pressed(std::initializer_list<ImGuiKey> keys) {
     for (const ImGuiKey key : keys) {
@@ -1031,6 +1036,9 @@ private:
     bool slider(const char* id, float* value, float minimum, float maximum, const char* format);
     bool compact_slider(const char* label, const char* id, float* value, float minimum, float maximum, ImVec2 at,
                         float width);
+    // ImGui::SliderFloat with its text hidden and the value drawn beside the grab, on the side with more room, so the
+    // grab never covers it.
+    bool value_slider(const char* id, float* value, float minimum, float maximum, const char* format, float font_size);
     void steps(int current, int total);
 
     void page_play();
@@ -1151,6 +1159,16 @@ private:
     ImDrawList* list_ = nullptr;
     ImVec2 origin_;  // panel content top left
     float panel_width_ = 0, cursor_ = 0, row_extra_ = 0;
+    // The page's column runs from the top to the bottom bar; a longer page scrolls in it (the wheel, or the selection
+    // kept in sight). view_top_/view_bottom_: the part of the screen the page shows.
+    float scroll_ = 0, scroll_target_ = 0, view_top_ = 0, view_bottom_ = 0;
+    Page scroll_page_ = Page::kPlay;
+    int scroll_tab_ = 0;
+    ImGuiID scrolled_to_ = 0;  // the selection last brought into sight
+    // The page's items come in one after another: each title, row and button counts one (enter_item).
+    void enter_item();
+    int item_count_ = 0;
+    float item_shift_ = 0, page_alpha_ = 1;
     std::unordered_map<ImGuiID, float> anims_;
     std::vector<Trail> trails_;
     std::vector<ImVec4> drops_;
@@ -1318,9 +1336,7 @@ void Launcher::resize_if_needed() {
     device_->CreateRenderTargetView(buffer.Get(), nullptr, &target_);
     width_ = width;
     height_ = height;
-    // Everything scales with the window, designed on 1600x900; below 0.65 text would be too small to read (very
-    // small windows crop).
-    scale_ = std::max(0.65f, std::min(width / 1600.0f, height / 900.0f));
+    scale_ = launcher_scale(static_cast<float>(width), static_cast<float>(height));
 }
 
 ComPtr<ID3D11ShaderResourceView> dxt_texture(ID3D11Device* device, const DxtImage& image) {
@@ -1540,11 +1556,13 @@ float Launcher::anim(ImGuiID id, bool on, float speed) {
 }
 
 void Launcher::title(const char* str) {
+    enter_item();
     text(black_, px(48), ImVec2(origin_.x, origin_.y + cursor_), kInk, str);
     cursor_ += px(56);
 }
 
 void Launcher::lead(const char* str) {
+    enter_item();
     const ImVec2 size = measure(body_, px(21), str, panel_width_);
     text(body_, px(21), ImVec2(origin_.x, origin_.y + cursor_), kDim, str, panel_width_);
     cursor_ += size.y + px(20);
@@ -1570,6 +1588,7 @@ bool Launcher::small_button(const char* label, ImVec2 at, const char* id, ImVec2
 
 bool Launcher::status(bool good, const char* heading, const char* detail, const char* button_label, const char* id,
                       bool pulse, const char* second_label, const char* second_id, bool* second_pressed) {
+    enter_item();
     const float height = px(64);
     const ImVec2 a(origin_.x, origin_.y + cursor_), b(origin_.x + panel_width_, a.y + height);
     const ImU32 accent = good ? kGreen : kAmber;
@@ -1600,6 +1619,7 @@ bool Launcher::status(bool good, const char* heading, const char* detail, const 
 }
 
 bool Launcher::big_button(const char* label, const char* id, bool pulse) {
+    enter_item();
     const ImVec2 size = measure(black_, px(40), label);
     const ImVec2 a(origin_.x, origin_.y + cursor_ + px(10)), b(a.x + size.x + px(110), a.y + px(64));
     ImGui::SetCursorScreenPos(a);
@@ -1617,12 +1637,35 @@ bool Launcher::big_button(const char* label, const char* id, bool pulse) {
         }
     }
     skewed_rect(list_, a, b, mix(kRed, IM_COL32(255, 80, 88, 255), hot * 0.6f), mix(kRedDark, kRed, hot * 0.5f));
+    if (pulse) {  // ready: a light runs round the button's edge, a lap every 2.4 s
+        const float skew = (b.y - a.y) * 0.21f;
+        const ImVec2 corners[] = {ImVec2(a.x + skew, a.y), ImVec2(b.x + skew, a.y), b, ImVec2(a.x, b.y)};  // skewed_rect's
+        float lengths[4], perimeter = 0;
+        for (int i = 0; i < 4; ++i) {
+            const float dx = corners[(i + 1) % 4].x - corners[i].x, dy = corners[(i + 1) % 4].y - corners[i].y;
+            perimeter += lengths[i] = std::sqrt(dx * dx + dy * dy);
+        }
+        const float head = std::fmod(static_cast<float>(ImGui::GetTime()) / 2.4f, 1.0f) * perimeter, tail = px(160);
+        constexpr int kSteps = 24;
+        for (int s = 0; s < kSteps; ++s) {  // the tail fades out behind the head
+            float d0 = head - tail * static_cast<float>(s) / kSteps, d1 = head - tail * static_cast<float>(s + 1) / kSteps;
+            const auto point = [&](float d) {
+                d = std::fmod(d + perimeter, perimeter);
+                int i = 0;
+                while (i < 3 && d > lengths[i]) d -= lengths[i++];
+                return ImLerp(corners[i], corners[(i + 1) % 4], d / lengths[i]);
+            };
+            const float light = 1 - static_cast<float>(s) / kSteps;
+            list_->AddLine(point(d0), point(d1), fade(mix(IM_COL32(255, 178, 30, 255), IM_COL32_WHITE, light), light), px(3));
+        }
+    }
     text(black_, px(40), ImVec2(a.x + px(55) + px(7), a.y + px(10)), IM_COL32(255, 255, 255, 255), label);
     cursor_ += px(90);
     return pressed;
 }
 
 bool Launcher::tabs(const char* const* labels, int count, int* current) {
+    enter_item();
     float x = origin_.x;
     bool changed = false;
     for (int i = 0; i < count; ++i) {
@@ -1648,6 +1691,7 @@ bool Launcher::tabs(const char* const* labels, int count, int* current) {
 }
 
 void Launcher::row(const char* heading, const char* detail, bool restart, float control) {
+    enter_item();
     text(body_bold_, px(20), ImVec2(origin_.x, origin_.y + cursor_ + px(4)), kInk, heading);
     const bool next_start = restart && in_game_;
     if (next_start) detail = T().next_start;
@@ -1711,6 +1755,21 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
     return changed;
 }
 
+bool Launcher::value_slider(const char* id, float* value, float minimum, float maximum, const char* format,
+                            float font_size) {
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 0));
+    const bool changed = ImGui::SliderFloat(id, value, minimum, maximum, format);
+    ImGui::PopStyleColor();
+    char label[32];
+    std::snprintf(label, sizeof(label), format, *value);
+    const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax(), size = measure(body_bold_, font_size, label);
+    const float grab = ImGui::GetStyle().GrabMinSize, t = std::clamp((*value - minimum) / (maximum - minimum), 0.0f, 1.0f);
+    const float centre = a.x + 2 + grab / 2 + t * (b.x - a.x - 4 - grab);  // ImGui's grab, 2 px in from the frame
+    const float x = t < 0.5f ? centre + grab / 2 + px(8) : centre - grab / 2 - px(8) - size.x;
+    text(body_bold_, font_size, ImVec2(x, a.y + (b.y - a.y - size.y) / 2), kInk, label);
+    return changed;
+}
+
 // A slider with its label above it, at `at` and `width` wide, for two columns of values: half the rows of slider().
 // It leaves cursor_ alone; the caller lays the columns out.
 bool Launcher::compact_slider(const char* label, const char* id, float* value, float minimum, float maximum, ImVec2 at,
@@ -1721,7 +1780,7 @@ bool Launcher::compact_slider(const char* label, const char* id, float* value, f
     ImGui::PushFont(body_bold_, px(16));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(3)));
     claim_focus();
-    bool changed = ImGui::SliderFloat(id, value, minimum, maximum, "%.2f");
+    bool changed = value_slider(id, value, minimum, maximum, "%.2f", px(16));
     focus_ring();
     focus_frame(ImVec2(at.x - px(14), at.y - px(3)), ImVec2(at.x + width + px(8), at.y + px(50)));
     changed |= step_slider(value, minimum, maximum);
@@ -1738,7 +1797,7 @@ bool Launcher::slider(const char* id, float* value, float minimum, float maximum
     ImGui::PushFont(body_bold_, px(18));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
     claim_focus();
-    bool changed = ImGui::SliderFloat(id, value, minimum, maximum, format);
+    bool changed = value_slider(id, value, minimum, maximum, format, px(18));
     focus_ring();
     changed |= step_slider(value, minimum, maximum);
     focus_frame(ImVec2(origin_.x - px(24), origin_.y + cursor_), ImVec2(origin_.x + panel_width_ + px(14), origin_.y + cursor_ + px(46) + row_extra_));
@@ -2040,7 +2099,7 @@ void Launcher::page_play() {
     }
     status(pad_connected_, pad_connected_ ? t.pad_on : t.pad_off, pad_connected_ ? t.pad_on_sub : t.pad_off_sub, nullptr, nullptr);
     style_summary();
-    ImGui::SetCursorScreenPos(ImVec2(origin_.x, origin_.y + cursor_));
+    cursor_ = std::max(cursor_, view_bottom_ - origin_.y - px(130));  // Play at the foot of the column
     if (big_button(t.play, "##play", disc_.has_value())) {
         if (disc_) {
             play_ = done_ = true;
@@ -2075,7 +2134,8 @@ void Launcher::page_settings() {
     if (settings_tab_ != tab_before) tab_since_ = now;
     // The tab's content comes in like a page: fading, from a little to the right.
     const float tab_enter = ease_out((now - tab_since_) / 0.3f);
-    const float panel_alpha = g_alpha, origin_x = origin_.x;
+    const float panel_alpha = page_alpha_, origin_x = origin_.x;
+    page_alpha_ *= tab_enter;
     g_alpha *= tab_enter;
     origin_.x += px(24) * (1 - tab_enter);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_alpha);
@@ -2159,6 +2219,7 @@ void Launcher::page_settings() {
         for (size_t i = 0; i < std::size(sliders); ++i) {
             const Slider& s = sliders[i];
             if (i > 0 && i % 2 == 0) cursor_ += px(58);
+            if (i % 2 == 0) enter_item();
             const ImVec2 at(origin_.x + static_cast<float>(i % 2) * (column + gap), origin_.y + cursor_ + px(2));
             float value = setting(s.key);
             char id[48];
@@ -2231,7 +2292,7 @@ void Launcher::page_settings() {
         cursor_ += px(48);
     }
     ImGui::PopStyleVar();
-    g_alpha = panel_alpha;
+    g_alpha = page_alpha_ = panel_alpha;
     origin_.x = origin_x;
 }
 
@@ -2740,19 +2801,37 @@ void Launcher::header(float since) {
     }
 }
 
-// The current page in the panel on the right, sliding in.
+// The current page in a column on the right, from the top of the window to the bottom bar, sliding in; a page longer
+// than the column scrolls.
 void Launcher::panel(float now, float since) {
     const float enter = ease_out((now - page_since_) / 0.45f);
-    g_alpha = enter * ease_out((since - 0.3f) / 0.6f);
+    page_alpha_ = g_alpha = enter * ease_out((since - 0.3f) / 0.6f);
     panel_width_ = px(560);
-    const float panel_x = static_cast<float>(width_) - px(96) - panel_width_ - px(56) + px(50) * (1 - enter);
-    origin_ = ImVec2(panel_x + px(28), px(64) + px(26));
+    const float column_width = panel_width_ + px(84);
+    const float panel_x = static_cast<float>(width_) - column_width + px(50) * (1 - enter);
+    const float bar_y = static_cast<float>(height_) - px(56), top = px(72);
+    view_top_ = px(3);
+    view_bottom_ = bar_y;
+    // Another page, tab or guide step starts at its top.
+    const int tab = wizard_ ? 10 + wizard_step_
+                    : page_ == Page::kSettings ? settings_tab_ : page_ == Page::kControls ? controls_tab_
+                    : page_ == Page::kCheats ? cheats_tab_ : 0;
+    if (page_ != scroll_page_ || tab != scroll_tab_) {
+        scroll_page_ = page_;
+        scroll_tab_ = tab;
+        scroll_ = scroll_target_ = 0;
+    }
+    origin_ = ImVec2(panel_x + px(40), top - scroll_);
     cursor_ = 0;
+    item_count_ = 0;
+    item_shift_ = 0;
     list_->ChannelsSplit(2);
     row_marked_ = false;
     // A page with a big button: that one is selected first, not the small ones above it.
     status_keeps_focus_ = wizard_ ? !move_prompt_ && wizard_step_ == 0 : page_ == Page::kPlay;
     list_->ChannelsSetCurrent(1);
+    // Rows scrolled out of the column are neither drawn nor hovered.
+    ImGui::PushClipRect(ImVec2(panel_x, view_top_), ImVec2(panel_x + column_width, view_bottom_), true);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_alpha);
     if (!update_prompt_shown_ && !wizard_ && !in_game_ && update_available()) {
         update_prompt_ = update_prompt_shown_ = true;
@@ -2780,17 +2859,64 @@ void Launcher::panel(float now, float since) {
         }
     }
     ImGui::PopStyleVar();
-    list_->ChannelsSetCurrent(0);
-    const ImVec2 pa(panel_x, px(64)), pb(panel_x + panel_width_ + px(56), origin_.y + cursor_ + px(16));
-    const float corner = px(24);
-    const ImVec2 shape[] = {pa, ImVec2(pb.x, pa.y), ImVec2(pb.x, pb.y - corner), ImVec2(pb.x - corner, pb.y), ImVec2(pa.x, pb.y)};
-    list_->AddConvexPolyFilled(shape, 5, fade(IM_COL32(12, 12, 14, 214)));
+    origin_.y -= item_shift_;
+    item_shift_ = 0;
+    g_alpha = page_alpha_;
+
+    // Scrolling: the wheel over the column, and a newly selected row brought into sight.
+    const float overflow = std::max(0.0f, top + cursor_ + px(24) - view_bottom_);
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    if (mouse.x >= panel_x && mouse.y < view_bottom_ && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+        scroll_target_ -= ImGui::GetIO().MouseWheel * px(90);
+    }
+    const ImGuiID nav_id = ImGui::GetCurrentContext()->NavId;
+    if (row_marked_ && nav_id != scrolled_to_) {
+        scrolled_to_ = nav_id;
+        if (row_b_.y > view_bottom_ - px(24)) scroll_target_ = scroll_ + row_b_.y - (view_bottom_ - px(24));
+        if (row_a_.y < top) {
+            scroll_target_ = scroll_ - (top - row_a_.y);
+            if (scroll_target_ < top) scroll_target_ = 0;  // near the top: the whole top, title included
+        }
+    }
+    scroll_target_ = std::clamp(scroll_target_, 0.0f, overflow);
+    scroll_ += (scroll_target_ - scroll_) * std::min(1.0f, ImGui::GetIO().DeltaTime * 14);
+    if (std::fabs(scroll_target_ - scroll_) < 0.5f) scroll_ = scroll_target_;
+    // More above or below: the column's colour over the edge, and a thin bar for where the page is.
+    if (overflow > 0) {
+        const ImU32 shade = fade(IM_COL32(12, 12, 14, 240)), clear = fade(IM_COL32(12, 12, 14, 0));
+        const float edge = px(48), right = panel_x + column_width;
+        if (scroll_ > 1) list_->AddRectFilledMultiColor(ImVec2(panel_x, view_top_), ImVec2(right, view_top_ + edge), shade, shade, clear, clear);
+        if (scroll_ < overflow - 1) list_->AddRectFilledMultiColor(ImVec2(panel_x, view_bottom_ - edge), ImVec2(right, view_bottom_), clear, clear, shade, shade);
+        const float track_a = top, track_b = view_bottom_ - px(16), track = track_b - track_a;
+        const float thumb = track * (view_bottom_ - top) / (view_bottom_ - top + overflow);
+        const float thumb_y = track_a + (track - thumb) * (scroll_ / overflow);
+        list_->AddRectFilled(ImVec2(right - px(14), track_a), ImVec2(right - px(11), track_b), fade(IM_COL32(255, 255, 255, 20)));
+        list_->AddRectFilled(ImVec2(right - px(14), thumb_y), ImVec2(right - px(11), thumb_y + thumb), fade(kRed));
+    }
+    ImGui::PopClipRect();
+
+    list_->ChannelsSetCurrent(0);  // under the page's widgets
+    const ImVec2 pa(panel_x, 0), pb(panel_x + column_width, bar_y);
+    list_->AddRectFilled(pa, pb, fade(IM_COL32(12, 12, 14, 214)));
+    list_->AddLine(pa, ImVec2(pa.x, pb.y), fade(IM_COL32(255, 255, 255, 20)), px(1));
     list_->AddRectFilled(pa, ImVec2(pb.x, pa.y + px(3)), fade(kRed));
     if (row_marked_) {
+        list_->PushClipRect(ImVec2(panel_x, view_top_), ImVec2(pb.x, view_bottom_), true);
         list_->AddRectFilled(row_a_, row_b_, fade(IM_COL32(255, 255, 255, 28)));
         skewed_rect(list_, row_a_, ImVec2(row_a_.x + px(7), row_b_.y), fade(IM_COL32_WHITE), fade(IM_COL32_WHITE));
+        list_->PopClipRect();
     }
     list_->ChannelsMerge();
+}
+
+// One more title, row or button of the page: it fades in and rises a little, 50 ms after the one above.
+void Launcher::enter_item() {
+    const float delay = 0.05f * static_cast<float>(std::min(item_count_++, 10));
+    const float t = ease_out((static_cast<float>(ImGui::GetTime()) - page_since_ - 0.1f - delay) / 0.35f);
+    origin_.y -= item_shift_;
+    item_shift_ = px(14) * (1 - t);
+    origin_.y += item_shift_;
+    g_alpha = page_alpha_ * t;
 }
 
 // Keys acting on the whole launcher, after the frame's widgets.
@@ -2936,6 +3062,15 @@ void Launcher::side_menu(float now, float since, const char* const* labels, cons
             skewed_rect(list_, ImVec2(a.x - px(14) + shift, a.y), ImVec2(a.x - px(6) + shift, b.y),
                         fade(IM_COL32_WHITE, on * (0.25f + 0.75f * lit)), fade(IM_COL32_WHITE, on * (0.25f + 0.75f * lit)));
             if (lit > 0.01f) list_->AddRectFilled(ImVec2(a.x + shift, b.y + px(3)), ImVec2(b.x, b.y + px(6)), fade(IM_COL32_WHITE, lit));
+            // Like a car's lights: the bar trails off to the right, and a glint runs along it every 2.4 s.
+            skewed_rect(list_, ImVec2(b.x, a.y), ImVec2(b.x + px(150) * on, b.y), fade(kRed, 0.5f * on), fade(kRed, 0));
+            const float run = ease_out(std::fmod(now / 2.4f, 1.0f) / 0.6f), glint = px(70);
+            const float x = a.x + shift - glint + (b.x + px(150) - a.x - shift + glint) * run;
+            const ImU32 clear = fade(IM_COL32_WHITE, 0), light = fade(IM_COL32_WHITE, 0.4f * on * (1 - run));
+            list_->PushClipRect(ImVec2(a.x + shift, a.y), ImVec2(b.x + px(150) * on, b.y), true);
+            list_->AddRectFilledMultiColor(ImVec2(x - glint, a.y), ImVec2(x, b.y), clear, light, light, clear);
+            list_->AddRectFilledMultiColor(ImVec2(x, a.y), ImVec2(x + glint, b.y), light, clear, clear, light);
+            list_->PopClipRect();
         }
         text(black_, px(36), ImVec2(a.x + px(22) + shift, a.y + px(7)), mix(hovered ? kInk : kDim, IM_COL32_WHITE, on), labels[i]);
         if (targets[i] == Page::kAbout && update_available()) {  // a newer version: a dot after the label
@@ -3832,7 +3967,7 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
 
     width_ = width;
     height_ = height;
-    scale_ = std::max(0.65f, std::min(width / 1600.0f, height / 900.0f));
+    scale_ = launcher_scale(static_cast<float>(width), static_cast<float>(height));
     upload_art();
     {
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);

@@ -22,6 +22,13 @@
 
 ### Improved
 
+- **The launcher's new layout**, in the in-game menu too: each page sits in a column from the top of the window to the
+  bottom bar, with Play at its foot. A page longer than the window scrolls (the mouse wheel, or the selection kept in
+  sight with the keys and the controller): the Picture tab's last rows were hidden under the bottom bar on a 720p
+  window. In a 4:3 or smaller window everything is larger than before (it was sized for 16:9 and shrank). A slider's
+  value now sits beside its grab instead of under it, the rows of a page come in one after another, a light runs round
+  Play when the game is ready and along the menu's selected item.
+
 - **Fewer pauses the first time you reach a place**: the shaders a scene needs the first time are made on two helper
   threads instead of in the middle of a frame; a frame waits for them at most 8 ms, and what is still missing is
   drawn a frame or two later. Entering the city with no shaders made yet ran at about 42 fps instead of 32 in tests.
