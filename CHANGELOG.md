@@ -22,6 +22,8 @@
 
 ### Improved
 
+- **A little faster again where the PC works hardest**: for each draw the textures and the vertex state are found
+  without being looked up again, a few percent less work on the thread that limits the frame rate.
 - **The launcher's new layout**, in the in-game menu too: each page sits in a column from the top of the window to the
   bottom bar, with Play at its foot. A page longer than the window scrolls (the mouse wheel, or the selection kept in
   sight with the keys and the controller): the Picture tab's last rows were hidden under the bottom bar on a 720p

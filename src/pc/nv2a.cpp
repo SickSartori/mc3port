@@ -711,9 +711,9 @@ void run_push_buffer(uint32_t put) {
         } else {
             log_line("nv2a: unknown push buffer command %08X at %08X", word, get - 4);
         }
-        s.get = get;
+        s.get.store(get, std::memory_order_release);  // a plain store: the default one locks the bus, at every command
     }
-    s.get = get;
+    s.get.store(get, std::memory_order_release);  // a plain store: the default one locks the bus, at every command
 }
 
 // Direct3D 11 did not start: nothing would be drawn (the game's pictures exist only there), so the player is told
