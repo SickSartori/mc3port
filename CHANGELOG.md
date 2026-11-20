@@ -66,6 +66,9 @@
 
 ### Fixed
 
+- **Sharp pictures on the HUD's smallest pictures**: those enlarged four times got one level too many, Direct3D
+  refused them (`cannot create an enlarged texture` in the log) and they stayed as the game's. Now they are sharp
+  like the others.
 - **White blotches over the launcher's background**: some of the disc's pictures have cut-out shapes, whose hidden
   parts were drawn in white. They are now dark, as the rest of the background.
 - **No pale box around pedestrians and lamp posts at night**: the ambient occlusion lightened the shaded wall behind
