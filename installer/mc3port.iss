@@ -45,7 +45,7 @@ CloseApplications=yes
 ChangesAssociations=yes
 RestartApplications=no
 OutputDir={#OutputDir}
-OutputBaseFilename=mc3port-{#AppVersion}-windows-x86-setup
+OutputBaseFilename=mc3port-{#AppVersion}-windows-setup
 Compression=lzma2/max
 SolidCompression=yes
 

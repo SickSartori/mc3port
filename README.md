@@ -120,15 +120,14 @@ be switched off, see [Privacy](#privacy)). Without an audio device the game simp
 | Way | How | Updates |
 |---|---|---|
 | **[RecompLauncher](https://recomplauncher.com/game/mc3port)** (easiest) | Find mc3port in the catalog and install it. The launcher checks your disc, keeps the main settings on the game's page and starts the game straight away. | Automatic |
-| **Installer** | Download `mc3port-<version>-windows-x86-setup.zip` from the [latest release](https://github.com/SickSartori/mc3port/releases/latest), extract it and run the setup inside. It installs for your user only (no administrator rights), with Start menu and desktop shortcuts. | Offered by the launcher: it downloads the new installer, checks its SHA-256 and shows it to you |
-| **Portable** | Download `mc3port-<version>-windows-x86.zip`, extract it anywhere and start `mc3port\mc3.exe`. | Extract the new version over the old one |
+| **Installer** | Download `mc3port-<version>-windows-setup.exe` from the [latest release](https://github.com/SickSartori/mc3port/releases/latest) and run it. It installs for your user only (no administrator rights), with Start menu and desktop shortcuts. | The launcher tells you; its Update button has your browser download the new installer |
+| **Portable** | Download `mc3port-<version>-windows-portable.zip`, extract it anywhere and start `mc3port\mc3.exe`. | Extract the new version over the old one |
 | **Linux (Wine)** | Download `mc3port-<version>-linux.tar.gz`: see [Linux](#linux-experimental). | Run `install.sh` again |
 
 Every package contains `README.txt`, a short guide, and `CHANGELOG.md`. To check a download, compare its SHA-256 with
 the release's `SHA256SUMS`. The files are not code signed yet (see [Code signing policy](#code-signing-policy)), so
-browsers may warn about the download and Windows SmartScreen may ask once whether you trust them ("More info", then
-"Run anyway"). The installer is also attached as a plain `-setup.exe`, which the launcher uses for its updates; some
-browsers block that one, the zip gets through.
+browsers may warn about the download ("Keep") and Windows SmartScreen may ask once whether you trust them ("More
+info", then "Run anyway").
 
 ### First start
 
@@ -388,8 +387,8 @@ each release lists their SHA-256 in `SHA256SUMS`.
 mc3port collects no personal data and has no telemetry. The only connection it makes on its own is the update check:
 when the launcher opens, it asks `api.github.com` for this project's latest release. You can turn it off in the
 installer, or at any time with `check_updates = 0` in `Documents\mc3port\mc3port.ini`; started from RecompLauncher, it
-is always off. If you accept an update, the launcher downloads the new installer and `SHA256SUMS` from this project's
-GitHub releases. **Report a problem** only opens GitHub's bug form in your browser, filled in for you to read and send
+is always off. If you accept an update, the launcher opens the new installer's link on this project's GitHub
+releases in your browser, which downloads it; mc3port itself downloads and starts nothing. **Report a problem** only opens GitHub's bug form in your browser, filled in for you to read and send
 yourself. The game's online play is not available.
 
 ## Supporting the project

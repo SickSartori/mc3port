@@ -64,6 +64,17 @@
 - **Full speed in the background**: Windows no longer slows mc3port down when its window is not in front or the
   battery saver is on.
 
+### Changed
+
+- **Updating from the launcher**: Update opens the new installer's link and your browser downloads it; you start it,
+  as any download. The launcher no longer downloads and starts the installer itself, which antivirus programs take
+  for the way malware brings in more of itself.
+- **The keyboard is read from the game's window**, no longer by asking Windows for the whole keyboard's state, which
+  antivirus programs also distrust. Keys pressed in other windows no longer reach the game.
+- **Fewer files to choose from in a release**, with names that say what they are: `-windows-setup.exe` (the
+  installer), `-windows-portable.zip` and `-linux.tar.gz`, and a "Which file?" list at the end of the release notes, right above the files. The
+  installer is no longer attached a second time in a zip, and "x86" is gone from the names.
+
 ### Fixed
 
 - **Sharp pictures on the HUD's smallest pictures**: those enlarged four times got one level too many, Direct3D

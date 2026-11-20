@@ -1,11 +1,10 @@
 # Builds the Release configuration and packages it for a GitHub release:
-#   dist/mc3port-<version>-windows-x86.zip        (portable: a folder "mc3port" with mc3.exe, mc3runtime.dll, README.txt,
-#                                                  and the other documents in docs; the same folder name in every version, so a
-#                                                  new zip extracted in the same place updates the old one)
-#   dist/mc3port-<version>-windows-x86-setup.exe  (installer, with Inno Setup 6.6+; skipped if it is missing)
-#   dist/mc3port-<version>-windows-x86-setup.zip  (the same installer in a zip: browsers block a new, unsigned .exe
-#                                                  download more often; the launcher's updater keeps using the .exe)
-#   dist/mc3port-<version>-linux.tar.gz           (the portable folder plus install.sh for Wine, and the menu icon)
+#   dist/mc3port-<version>-windows-setup.exe     (installer, with Inno Setup 6.6+; skipped if it is missing. Older
+#                                                 launchers find their update by the "-setup.exe" ending)
+#   dist/mc3port-<version>-windows-portable.zip  (a folder "mc3port" with mc3.exe, mc3runtime.dll, README.txt, and the
+#                                                 other documents in docs; the same folder name in every version, so a
+#                                                 new zip extracted in the same place updates the old one)
+#   dist/mc3port-<version>-linux.tar.gz          (the portable folder plus install.sh for Wine, and the menu icon)
 #   dist/SHA256SUMS
 # The version comes from project(... VERSION ...) in CMakeLists.txt. No game file can end up in the package.
 # PowerShell 7 (pwsh), as in the workflow: Windows PowerShell 5's Compress-Archive writes backslashes in the zip's
@@ -30,7 +29,7 @@ if (-not $SkipBuild) {
     & (Join-Path (Split-Path $cmake) ctest.exe) --test-dir build/pc-x86 -C Release --output-on-failure; if ($LASTEXITCODE) { throw "tests failed" }
 }
 
-$name = "mc3port-$version-windows-x86"
+$name = "mc3port-$version-windows"
 $stage = Join-Path "dist" "mc3port"
 if (Test-Path dist) { Remove-Item dist -Recurse -Force }
 New-Item -ItemType Directory -Force "$stage\docs\licenses" | Out-Null
@@ -47,7 +46,7 @@ Copy-Item third_party/sdl3/LICENSE.txt "$stage\docs\licenses\sdl3-LICENSE.txt"
 $forbidden = Get-ChildItem $stage -Recurse -File | Where-Object { $_.Extension -in ".iso", ".xbe", ".xiso", ".log", ".ini" }
 if ($forbidden) { throw "not for the package: $($forbidden.Name -join ', ')" }
 
-Compress-Archive -Path $stage -DestinationPath "dist/$name.zip"
+Compress-Archive -Path $stage -DestinationPath "dist/$name-portable.zip"
 
 # Linux (Wine): the same folder plus install.sh (Wine prefix, "mc3port" command, menu entry) and the icon for the
 # menu, as a tar.gz.
@@ -64,7 +63,6 @@ $iscc = @($env:ISCC, "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:Pro
 if ($iscc) {
     & $iscc /Q "/DAppVersion=$version" "/DSourceDir=$(Resolve-Path $stage)" "/DOutputDir=$(Resolve-Path dist)" installer/mc3port.iss
     if ($LASTEXITCODE) { throw "installer build failed" }
-    Compress-Archive -Path "dist/$name-setup.exe" -DestinationPath "dist/$name-setup.zip"
 } elseif ($env:GITHUB_ACTIONS) {
     throw "Inno Setup not found: the release needs the installer"
 } else {
