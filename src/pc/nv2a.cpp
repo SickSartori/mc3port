@@ -16,6 +16,7 @@
 
 #include "pc/game_pause.h"
 #include "pc/hle_patches.h"
+#include "pc/input_hle.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
 #include "pc/mmio.h"
@@ -837,6 +838,7 @@ std::atomic<WindowHook> g_window_hook{nullptr};  // nv2a_set_window_hook
 constexpr UINT kSetFullScreenMessage = WM_APP + 1;
 
 LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    input_note_window_message(window, message, wparam, lparam);  // before the hook, which keeps some messages
     if (message == kSetFullScreenMessage) {
         if ((wparam != 0) != g_full_screen) toggle_full_screen(window);
         return 0;

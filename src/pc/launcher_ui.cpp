@@ -639,17 +639,6 @@ std::recursive_mutex g_ui_mutex;
 std::atomic<int> g_captured_key{0};    // the key pressed while rebinding (0: none)
 std::atomic<bool> g_capturing{false};
 
-int key_from_message(WPARAM wparam, LPARAM lparam) {
-    const UINT scan = (lparam >> 16) & 0xFF;
-    const bool extended = (lparam >> 24) & 1;
-    switch (wparam) {
-        case VK_SHIFT: return static_cast<int>(MapVirtualKeyW(scan, MAPVK_VSC_TO_VK_EX));
-        case VK_CONTROL: return extended ? VK_RCONTROL : VK_LCONTROL;
-        case VK_MENU: return extended ? VK_RMENU : VK_LMENU;
-        default: return static_cast<int>(wparam);
-    }
-}
-
 bool window_hook(HWND window, UINT message, WPARAM wparam, LPARAM lparam, LRESULT* result) {
     if (g_capturing && (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)) {
         g_captured_key = wparam == VK_ESCAPE ? -1 : key_from_message(wparam, lparam);  // Esc cancels
@@ -3316,7 +3305,7 @@ void Launcher::bottom_bar(float since) {
 // would open its own pause menu, Enter or A would choose something).
 bool closing_inputs_released(decltype(&XInputGetState) get_state) {
     for (const int key : {VK_ESCAPE, VK_RETURN, VK_SPACE, VK_F1, VK_BACK, VK_LBUTTON}) {
-        if (GetAsyncKeyState(key) & 0x8000) return false;
+        if (key_down(key)) return false;
     }
     XINPUT_STATE state;
     for (DWORD i = 0; get_state && i < 4; ++i) {
