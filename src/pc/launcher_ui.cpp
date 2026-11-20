@@ -5,7 +5,6 @@
 #include <dxgi1_2.h>
 #include <shellapi.h>
 #include <shobjidl.h>
-#include <bcrypt.h>
 #include <winhttp.h>
 #include <wrl/client.h>
 #include <xinput.h>
@@ -20,7 +19,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -86,9 +84,9 @@ struct Texts {
     const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *report, *report_sub, *update_to,
         *legal,
         *credits;
-    const char *update_now, *update_install_sub, *downloading, *update_failed;
-    const char *update_title, *update_lead, *update_big, *update_install, *update_install_note, *update_page,
-        *update_portable_note, *update_later, *update_progress, *update_ready, *update_install_small;
+    const char *update_now, *update_install_sub;
+    const char *update_title, *update_lead, *update_big, *update_install_note, *update_page, *update_portable_note,
+        *update_later;
     const char *welcome, *welcome_lead, *next, *style_title, *style_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
@@ -139,12 +137,10 @@ const Texts kEnglish = {
     "The form on GitHub, already filled in, and the log to attach", "Update to %s",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "Licences, credits and how to contribute: on GitHub",
-    "Update", "Downloads and checks the installer; then you start it with one click", "Downloading the update...",
-    "The update could not be downloaded or checked",
-    "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE", "INSTALL",
-    "The launcher closes and the installer opens. Your saves and settings stay.", "OPEN THE PAGE",
-    "This copy is portable: download the new version from the release page.", "Later", "%.1f of %.1f MB",
-    "Update ready", "Install",
+    "Update", "Your browser downloads the installer; open it to update",
+    "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE",
+    "Your browser downloads the installer: open it and it replaces this version. Your saves and settings stay.",
+    "OPEN THE PAGE", "This copy is portable: download the new version from the release page.", "Later",
     "WELCOME", "You need your own copy: a disc image (ISO) of the Xbox Midnight Club 3: DUB Edition Remix, Europe or USA.",
     "NEXT", "STYLE", "Original is the game as it was on the Xbox, Enhanced the best this port can show. You can change it any time in the settings.",
     "Disc", "Xbox \xC2\xB7 Europe or USA", "none", "Controller", "connected", "not connected", "Version", "Select", "Back",
@@ -212,12 +208,11 @@ const Texts kItalian = {
     "Il modulo su GitHub, gi\xC3\xA0 compilato, e il log da allegare", "Aggiorna alla %s",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenze, crediti e come contribuire: su GitHub",
-    "Aggiorna", "Scarica e verifica l'installer, poi lo avvii con un clic", "Scarico l'aggiornamento...",
-    "Non \xC3\xA8 stato possibile scaricare o verificare l'aggiornamento",
-    "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA", "INSTALLA",
-    "Il launcher si chiude e si apre l'installer. Salvataggi e impostazioni restano.", "APRI LA PAGINA",
-    "Questa copia \xC3\xA8 portatile: scarica la nuova versione dalla pagina della release.", "Pi\xC3\xB9 tardi",
-    "%.1f di %.1f MB", "Aggiornamento pronto", "Installa",
+    "Aggiorna", "Il browser scarica l'installer: aprilo per aggiornare",
+    "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA",
+    "Il browser scarica l'installer: aprilo e sostituisce questa versione. Salvataggi e impostazioni restano.",
+    "APRI LA PAGINA", "Questa copia \xC3\xA8 portatile: scarica la nuova versione dalla pagina della release.",
+    "Pi\xC3\xB9 tardi",
     "BENVENUTO",
     "Per giocare serve la tua copia: l'immagine ISO del disco Xbox di Midnight Club 3: DUB Edition Remix, Europa o USA.",
     "AVANTI", "STILE", "Originale \xC3\xA8 il gioco com'era sull'Xbox, Migliorata il meglio che questo port sa mostrare. Potrai cambiarlo quando vuoi nelle impostazioni.",
@@ -287,12 +282,10 @@ const Texts kPortuguese = {
     "O formulário no GitHub, já preenchido, e o log para anexar", "Atualizar para %s",
     "Midnight Club é uma marca da Take-Two Interactive / Rockstar Games. Este projeto não tem ligação com elas.",
     "Licenças, créditos e como contribuir: no GitHub",
-    "Atualizar", "Baixa e verifica o instalador; depois você o inicia com um clique", "Baixando a atualização...",
-    "Não foi possível baixar ou verificar a atualização",
-    "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR", "INSTALAR",
-    "O launcher fecha e o instalador abre. Seus saves e configurações ficam.", "ABRIR A PÁGINA",
-    "Esta cópia é portátil: baixe a nova versão na página da versão.", "Mais tarde", "%.1f de %.1f MB",
-    "Atualização pronta", "Instalar",
+    "Atualizar", "O navegador baixa o instalador: abra-o para atualizar",
+    "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR",
+    "O navegador baixa o instalador: abra-o e ele substitui esta versão. Seus saves e configurações ficam.",
+    "ABRIR A PÁGINA", "Esta cópia é portátil: baixe a nova versão na página da versão.", "Mais tarde",
     "BEM-VINDO", "Você precisa da sua cópia: uma imagem de disco (ISO) do Midnight Club 3: DUB Edition Remix de Xbox, Europa ou EUA.",
     "AVANÇAR", "ESTILO", "Original é o jogo como era no Xbox, Melhorado o melhor que este port consegue mostrar. Você pode mudar quando quiser nas configurações.",
     "Disco", "Xbox · Europa ou EUA", "nenhum", "Controle", "conectado", "não conectado", "Versão", "Selecionar", "Voltar",
@@ -359,12 +352,10 @@ const Texts kSpanish = {
     "El formulario en GitHub, ya rellenado, y el registro para adjuntar", "Actualizar a %s",
     "Midnight Club es una marca de Take-Two Interactive / Rockstar Games. Este proyecto no está afiliado a ellas.",
     "Licencias, créditos y cómo contribuir: en GitHub",
-    "Actualizar", "Descarga y comprueba el instalador; luego lo inicias con un clic", "Descargando la actualización...",
-    "No se pudo descargar o comprobar la actualización",
-    "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR", "INSTALAR",
-    "El launcher se cierra y se abre el instalador. Tus partidas y ajustes se quedan.", "ABRIR LA PÁGINA",
-    "Esta copia es portátil: descarga la nueva versión desde la página de la versión.", "Más tarde", "%.1f de %.1f MB",
-    "Actualización lista", "Instalar",
+    "Actualizar", "El navegador descarga el instalador: ábrelo para actualizar",
+    "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR",
+    "El navegador descarga el instalador: ábrelo y sustituye esta versión. Tus partidas y ajustes se quedan.",
+    "ABRIR LA PÁGINA", "Esta copia es portátil: descarga la nueva versión desde la página de la versión.", "Más tarde",
     "BIENVENIDO", "Necesitas tu copia: una imagen de disco (ISO) de Midnight Club 3: DUB Edition Remix de Xbox, Europa o EE. UU.",
     "SIGUIENTE", "ESTILO", "Original es el juego como era en Xbox, Mejorado lo mejor que este port puede mostrar. Puedes cambiarlo cuando quieras en los ajustes.",
     "Disco", "Xbox · Europa o EE. UU.", "ninguno", "Mando", "conectado", "no conectado", "Versión", "Elegir", "Volver",
@@ -690,17 +681,13 @@ struct UpdateCheck {
     std::mutex mutex;
     int state = 0;  // 0 checking, 1 up to date, 2 newer found, 3 failed (shown as nothing)
     std::string version, url;
-    std::string setup_url, sums_url;  // the release's installer and SHA256SUMS, if it has them
-    int download = 0;                 // 0 none, 1 downloading, 2 verified (the player installs it), 3 failed
-    uint64_t received = 0, size = 0;  // of the installer, while it downloads
-    std::filesystem::path setup_file;
+    std::string setup_url;  // the release's installer, if it has one: the browser downloads it
     std::vector<std::string> points;  // what is new, from the release's notes
 };
 
 // A GET over HTTPS. WinHTTP follows redirects, which GitHub's release downloads need. The body only when the answer
 // is 200; *status is the answer, for the log.
-std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* status,
-                      const std::function<void(uint64_t, uint64_t)>& progress = nullptr) {
+std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* status) {
     std::string body;
     *status = 0;
     wchar_t host[256] = {}, path[2048] = {}, query[2048] = {};
@@ -727,15 +714,9 @@ std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* st
         WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, status, &size,
                             nullptr) &&
         *status == 200) {
-        DWORD length = 0, length_size = sizeof(length);  // 0 when the server does not say
-        WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &length,
-                            &length_size, nullptr);
         char buffer[16384];
         DWORD read = 0;
-        while (WinHttpReadData(request, buffer, sizeof(buffer), &read) && read) {
-            body.append(buffer, read);
-            if (progress) progress(body.size(), length);
-        }
+        while (WinHttpReadData(request, buffer, sizeof(buffer), &read) && read) body.append(buffer, read);
     }
     if (request) WinHttpCloseHandle(request);
     if (connection) WinHttpCloseHandle(connection);
@@ -772,75 +753,9 @@ void check_for_updates(UpdateCheck* check) {
         const std::string asset = body.substr(start, end - start);
         if (!release_link(asset, kRepository, "download/")) continue;
         if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "-setup.exe") == 0) check->setup_url = asset;
-        if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "SHA256SUMS") == 0) check->sums_url = asset;
     }
     check->points = release_points(json_text(body, "body"), 6);
     log_line("launcher: latest release %s (%s)", tag.c_str(), newer ? "newer" : "not newer");
-}
-
-std::string sha256_hex(const std::string& data) {
-    uint8_t digest[32] = {};
-    if (data.empty() || BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, reinterpret_cast<PUCHAR>(const_cast<char*>(data.data())),
-                                   static_cast<ULONG>(data.size()), digest, sizeof(digest)) != 0) {
-        return {};
-    }
-    std::string hex;
-    char byte[3];
-    for (uint8_t b : digest) {
-        std::snprintf(byte, sizeof(byte), "%02x", b);
-        hex += byte;
-    }
-    return hex;
-}
-
-// Downloads the release's installer and SHA256SUMS and checks the installer's hash; only a verified installer is
-// saved, to %TEMP%\mc3port-update. The player starts it (install_update): mc3port never runs it by itself.
-void download_update(UpdateCheck* check) {
-    std::string setup_url, sums_url;
-    {
-        std::lock_guard<std::mutex> lock(check->mutex);
-        setup_url = check->setup_url;
-        sums_url = check->sums_url;
-    }
-    wchar_t temp[MAX_PATH] = {};
-    GetTempPathW(MAX_PATH, temp);
-    const std::filesystem::path folder = std::filesystem::path(temp) / "mc3port-update";
-    const std::string name = setup_url.substr(setup_url.rfind('/') + 1);
-    const std::filesystem::path setup = folder / name;
-    DWORD setup_status = 0, sums_status = 0;
-    const std::string installer = sums_url.empty() ? std::string()
-                                                   : https_get(std::wstring(setup_url.begin(), setup_url.end()), nullptr,
-                                                               &setup_status, [check](uint64_t received, uint64_t size) {
-                                                                   std::lock_guard<std::mutex> lock(check->mutex);
-                                                                   check->received = received, check->size = size;
-                                                               });
-    const std::string list = installer.empty() ? std::string()
-                                               : https_get(std::wstring(sums_url.begin(), sums_url.end()), nullptr,
-                                                           &sums_status);
-    const std::string hash = sha256_hex(installer);
-    bool good = false;
-    for (size_t start = 0; !hash.empty() && start < list.size();) {
-        size_t end = list.find('\n', start);
-        if (end == std::string::npos) end = list.size();
-        std::string line = list.substr(start, end - start);
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.size() > 66 && line.compare(66, std::string::npos, name) == 0 && line.compare(0, 64, hash) == 0) {
-            good = true;
-        }
-        start = end + 1;
-    }
-    if (good) {
-        std::error_code ignored;
-        std::filesystem::create_directories(folder, ignored);
-        std::ofstream out(setup, std::ios::binary | std::ios::trunc);
-        out.write(installer.data(), static_cast<std::streamsize>(installer.size()));
-        good = static_cast<bool>(out.flush());
-    }
-    if (!good) log_line("launcher: update download: HTTP %lu (installer), %lu (SHA256SUMS)", setup_status, sums_status);
-    log_line("launcher: update %s %s", name.c_str(), good ? "downloaded and verified" : "could not be downloaded or verified");
-    std::lock_guard<std::mutex> lock(check->mutex);
-    check->download = good ? 2 : 3;
-    check->setup_file = setup;
 }
 
 // --- the background: the disc's artwork, crossfading with a slow zoom, graded towards the game's menus ---
@@ -1041,14 +956,12 @@ private:
     void page_about();
     void update_row(bool always);
     void page_update();
-    void start_update_download();
-    void install_update();
-    bool install_requested_ = false;  // Install pressed: started between frames, outside the UI lock (see install_update)
     bool update_prompt_ = false, update_prompt_shown_ = false;  // the new version's notice, once per start
     Page update_prompt_page_ = Page::kPlay;                      // another page from the menu closes it
     void move_data_row();
     void page_move_data();
     bool update_available();
+    bool installed_copy();
     void page_wizard();
     void page_paused();
     void page_exit();
@@ -1125,7 +1038,7 @@ private:
 
     std::unique_ptr<LauncherMusic> music_;
     UpdateCheck updates_;
-    std::thread update_thread_, download_thread_;
+    std::thread update_thread_;
     decltype(&XInputGetState) xinput_get_state_ = nullptr;
     bool pad_connected_ = false;
     bool pad_present_[4] = {};
@@ -1293,7 +1206,6 @@ void Launcher::stop_graphics() {
     music_.reset();  // fades out
     if (art_thread_.joinable()) art_thread_.join();
     if (update_thread_.joinable()) update_thread_.join();
-    if (download_thread_.joinable()) download_thread_.join();
     {
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
         nv2a_set_window_hook(nullptr);
@@ -2507,90 +2419,54 @@ void Launcher::page_controls() {
 }
 
 // The update notice: on the first page only when there is a newer version, on About always. An installed copy
-// (the setup's uninstaller next to mc3.exe) downloads the installer; a portable one opens the release page.
+// (the setup's uninstaller next to mc3.exe) opens the new installer's link, which the browser downloads; a portable
+// one opens the release page. mc3port downloads and starts nothing by itself.
 void Launcher::update_row(bool always) {
     const Texts& t = T();
-    int state, download;
+    int state;
     std::string version, url, setup_url;
     {
         std::lock_guard<std::mutex> lock(updates_.mutex);
         state = updates_.state;
-        download = updates_.download;
         version = updates_.version;
         url = updates_.url;
         setup_url = updates_.setup_url;
     }
     if (setting("check_updates") == 0 || state == 3 || (!always && state != 2)) return;
-    std::error_code ignored;
-    const bool installed = update_test() || (!portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored));
-    const bool self_update = installed && !setup_url.empty() && download != 3;
+    const bool by_setup = installed_copy() && !setup_url.empty();
     char found[96];
     std::snprintf(found, sizeof(found), t.update_found, version.c_str());
-    if (download == 1) {
-        status(false, t.downloading, found, nullptr, nullptr, true);
-    } else if (download == 2) {
-        if (status(true, t.update_ready, found, t.update_install_small, "##update")) install_requested_ = true;
-    } else if (state == 2) {
-        if (status(false, download == 3 ? t.update_failed : found, self_update ? t.update_install_sub : t.update_sub,
-                   self_update ? t.update_now : t.open, "##update", download != 3)) {
-            if (self_update) {
-                start_update_download();
-            } else {
-                ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            }
+    if (state == 2) {
+        if (status(false, found, by_setup ? t.update_install_sub : t.update_sub, by_setup ? t.update_now : t.open,
+                   "##update")) {
+            ShellExecuteA(nullptr, "open", (by_setup ? setup_url : url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         }
     } else {
         status(true, state == 0 ? t.checking : t.up_to_date, "", nullptr, nullptr);
     }
 }
 
-// A newer release is known and not being installed: the first page and the guide show the notice at the top, the
-// side menu marks About.
+// A newer release is known: the first page and the guide show the notice at the top, the side menu marks About.
 bool Launcher::update_available() {
     if (setting("check_updates") == 0) return false;
     std::lock_guard<std::mutex> lock(updates_.mutex);
     return updates_.state == 2;
 }
 
-void Launcher::start_update_download() {
-    std::lock_guard<std::mutex> lock(updates_.mutex);
-    if (updates_.download == 1) return;
-    updates_.download = 1;
-    updates_.received = updates_.size = 0;
-    if (download_thread_.joinable()) download_thread_.join();
-    download_thread_ = std::thread(download_update, &updates_);
-}
-
-// The player pressed Install: the verified installer starts and the launcher closes, so that it can replace our files.
-// Should Windows refuse to start it, Explorer shows it instead. Called between frames: ShellExecute sends messages to
-// our window, whose thread waits for the UI lock a frame holds.
-void Launcher::install_update() {
-    std::filesystem::path setup;
-    {
-        std::lock_guard<std::mutex> lock(updates_.mutex);
-        setup = updates_.setup_file;
-    }
-    const HINSTANCE started = ShellExecuteW(window_, L"open", setup.c_str(), nullptr, setup.parent_path().c_str(), SW_SHOWNORMAL);
-    if (reinterpret_cast<INT_PTR>(started) <= 32) {
-        const std::wstring argument = L"/select,\"" + setup.wstring() + L"\"";
-        ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
-    }
-    log_line("launcher: update: %s the installer, closing", reinterpret_cast<INT_PTR>(started) > 32 ? "started" : "showing");
-    done_ = true;
+// Installed with the setup (its uninstaller next to mc3.exe), or MC3_UPDATE_TEST.
+bool Launcher::installed_copy() {
+    std::error_code ignored;
+    return update_test() || (!portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored));
 }
 
 // The new version's notice, over the first page once per start: what is new, then Update (an installed copy: the
-// download with its progress, then Install) or the release page (a portable copy), or Later.
+// browser downloads the new installer) or the release page (a portable copy), or Later.
 void Launcher::page_update() {
     const Texts& t = T();
-    int download;
-    uint64_t received, size;
     std::string version, url, setup_url;
     std::vector<std::string> points;
     {
         std::lock_guard<std::mutex> lock(updates_.mutex);
-        download = updates_.download;
-        received = updates_.received, size = updates_.size;
         version = updates_.version, url = updates_.url, setup_url = updates_.setup_url;
         points = updates_.points;
     }
@@ -2606,30 +2482,13 @@ void Launcher::page_update() {
         cursor_ += point_size.y + px(10);
     }
     cursor_ += px(8);
-    std::error_code ignored;
-    const bool installed = update_test() || (!portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored));
-    const bool self_update = installed && !setup_url.empty();
-    if (download == 1) {
-        std::snprintf(line, sizeof(line), t.update_progress, received / 1048576.0, size / 1048576.0);
-        status(false, t.downloading, size ? line : "", nullptr, nullptr, true);
-        if (size) {  // the bar under the row
-            const float y = origin_.y + cursor_ - px(14), fraction = std::min(1.0f, static_cast<float>(received) / size);
-            list_->AddRectFilled(ImVec2(origin_.x, y), ImVec2(origin_.x + panel_width_, y + px(4)), fade(IM_COL32(255, 255, 255, 30)));
-            list_->AddRectFilled(ImVec2(origin_.x, y), ImVec2(origin_.x + panel_width_ * fraction, y + px(4)), fade(kRed));
-        }
-        return;  // no Later while it downloads: the download goes on in any case
-    }
-    if (download == 2) {
-        if (big_button(t.update_install, "##update_install", true)) install_requested_ = true;
+    const bool installed = installed_copy();
+    if (installed && !setup_url.empty()) {
+        if (big_button(t.update_big, "##update_big", true)) ShellExecuteA(nullptr, "open", setup_url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         lead(t.update_install_note);
     } else {
-        if (download == 3) status(false, t.update_failed, "", nullptr, nullptr);
-        if (self_update && download != 3) {
-            if (big_button(t.update_big, "##update_big", true)) start_update_download();
-        } else {
-            if (big_button(t.update_page, "##update_page", true)) ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            if (!installed) lead(t.update_portable_note);
-        }
+        if (big_button(t.update_page, "##update_page", true)) ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        if (!installed) lead(t.update_portable_note);
     }
     if (small_button(t.update_later, ImVec2(origin_.x, origin_.y + cursor_), "##update_later")) {
         update_prompt_ = false;
@@ -4184,10 +4043,6 @@ std::optional<GameDisc> Launcher::run() {
         draw_background(time);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         swap_chain_->Present(1, 0);
-        if (install_requested_) {  // outside the lock, like the dialogs
-            install_requested_ = false;
-            install_update();
-        }
         if (choose_disc_requested_) {  // outside the lock: see choose_disc
             choose_disc_requested_ = false;
             run_disc_dialog();

@@ -78,8 +78,8 @@ UPDATING
 --------
 
 Installer: when a new version is out, the launcher says so on its first
-page and offers to update. It downloads the new installer, checks its
-SHA-256 and shows it in Explorer: start it to install the update.
+page and offers to update: your browser downloads the new installer, and
+you start it to install the update. Settings and saves are kept.
 
 Portable zip: extract the new version in the same place, replacing the
 files of this folder. Settings and saves are kept.
