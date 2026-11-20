@@ -9,6 +9,8 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <random>
+#include <array>
 #include <vector>
 
 #include "pc/log.h"
@@ -17,6 +19,7 @@
 namespace xport::pc {
 namespace {
 struct Track {
+    int number = 0;
     uint32_t rate = 0;
     uint16_t channels = 0;
     std::vector<int16_t> samples;
@@ -27,6 +30,9 @@ std::mutex g_mutex;
 std::vector<Track> g_tracks;
 bool g_loaded = false;
 size_t g_next = 0;
+std::mt19937 g_rng{std::random_device{}()};
+int g_last = -1, g_streak = 0;
+std::array<int, 18> g_cooldown{};
 const Track* g_active = nullptr;
 double g_position = 0;
 uint64_t g_started = 0;
@@ -80,7 +86,10 @@ void load_tracks() {
     const auto folder = std::filesystem::path(module).parent_path() / L"loading_music";
     for (int i = 1; i <= 18; ++i) {
         Track track;
-        if (read_wave(folder / (std::to_wstring(i) + L".wav"), track)) g_tracks.push_back(std::move(track));
+        if (read_wave(folder / (std::to_wstring(i) + L".wav"), track)) {
+            track.number = i;
+            g_tracks.push_back(std::move(track));
+        }
     }
     log_line("loading music: %u PCM WAV tracks found", static_cast<unsigned>(g_tracks.size()));
 }
@@ -91,7 +100,37 @@ void loading_music_begin(uint64_t duration_ms) {
     std::lock_guard lock(g_mutex);
     load_tracks();
     if (g_tracks.empty()) return;
-    g_active = &g_tracks[g_next++ % g_tracks.size()];
+    const int mode = std::clamp(static_cast<int>(setting("loading_music_mode")), 0, 2);
+    size_t selected = g_next++ % g_tracks.size();
+    if (mode != 0) {
+        std::vector<size_t> eligible;
+        std::vector<double> weights;
+        for (size_t i = 0; i < g_tracks.size(); ++i) {
+            const int number = g_tracks[i].number;
+            const std::string key = "loading_music_weight_" + std::to_string(number);
+            const double weight = mode == 1 ? 100.0 : std::clamp<double>(setting(key.c_str()), 0, 300);
+            if (weight <= 0 || g_cooldown[number - 1] > 0 || (number == g_last && g_streak >= 2)) continue;
+            eligible.push_back(i);
+            weights.push_back(weight);
+        }
+        // When restrictions exclude every track, favor an enabled track and relax cooldowns.
+        if (eligible.empty()) {
+            for (size_t i = 0; i < g_tracks.size(); ++i) {
+                const std::string key = "loading_music_weight_" + std::to_string(g_tracks[i].number);
+                const double weight = mode == 1 ? 100.0 : std::clamp<double>(setting(key.c_str()), 0, 300);
+                if (weight > 0) { eligible.push_back(i); weights.push_back(weight); }
+            }
+        }
+        if (eligible.empty()) return; // All tracks intentionally disabled.
+        std::discrete_distribution<size_t> pick(weights.begin(), weights.end());
+        selected = eligible[pick(g_rng)];
+    }
+    const int number = g_tracks[selected].number;
+    for (int& cooldown : g_cooldown) if (cooldown > 0) --cooldown;
+    if (number == g_last) ++g_streak;
+    else { g_last = number; g_streak = 1; }
+    if (mode != 0 && g_streak >= 2) g_cooldown[number - 1] = 3;
+    g_active = &g_tracks[selected];
     g_position = 0;
     g_started = GetTickCount64();
     // Allow the audio to follow the visible loading-screen transition, which can
