@@ -40,6 +40,21 @@ jobs:
         shell: pwsh
         run: ./tools/package.ps1
 
+      # The 64-bit helper for DLSS (external/xport/tools/upscale64), so that a change that breaks it shows up here.
+      # NVIDIA's DLSS SDK at a fixed version (310.9.16), only what the build needs: headers, the static NGX library and
+      # the licence (4 MB). Not in the package: the game does not use the helper yet
+      # (sick-xport docs/UPSCALING-DLSS-FSR.md).
+      - name: Build the DLSS helper
+        shell: pwsh
+        run: |
+          git clone --filter=blob:none --no-checkout --quiet https://github.com/NVIDIA/DLSS.git ../dlss-sdk
+          git -C ../dlss-sdk sparse-checkout set --no-cone /include/ /lib/Windows_x86_64/x64/nvsdk_ngx_s.lib /LICENSE.txt
+          git -C ../dlss-sdk checkout --quiet 9981c6350dc58c0ce21f024fd65e31e851c31689
+          cmake -S external/xport/tools/upscale64 -B build/upscale64 -A x64 "-DDLSS_SDK=$((Resolve-Path ../dlss-sdk).Path)"
+          if ($LASTEXITCODE) { throw "configure failed" }
+          cmake --build build/upscale64 --config Release
+          if ($LASTEXITCODE) { throw "build failed" }
+
       - name: Make the draft release
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
@@ -58,3 +73,11 @@ jobs:
           path: |
             dist/*.zip
             dist/*.tar.gz
+
+      # The helper alone, without NVIDIA's DLL (which goes out only inside a package, with its licence beside it).
+      - name: Keep the DLSS helper
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: mc3port-upscale64
+          path: build/upscale64/Release/upscale64.exe
