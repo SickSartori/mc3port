@@ -108,6 +108,8 @@ struct Texts {
     const char *back_to_launcher, *back_to_launcher_sub, *back_to_launcher_button, *menu_launcher;
     const char *menu_music, *music_lead;
     const char *support, *support_sub;
+    const char *upscaling, *upscaling_sub, *upscaling_checking, *upscaling_missing, *profile, *profile_sub, *profile_dlaa,
+        *profile_quality, *profile_balanced, *profile_performance;
 };
 
 const Texts kEnglish = {
@@ -177,6 +179,9 @@ const Texts kEnglish = {
     "OPEN THE LAUNCHER", "LAUNCHER",
     "MUSIC", "Your own songs on the game's radio. Make your playlists here (MP3, FLAC, WAV, WMA, M4A); in the game choose one in Pause > Options > Audio Options, the Music selector.",
     "Support the project", "Free, and always will be. A thank-you keeps it going.",
+    "Upscaling", "NVIDIA DLSS: the game drawn smaller and made sharp at your screen's size", "Checking whether this graphics card has DLSS...",
+    "DLSS needs an NVIDIA RTX graphics card and its driver", "Profile", "Drawn at %dp, brought to %dp", "Native (DLAA)", "Quality",
+    "Balanced", "Performance",
 };
 
 const Texts kItalian = {
@@ -252,6 +257,9 @@ const Texts kItalian = {
     "APRI IL LAUNCHER", "LAUNCHER",
     "MUSICA", "I tuoi brani alla radio del gioco. Crea qui le tue playlist (MP3, FLAC, WAV, WMA, M4A); nel gioco scegline una in Pausa > Opzioni > Opzioni audio, selettore Musica.",
     "Sostieni il progetto", "Gratis, e lo rester\xC3\xA0. Un grazie lo fa andare avanti.",
+    "Upscaling", "NVIDIA DLSS: il gioco disegnato pi\xC3\xB9 piccolo e reso nitido alla grandezza dello schermo",
+    "Controllo se questa scheda video ha DLSS...", "DLSS richiede una scheda video NVIDIA RTX e il suo driver", "Profilo",
+    "Disegnato a %dp, portato a %dp", "Nativo (DLAA)", "Qualit\xC3\xA0", "Bilanciato", "Prestazioni",
 };
 
 // Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
@@ -323,6 +331,9 @@ const Texts kPortuguese = {
     "ABRIR O LAUNCHER", "LAUNCHER",
     "MÚSICA", "Suas próprias músicas no rádio do jogo. Crie aqui as suas playlists (MP3, FLAC, WAV, WMA, M4A); no jogo escolha uma em Pause > Options > Audio Options, seletor Music.",
     "Apoie o projeto", "Gratuito, e sempre será. Um obrigado o mantém vivo.",
+    "Upscaling", "NVIDIA DLSS: o jogo desenhado menor e deixado nítido no tamanho da sua tela",
+    "Verificando se esta placa de vídeo tem DLSS...", "O DLSS precisa de uma placa de vídeo NVIDIA RTX e do seu driver", "Perfil",
+    "Desenhado em %dp, levado a %dp", "Nativo (DLAA)", "Qualidade", "Equilibrado", "Desempenho",
 };
 
 const Texts kSpanish = {
@@ -393,6 +404,9 @@ const Texts kSpanish = {
     "ABRIR EL LAUNCHER", "LAUNCHER",
     "MÚSICA", "Tus propias canciones en la radio del juego. Crea aquí tus listas (MP3, FLAC, WAV, WMA, M4A); en el juego elige una en Pausa > Opciones > Opciones de audio, el selector de música.",
     "Apoya el proyecto", "Gratis, y siempre lo será. Un gracias lo mantiene vivo.",
+    "Escalado", "NVIDIA DLSS: el juego dibujado más pequeño y nítido al tamaño de tu pantalla",
+    "Comprobando si esta tarjeta gráfica tiene DLSS...", "DLSS necesita una tarjeta gráfica NVIDIA RTX y su controlador", "Perfil",
+    "Dibujado a %dp, llevado a %dp", "Nativo (DLAA)", "Calidad", "Equilibrado", "Rendimiento",
 };
 
 // The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
@@ -1039,6 +1053,8 @@ private:
     std::unique_ptr<LauncherMusic> music_;
     UpdateCheck updates_;
     std::thread update_thread_;
+    std::thread dlss_thread_;  // upscale64 --check: whether DLSS runs here
+    std::atomic<int> dlss_ready_{-1};  // -2 no helper beside the game (no rows), -1 still checking, 0 no, 1 yes
     decltype(&XInputGetState) xinput_get_state_ = nullptr;
     bool pad_connected_ = false;
     bool pad_present_[4] = {};
@@ -1206,6 +1222,7 @@ void Launcher::stop_graphics() {
     music_.reset();  // fades out
     if (art_thread_.joinable()) art_thread_.join();
     if (update_thread_.joinable()) update_thread_.join();
+    if (dlss_thread_.joinable()) dlss_thread_.join();
     {
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
         nv2a_set_window_hook(nullptr);
@@ -1747,6 +1764,47 @@ void Launcher::steps(int current, int total) {
     cursor_ += px(26);
 }
 
+// Whether NVIDIA DLSS runs on this PC: the helper beside the exe (upscale64.exe, with NVIDIA's DLL) answers
+// --check with 0 (about 2 s: NGX starts). Its line goes to the log.
+bool dlss_available() {
+    const std::filesystem::path helper = program_directory() / L"upscale64.exe";
+    std::error_code ignored;
+    if (!std::filesystem::exists(helper, ignored)) {
+        log_line("launcher: DLSS: no upscale64.exe beside the game");
+        return false;
+    }
+    SECURITY_ATTRIBUTES inherit{sizeof(inherit), nullptr, TRUE};
+    HANDLE read = nullptr, write = nullptr;
+    if (!CreatePipe(&read, &write, &inherit, 0)) return false;
+    SetHandleInformation(read, HANDLE_FLAG_INHERIT, 0);
+    STARTUPINFOW startup{sizeof(startup)};
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdOutput = startup.hStdError = write;
+    std::wstring command = L"\"" + helper.wstring() + L"\" --check";
+    PROCESS_INFORMATION process{};
+    const bool started = CreateProcessW(helper.c_str(), command.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
+                                        nullptr, &startup, &process);
+    CloseHandle(write);
+    DWORD code = 1;
+    if (started) {
+        char line[256] = {};
+        DWORD got = 0;
+        ReadFile(read, line, sizeof(line) - 1, &got, nullptr);
+        line[got] = 0;
+        line[std::strcspn(line, "\r\n")] = 0;
+        if (WaitForSingleObject(process.hProcess, 15000) != WAIT_OBJECT_0) TerminateProcess(process.hProcess, 1);
+        GetExitCodeProcess(process.hProcess, &code);
+        CloseHandle(process.hProcess);
+        CloseHandle(process.hThread);
+        log_line("launcher: %s", line[0] ? line : "DLSS: the helper said nothing");
+    }
+    CloseHandle(read);
+    return started && code == 0;
+}
+
+// The profiles' scale, the screen's lines over the drawn ones (as DLSS's own: Quality 1.5, Balanced 1.72, Performance 2).
+constexpr float kProfileRatio[] = {1.0f, 1.5f, 1.72f, 2.0f};
+
 // --- settings ---
 
 // Internal resolution (render_scale): the picture's height, the game drawing 480 lines. 0, Automatic: as many lines
@@ -1914,7 +1972,7 @@ std::string pad_text(const char* text) {
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
     for (const char* key :
-         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "anisotropy", "hud_style", "sharp_2d", "sharp_textures"}) {
+         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "upscaler", "upscaler_quality", "anisotropy", "hud_style", "sharp_2d", "sharp_textures"}) {
         if (setting(key) != setting_at_start(key)) return true;
     }
     return false;
@@ -2137,22 +2195,40 @@ void Launcher::page_settings() {
         int vsync = setting("vsync") != 0 ? 1 : 0;
         if (segmented("##vsync", toggle, 2, &vsync)) set_setting("vsync", static_cast<float>(vsync));
     } else if (settings_tab_ == 1) {
-        row(t.scale, t.scale_sub, true);
+        // Upscaling, as games have it: Off, or DLSS; with DLSS a second row for its profile, which sets the
+        // drawn resolution instead of the internal resolution row.
+        const int ready = dlss_ready_.load();
+        int upscaler = setting("upscaler") == 2 && ready == 1 ? 1 : 0;
+        if (ready != -2) {
+            row(t.upscaling, ready < 0 ? t.upscaling_checking : ready == 0 ? t.upscaling_missing : t.upscaling_sub, true);
+            const char* upscalers[] = {t.off, "DLSS"};
+            if (segmented("##upscaler", upscalers, ready == 1 ? 2 : 1, &upscaler)) set_setting("upscaler", upscaler ? 2.0f : 0.0f);
+        }
         MONITORINFO monitor{sizeof(MONITORINFO)};
         GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTOPRIMARY), &monitor);
-        char screen_lines[16];
-        std::snprintf(screen_lines, sizeof(screen_lines), "%ldp",
-                      std::clamp<long>(monitor.rcMonitor.bottom - monitor.rcMonitor.top, 480, 2160));
-        char labels[kResolutionCount][32];
-        const char* names[kResolutionCount];
-        for (int i = 0; i < kResolutionCount; ++i) {
-            std::snprintf(labels[i], sizeof(labels[i]), "%s \xC2\xB7 %s", kResolutions[i].name,
-                          kResolutions[i].lines ? kResolutions[i].lines : screen_lines);
-            names[i] = labels[i];
-        }
-        int resolution = resolution_index(setting("render_scale"));
-        if (combo("##scale", names, kResolutionCount, &resolution)) {
-            set_setting("render_scale", kResolutions[resolution].scale);
+        const long screen = std::clamp<long>(monitor.rcMonitor.bottom - monitor.rcMonitor.top, 480, 2160);
+        if (upscaler == 1) {
+            int profile = std::clamp(static_cast<int>(setting("upscaler_quality")), 0, 3);
+            char drawn[96];
+            std::snprintf(drawn, sizeof(drawn), t.profile_sub, static_cast<int>(screen / kProfileRatio[profile]), static_cast<int>(screen));
+            row(t.profile, drawn, true);
+            const char* profiles[] = {t.profile_dlaa, t.profile_quality, t.profile_balanced, t.profile_performance};
+            if (combo("##profile", profiles, 4, &profile)) set_setting("upscaler_quality", static_cast<float>(profile));
+        } else {
+            row(t.scale, t.scale_sub, true);
+            char screen_lines[16];
+            std::snprintf(screen_lines, sizeof(screen_lines), "%ldp", screen);
+            char labels[kResolutionCount][32];
+            const char* names[kResolutionCount];
+            for (int i = 0; i < kResolutionCount; ++i) {
+                std::snprintf(labels[i], sizeof(labels[i]), "%s \xC2\xB7 %s", kResolutions[i].name,
+                              kResolutions[i].lines ? kResolutions[i].lines : screen_lines);
+                names[i] = labels[i];
+            }
+            int resolution = resolution_index(setting("render_scale"));
+            if (combo("##scale", names, kResolutionCount, &resolution)) {
+                set_setting("render_scale", kResolutions[resolution].scale);
+            }
         }
         row(t.anisotropy, nullptr, true);
         const char* levels[] = {"1x", "4x", "8x", "16x"};
@@ -4003,6 +4079,12 @@ std::optional<GameDisc> Launcher::run() {
     focus_panel_ = wizard_;  // the guide's button already selected: one press of A
     if (disc_) start_art_loader(disc_->path);
     if (setting("check_updates") != 0) update_thread_ = std::thread(check_for_updates, &updates_);
+    std::error_code no_helper;
+    if (std::filesystem::exists(program_directory() / L"upscale64.exe", no_helper)) {
+        dlss_thread_ = std::thread([this] { dlss_ready_ = dlss_available() ? 1 : 0; });
+    } else {
+        dlss_ready_ = -2;  // experimental: the rows only where upscale64.exe is (not in the release packages yet)
+    }
     char page[16] = {};  // MC3_LAUNCHER_PAGE=settings|controls|cheats|codes|about: test screenshots
     if (GetEnvironmentVariableA("MC3_LAUNCHER_PAGE", page, sizeof(page)) && !wizard_) {
         cheats_tab_ = !std::strcmp(page, "codes") ? 1 : 0;
