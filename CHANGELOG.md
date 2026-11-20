@@ -22,6 +22,10 @@
 
 ### Improved
 
+- **More natural light and colour from the modern effects**: the glow, contrast, saturation and vignette now apply to
+  the 3D scene before the HUD is drawn, so the HUD keeps its own colours. Contrast follows a curve that keeps
+  detail in the darkest and brightest parts (before, night scenes lost their dark detail and lights burnt
+  out), and the glow around lights is softer and wider.
 - **The launcher's buttons**: Report a problem and Support the project sit above the bottom bar, on every page and in
   the in-game menu, and a speaker at the left of the bar turns the launcher's music off and on (`launcher_mute` in
   `mc3port.ini`; the game's volume stays in the settings). The hints' keys are drawn as keyboard keys. Support goes to
