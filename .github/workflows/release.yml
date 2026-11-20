@@ -1,6 +1,6 @@
 # Builds the Windows package on every push to main or develop and on pull requests. A tag vX.Y.Z (matching the
-# version in CMakeLists.txt, with a section in CHANGELOG.md) publishes it as a GitHub release with its SHA256SUMS and
-# notes; any other run keeps the package as an artifact, so a broken build shows up before a release.
+# version in CMakeLists.txt, with a section in CHANGELOG.md) makes it a draft GitHub release with its SHA256SUMS and
+# notes, published by hand once its files are checked (VirusTotal); any other run keeps the package as an artifact, so a broken build shows up before a release.
 name: Release
 
 on:
@@ -40,7 +40,7 @@ jobs:
         shell: pwsh
         run: ./tools/package.ps1
 
-      - name: Publish the release
+      - name: Make the draft release
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
@@ -48,7 +48,7 @@ jobs:
         # The notes: the version's section of CHANGELOG.md (notes.md, made in the first check), then GitHub's
         # compare link.
         run: |
-          gh release create "${{ github.ref_name }}" (Get-ChildItem dist -File).FullName --title "mc3port ${{ github.ref_name }}" --notes-file notes.md --generate-notes
+          gh release create "${{ github.ref_name }}" (Get-ChildItem dist -File).FullName --title "mc3port ${{ github.ref_name }}" --notes-file notes.md --generate-notes --draft
 
       - name: Keep the package
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
