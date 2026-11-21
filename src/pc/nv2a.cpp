@@ -971,14 +971,33 @@ void interrupt_thread() {
     // The game shows a frame every second vertical blank: 30 fps at the Xbox's 60 Hz. Its logic runs on real time
     // (the same acceleration at 60 and 120 Hz), so 120 Hz blanks give 60 game frames per second (setting frame_rate).
     const auto period = std::chrono::nanoseconds(1000000000 / nv2a_vblank_hz());
+    // The blanks from a high-resolution timer: a wait in whole milliseconds made each one late by up to a millisecond,
+    // and the next one early by as much, which a frame of nearly a whole blank then missed (Spider-Man 2 at 120 fps:
+    // 111 fps, 119.7 with the timer). Windows before 10 1803 has no such timer: there the waits in milliseconds.
+    const HANDLE timer =
+        CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     auto next = Clock::now() + period;
     for (;;) {
         const auto now = Clock::now();
-        const DWORD wait = now >= next ? 0 : static_cast<DWORD>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(next - now).count() + 1);
         {
             ProfileScope scope(ProfileTime::idle);
-            WaitForSingleObject(g_interrupt_request, wait);
+            if (now >= next) {
+                WaitForSingleObject(g_interrupt_request, 0);
+            } else {
+                // The wait in milliseconds stays as a backstop: a timer that cannot be set or does not fire (Wine) never
+                // stops the blanks.
+                const DWORD milliseconds = static_cast<DWORD>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(next - now).count() + 1);
+                LARGE_INTEGER due;
+                const long long left = std::chrono::duration_cast<std::chrono::nanoseconds>(next - now).count();
+                due.QuadPart = -std::max(1LL, left / 100);  // relative, in 100 ns
+                if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) {
+                    const HANDLE waits[2] = {g_interrupt_request, timer};
+                    WaitForMultipleObjects(2, waits, FALSE, milliseconds);
+                } else {
+                    WaitForSingleObject(g_interrupt_request, milliseconds);
+                }
+            }
         }
         const bool vblank = Clock::now() >= next;
         // A paused game gets no interrupts (they stay pending until it resumes); the picture is still presented,
@@ -996,6 +1015,9 @@ void interrupt_thread() {
         next += period;
         if (Clock::now() > next + period * 4) next = Clock::now() + period;  // do not try to catch up
 
+        // Counted before the GPU thread is woken to present: it reads the count to time the frame, and woken on
+        // another core it read it a blank short (one frame of 1 blank and the next of 3, where both had 2).
+        if (!paused) ++g_frames;
         if (g_renderer_ready) {
             g_present_requested = true;
             SetEvent(g_put_written);  // wake the GPU thread to present
@@ -1003,7 +1025,7 @@ void interrupt_thread() {
             present_front_buffer();
         }
         if (paused) continue;
-        if (++g_frames % 600 == 0) {
+        if (g_frames % 600 == 0) {
             log_line("nv2a: %llu vblanks, push buffer GET %08X, front buffer %08X",
                      static_cast<unsigned long long>(g_frames.load()), g_push.get.load(), reg(kPcrtcStart));
         }

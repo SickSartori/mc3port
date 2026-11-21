@@ -68,6 +68,8 @@ const Setting kSettings[] = {
     {"render_thread", 1, "Drawing on a thread of its own, beside the one that reads the game's drawing commands: 1 = yes (faster, most of all in split screen; needs four processor threads or more), 0 = as before, if the picture or the game misbehaves."},
     {"gpu_vertices", 1, "Vertex processing on the graphics card: 1 = yes (faster), 0 = on the processor."},
     {"render_scale", 0, "Internal resolution, times the game's 480 lines: 0 = like the screen, 1 = like the Xbox (480p), 1.5 = 720p, 2.25 = 1080p, 3 = 1440p, 4.5 = 2160p (4K), 6 = 2880p (5K). Higher = smoother edges."},
+    {"upscaler", 0, "Upscaling, experimental (only with upscale64.exe beside the game, not in the releases yet): 0 = off (the internal resolution above), 2 = NVIDIA DLSS on an RTX graphics card: the game is drawn at the lines its profile sets (upscaler_quality) and DLSS brings it to the screen's."},
+    {"upscaler_quality", 1, "Upscaling profile: 0 = native (DLAA: the screen's lines, the best edges), 1 = Quality, 2 = Balanced, 3 = Performance (the fewest lines, the most frames)."},
     {"anisotropy", 16, "Anisotropic texture filtering: 1 = off, up to 16."},
     {"effects", 1, "Modern effects: 1 = on, 0 = original picture (F10 toggles them while playing)."},
     {"sharpen", 0.5f, "Adaptive sharpening: 0 = off, 1 = strongest."},

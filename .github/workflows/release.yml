@@ -50,7 +50,9 @@ jobs:
           git clone --filter=blob:none --no-checkout --quiet https://github.com/NVIDIA/DLSS.git ../dlss-sdk
           git -C ../dlss-sdk sparse-checkout set --no-cone /include/ /lib/Windows_x86_64/x64/nvsdk_ngx_s.lib /LICENSE.txt
           git -C ../dlss-sdk checkout --quiet 9981c6350dc58c0ce21f024fd65e31e851c31689
-          cmake -S external/xport/tools/upscale64 -B build/upscale64 -A x64 "-DDLSS_SDK=$((Resolve-Path ../dlss-sdk).Path)"
+          # The port's name and version in its version information ("mc3port DLSS helper"); quoted: pwsh splits -DX=0.4.0 at the dot.
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(mc3port VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          cmake -S external/xport/tools/upscale64 -B build/upscale64 -A x64 "-DDLSS_SDK=$((Resolve-Path ../dlss-sdk).Path)" "-DUPSCALE64_PRODUCT=mc3port" "-DUPSCALE64_VERSION=$version"
           if ($LASTEXITCODE) { throw "configure failed" }
           cmake --build build/upscale64 --config Release
           if ($LASTEXITCODE) { throw "build failed" }

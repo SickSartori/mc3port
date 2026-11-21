@@ -22,6 +22,10 @@
 
 ### Improved
 
+- **More natural light and colour from the modern effects**: the glow, contrast, saturation and vignette now apply to
+  the 3D scene before the HUD is drawn, so the HUD keeps its own colours. Contrast follows a curve that keeps
+  detail in the darkest and brightest parts (before, night scenes lost their dark detail and lights burnt
+  out), and the glow around lights is softer and wider.
 - **The launcher's buttons**: Report a problem and Support the project sit above the bottom bar, on every page and in
   the in-game menu, and a speaker at the left of the bar turns the launcher's music off and on (`launcher_mute` in
   `mc3port.ini`; the game's volume stays in the settings). The hints' keys are drawn as keyboard keys. Support goes to
@@ -32,7 +36,8 @@
   one thread did both and was the limit of the frame rate. On the PC it was measured on, with the two ways taking
   turns in the same race: 50 frames a second instead of 37 in two-player split screen, 68 instead of 54 with one
   player at 120 fps. It needs four processor threads or more; `render_thread = 0` in `mc3port.ini` goes back to one
-  thread, should the picture or the game misbehave.
+  thread, should the picture or the game misbehave. The two threads each have processor cores of their own: with
+  Windows choosing, a test had some 10-second stretches in the city at 85 frames a second where they held 120.
 - **A little faster again where the PC works hardest**: for each draw the textures and the vertex state are found
   without being looked up again, a few percent less work on the thread that limits the frame rate.
 - **Replacement pictures for any texture**, not only the HUD's: `MC3_DUMP_TEXTURE=all` saves every texture the
@@ -63,6 +68,10 @@
   each on a core of its own. They could land on a slow core, or share one, and the frame rate swung with it.
 - **Full speed in the background**: Windows no longer slows mc3port down when its window is not in front or the
   battery saver is on.
+- **An incomplete disc image is named in the log** (issue 22): when a file or folder of the image lies past its end (a
+  download cut short), or a read from the disc fails, `mc3port.log` says so. Before, it showed only as a crash later.
+- **Linux and macOS**: at start the port checks that the picture it hands from one Direct3D device to the other
+  really arrives, and shows it the plain way where it does not. Not yet tried on those systems.
 
 ### Changed
 
@@ -77,6 +86,9 @@
 
 ### Fixed
 
+- **Frame timing**: a vertical blank was at times counted just after the frame that came with it, so two frames of
+  the same length were timed as one short and one long, for the game's clock and in the log. Now every frame at 60
+  fps counts its two blanks, and the blanks come from a more precise timer.
 - **Sharp pictures on the HUD's smallest pictures**: those enlarged four times got one level too many, Direct3D
   refused them (`cannot create an enlarged texture` in the log) and they stayed as the game's. Now they are sharp
   like the others.
