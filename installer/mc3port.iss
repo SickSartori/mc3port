@@ -100,6 +100,7 @@ Source: "{#SourceDir}\docs\README.md"; DestDir: "{app}\docs"; Flags: ignoreversi
 Source: "{#SourceDir}\docs\CHANGELOG.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\THIRD_PARTY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#SourceDir}\docs\loading_music\README.md"; DestDir: "{app}\docs\loading_music"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\licenses\*"; DestDir: "{app}\docs\licenses"; Flags: ignoreversion
 
 [Icons]
