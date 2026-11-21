@@ -16,7 +16,7 @@ The feature includes launcher-based music importing, customizable playback modes
 
 The launcher displays how many valid tracks are installed.
 
-Restart the game after importing music if it is already running.
+Imported tracks play from the next loading screen. Tracks copied into the folder by hand while the game runs do too: no restart is needed.
 
 ### Option 2: Manual Installation
 
