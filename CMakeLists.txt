@@ -69,6 +69,7 @@ if(WIN32)
         src/pc/keyboard_bindings.cpp
         src/pc/launcher_art.cpp
         src/pc/launcher_ui.cpp
+        src/pc/loading_music.cpp
         src/pc/nv2a.cpp
         src/pc/nv2a_kelvin.cpp
         src/pc/renderer_game.cpp
@@ -119,8 +120,10 @@ if(WIN32)
         mc3_test(test_soundtracks src/pc/soundtracks.cpp)
         target_link_libraries(test_soundtracks PRIVATE mf mfplat mfreadwrite mfuuid ole32 shell32)
         mc3_test(test_audio_gains)
-        mc3_test(test_launcher_style src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp)
-        mc3_test(test_settings src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp)
+        mc3_test(test_launcher_style src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp ${XPORT_DIR}/src/pc/paths.cpp)
+        mc3_test(test_settings src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp ${XPORT_DIR}/src/pc/paths.cpp)
+	  xport_identity(test_launcher_style mc3port MC3PORT MC3_)
+	  xport_identity(test_settings mc3port MC3PORT MC3_)
         xport_add_tests(mc3port MC3PORT MC3_)
         mc3_test(test_game_disc src/pc/game_disc.cpp)
         target_link_libraries(test_game_disc PRIVATE bcrypt comdlg32 shell32 user32)

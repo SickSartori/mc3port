@@ -6,19 +6,24 @@
 #include <shellapi.h>
 #include <shobjidl.h>
 #include <winhttp.h>
+#include <mmsystem.h>
+#include <xaudio2.h>
 #include <wrl/client.h>
 #include <xinput.h>
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -576,6 +581,46 @@ std::vector<std::filesystem::path> ask_for_music(HWND owner, bool folder) {
     return chosen;
 }
 
+// Validate WAV header before copying. The playback loader performs full RIFF validation later.
+bool loading_wave_header(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    char header[12]{};
+    return in.read(header, sizeof(header)) && !std::memcmp(header, "RIFF", 4) && !std::memcmp(header + 8, "WAVE", 4) &&
+           std::filesystem::file_size(path) <= 32 * 1024 * 1024;
+}
+
+std::filesystem::path loading_music_directory() {
+    return data_directory() / "loading_music";
+}
+
+std::string install_loading_folder(const std::filesystem::path& folder) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(folder, ec)) return "Folder not found.";
+    std::array<std::filesystem::path, 18> found{};
+    size_t scanned = 0;
+    for (std::filesystem::recursive_directory_iterator it(folder, std::filesystem::directory_options::skip_permission_denied, ec), end;
+         it != end && !ec && scanned < 4096; it.increment(ec), ++scanned) {
+        if (it.depth() > 4) { it.disable_recursion_pending(); continue; }
+        if (!it->is_regular_file(ec) || it->is_symlink(ec)) continue;
+        const auto name = it->path().filename().wstring();
+        for (int n = 1; n <= 18; ++n) {
+            if (name == std::to_wstring(n) + L".wav" && loading_wave_header(it->path())) found[n - 1] = it->path();
+        }
+    }
+    const auto dest = loading_music_directory();
+    std::filesystem::create_directories(dest, ec);
+    if (ec) return "Cannot create loading_music folder.";
+    int copied = 0, existing = 0;
+    for (int n = 1; n <= 18; ++n) {
+        if (found[n - 1].empty()) continue;
+        const auto target = dest / (std::to_wstring(n) + L".wav");
+        if (std::filesystem::exists(target, ec)) { ++existing; continue; } // Never overwrite silently.
+        if (std::filesystem::copy_file(found[n - 1], target, std::filesystem::copy_options::none, ec)) ++copied;
+        ec.clear();
+    }
+    return "Imported " + std::to_string(copied) + " tracks (" + std::to_string(existing) + " already installed). Restart the game to reload music.";
+}
+
 // --- colours ---
 
 constexpr ImU32 kRed = IM_COL32(227, 38, 47, 255), kRedDark = IM_COL32(158, 13, 21, 255);
@@ -847,6 +892,92 @@ struct OwnPicture {
     UINT width = 0, height = 0;
 };
 
+// Launcher-only preview: XAudio2 supports looping and per-voice volume, unlike PlaySoundW.
+// Only uncompressed 16-bit PCM WAVs are accepted, matching the loading music runtime.
+class LoadingMusicPreview {
+public:
+    ~LoadingMusicPreview() { stop(); }
+    int track() const { return track_; }
+    void stop() {
+        if (voice_) { voice_->Stop(); voice_->DestroyVoice(); voice_ = nullptr; }
+        if (master_) { master_->DestroyVoice(); master_ = nullptr; }
+        engine_.Reset();
+        samples_.clear();
+        track_ = 0;
+        started_at_ms_ = 0;
+    }
+    bool start(int track, const std::filesystem::path& path) {
+        stop();
+        std::ifstream in(path, std::ios::binary);
+        char riff[12]{};
+        if (!in.read(riff, 12) || std::memcmp(riff, "RIFF", 4) || std::memcmp(riff + 8, "WAVE", 4)) return false;
+        auto read32 = [](const char* p) -> uint32_t {
+            return uint32_t(uint8_t(p[0])) | (uint32_t(uint8_t(p[1])) << 8) |
+                   (uint32_t(uint8_t(p[2])) << 16) | (uint32_t(uint8_t(p[3])) << 24);
+        };
+        auto read16 = [](const char* p) -> uint16_t { return uint16_t(uint8_t(p[0])) | uint16_t(uint8_t(p[1]) << 8); };
+        WAVEFORMATEX fmt{};
+        bool have_fmt = false, have_data = false;
+        for (int i = 0; i < 128 && in && !(have_fmt && have_data); ++i) {
+            char header[8]{};
+            if (!in.read(header, 8)) break;
+            const uint32_t len = read32(header + 4);
+            if (len > 32 * 1024 * 1024) return false;
+            const auto next = in.tellg() + std::streamoff(len + (len & 1));
+            if (!std::memcmp(header, "fmt ", 4) && len >= 16 && len <= 64) {
+                char data[64]{};
+                if (!in.read(data, len)) return false;
+                fmt.wFormatTag = read16(data);
+                fmt.nChannels = read16(data + 2);
+                fmt.nSamplesPerSec = read32(data + 4);
+                fmt.nAvgBytesPerSec = read32(data + 8);
+                fmt.nBlockAlign = read16(data + 12);
+                fmt.wBitsPerSample = read16(data + 14);
+                have_fmt = true;
+            } else if (!std::memcmp(header, "data", 4) && len && !(len & 1)) {
+                samples_.resize(len);
+                if (!in.read(reinterpret_cast<char*>(samples_.data()), len)) { stop(); return false; }
+                have_data = true;
+            }
+            in.clear();
+            in.seekg(next);
+        }
+        if (!have_fmt || !have_data || fmt.wFormatTag != WAVE_FORMAT_PCM ||
+            (fmt.nChannels != 1 && fmt.nChannels != 2) || fmt.wBitsPerSample != 16 ||
+            fmt.nSamplesPerSec < 8000 || fmt.nSamplesPerSec > 192000 ||
+            fmt.nBlockAlign != fmt.nChannels * 2 || samples_.size() % fmt.nBlockAlign) { stop(); return false; }
+        if (FAILED(XAudio2Create(engine_.GetAddressOf(), 0, XAUDIO2_DEFAULT_PROCESSOR)) ||
+            FAILED(engine_->CreateMasteringVoice(&master_)) ||
+            FAILED(engine_->CreateSourceVoice(&voice_, &fmt))) { stop(); return false; }
+        XAUDIO2_BUFFER buffer{};
+        buffer.AudioBytes = static_cast<UINT32>(samples_.size());
+        buffer.pAudioData = samples_.data();
+        buffer.LoopCount = XAUDIO2_LOOP_INFINITE;
+        // Start silent: the launcher updates volume every frame with a short fade-in.
+        if (FAILED(voice_->SetVolume(0.0f)) ||
+            FAILED(voice_->SubmitSourceBuffer(&buffer)) || FAILED(voice_->Start())) { stop(); return false; }
+        started_at_ms_ = GetTickCount64();
+        track_ = track;
+        return true;
+    }
+    void volume(float master, float music) {
+        if (voice_) {
+            // Ramp in over 80 ms to avoid a click from a sudden silence-to-waveform jump.
+            const float elapsed = static_cast<float>(GetTickCount64() - started_at_ms_);
+            const float fade = std::clamp(elapsed / 80.0f, 0.0f, 1.0f);
+            voice_->SetVolume(std::clamp(master, 0.0f, 100.0f) *
+                              std::clamp(music, 0.0f, 100.0f) / 10000.0f * fade);
+        }
+    }
+private:
+    Microsoft::WRL::ComPtr<IXAudio2> engine_;
+    IXAudio2MasteringVoice* master_ = nullptr;
+    IXAudio2SourceVoice* voice_ = nullptr;
+    std::vector<uint8_t> samples_;
+    int track_ = 0;
+    ULONGLONG started_at_ms_ = 0;
+};
+
 class Launcher {
 public:
     Launcher(HWND window, const std::filesystem::path& exe_directory, bool in_game = false)
@@ -967,14 +1098,19 @@ private:
     void page_exit();
     void page_launcher();
     void page_music();
+    void page_loading_music();
     // The file dialog makes the game window its owner, which needs the window thread: never while g_ui_mutex is
     // held (that thread waits for it in window_hook). Clicks only ask for it; run() opens it between frames.
     void choose_disc() { choose_disc_requested_ = true; }
     void run_disc_dialog();
     // Your music (page_music): the playlist open (-1 the list), the pages shown, the name being typed.
-    enum class MusicDialog { kNone, kFolder, kNewPlaylist, kAddSongs };  // opened between frames, like the disc's
+    enum class MusicDialog { kNone, kFolder, kNewPlaylist, kAddSongs, kLoadingFolder };  // opened between frames, like the disc's
     static constexpr int kNotRenaming = -2, kRenamingPlaylist = -1;      // else the song renamed
     MusicDialog music_dialog_ = MusicDialog::kNone;
+    int music_section_ = 0, loading_section_ = 0;
+    LoadingMusicPreview preview_;
+    std::string loading_import_message_;
+    int loading_weight_page_ = 0;
     size_t music_dialog_index_ = 0;  // the playlist Add songs is for
     int music_open_ = -1, music_list_page_ = 0, music_song_page_ = 0, music_renaming_ = kNotRenaming;
     char music_name_[128] = {};
@@ -2678,6 +2814,7 @@ void Launcher::frame(float now, float dt) {
         const Page targets[] = {Page::kPlay, Page::kSettings, Page::kControls, Page::kMusic, Page::kAbout, Page::kQuit};
         side_menu(now, since, labels, targets, 6);
     }
+    if (page_ != Page::kMusic || music_section_ != 1) preview_.stop();
     panel(now, since);
     bottom_bar(since);
     g_alpha = 1;
@@ -3769,6 +3906,12 @@ MusicChange Launcher::music_playlist(const MusicPlaylist& playlist, size_t index
 void Launcher::page_music() {
     const Texts& t = T();
     title(t.menu_music);
+    const char* music_tabs[] = {"Custom Radio", "PS2 Loading Music"};
+    ImGui::PushID("music_main_tabs");
+    tabs(music_tabs, 2, &music_section_);
+    ImGui::PopID();
+    if (music_section_ == 1) { page_loading_music(); return; }
+    preview_.stop();
     std::unique_lock<std::mutex> lock(g_music.mutex);
     if (!g_music.loaded && !g_music.running) {
         g_music.playlists = load_music(music_folder());
@@ -3799,6 +3942,172 @@ void Launcher::page_music() {
     }
     lock.unlock();
     if (change) change_music(std::move(change));
+}
+
+// Titles can be edited without changing the numbered WAV filenames expected by the runtime.
+// User titles are local text files, never included with the distributed source.
+static std::string loading_track_title(int number) {
+    const auto folder = loading_music_directory();
+    const auto custom = folder / (std::to_wstring(number) + L".title");
+    {
+        std::ifstream input(custom, std::ios::binary);
+        if (input) {
+            std::string name;
+            std::getline(input, name);
+            if (!name.empty() && name.size() < 160) return name;
+        }
+    }
+    // RIFF INFO/INAM is optional; most extracted PS2 WAVs have no title metadata.
+    const auto wav = folder / (std::to_wstring(number) + L".wav");
+    std::ifstream in(wav, std::ios::binary);
+    char riff[12]{};
+    if (in.read(riff, 12) && !std::memcmp(riff, "RIFF", 4) && !std::memcmp(riff + 8, "WAVE", 4)) {
+        auto u32 = [](const char* p) -> uint32_t {
+            return uint32_t(uint8_t(p[0])) | (uint32_t(uint8_t(p[1])) << 8) |
+                   (uint32_t(uint8_t(p[2])) << 16) | (uint32_t(uint8_t(p[3])) << 24);
+        };
+        // Bound the metadata scan; never parse arbitrary-sized chunks into memory.
+        for (int chunk = 0; chunk < 100 && in; ++chunk) {
+            char hdr[8]{};
+            if (!in.read(hdr, 8)) break;
+            const uint32_t length = u32(hdr + 4);
+            const auto next = in.tellg() + std::streamoff(length + (length & 1));
+            if (!std::memcmp(hdr, "LIST", 4) && length >= 4 && length < 65536) {
+                std::vector<char> data(length);
+                if (in.read(data.data(), length) && !std::memcmp(data.data(), "INFO", 4)) {
+                    size_t pos = 4;
+                    while (pos + 8 <= data.size()) {
+                        const uint32_t size = u32(data.data() + pos + 4);
+                        if (size > data.size() - pos - 8) break;
+                        if (!std::memcmp(data.data() + pos, "INAM", 4) && size > 0 && size < 160) {
+                            std::string title(data.data() + pos + 8, size);
+                            while (!title.empty() && (title.back() == '\0' || title.back() == '\r' || title.back() == '\n')) title.pop_back();
+                            if (!title.empty()) return title;
+                        }
+                        pos += 8 + size + (size & 1);
+                    }
+                }
+            }
+            in.clear();
+            in.seekg(next);
+        }
+    }
+    return std::to_string(number) + ".wav";
+}
+
+// Two-level navigation: Music -> PS2 Loading Music -> Settings / Track Preferences.
+// Both pages fit the fixed-size launcher panel; no scroll area is introduced.
+void Launcher::page_loading_music() {
+    // Detect music on every frame so importing or removing files updates the page immediately.
+    const auto music_dir = loading_music_directory();
+    bool installed_tracks[19]{};
+    int track_count = 0;
+    for (int n = 1; n <= 18; ++n) {
+        const auto wav = music_dir / (std::to_wstring(n) + L".wav");
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(wav, ec) && loading_wave_header(wav)) {
+            installed_tracks[n] = true;
+            ++track_count;
+        }
+    }
+    const bool has_music = track_count > 0;
+    const bool weighted = std::clamp(int(setting("loading_music_mode")), 0, 2) == 2;
+    if (!has_music || !weighted) loading_section_ = 0;
+    if (preview_.track()) preview_.volume(setting("volume"), setting("loading_music_volume"));
+    const char* sections[] = {"Settings", "Track Preferences"};
+    ImGui::PushID("ps2_loading_subtabs");
+    tabs(sections, has_music && weighted ? 2 : 1, &loading_section_);
+    ImGui::PopID();
+
+    if (loading_section_ == 1) {
+        if (preview_.track() < 0) preview_.stop();
+        const char* pages[] = {"1-6", "7-12", "13-18"};
+        segmented("##ps2_weights_page", pages, 3, &loading_weight_page_);
+        for (int n = loading_weight_page_ * 6 + 1; n <= loading_weight_page_ * 6 + 6; ++n) {
+            const float top = origin_.y + cursor_;
+            char key[48], id[48], preview_id[48];
+            std::snprintf(key, sizeof(key), "loading_music_weight_%d", n);
+            std::snprintf(id, sizeof(id), "##ps2_weight_%d", n);
+            std::snprintf(preview_id, sizeof(preview_id), "##ps2_preview_%d", n);
+            const auto wav = music_dir / (std::to_wstring(n) + L".wav");
+            const bool installed = installed_tracks[n];
+            const std::string name = installed ? loading_track_title(n) : std::to_string(n) + ".wav";
+            const std::string shown = name.size() > 23 ? name.substr(0, 20) + "..." : name;
+            text(body_bold_, px(18), ImVec2(origin_.x, top + px(2)), installed ? kInk : kDim, shown.c_str());
+            if (!installed) {
+                text(body_, px(14), ImVec2(origin_.x, top + px(24)), kDim, "Not installed");
+            } else if (name != std::to_string(n) + ".wav") {
+                char filename[32];
+                std::snprintf(filename, sizeof(filename), "%d.wav", n);
+                text(body_, px(14), ImVec2(origin_.x, top + px(24)), kDim, filename);
+            }
+            if (installed) {
+                const char* caption = preview_.track() == n ? "Stop" : "Play";
+                if (small_button(caption, ImVec2(origin_.x + px(156), top + px(2)), preview_id)) {
+                    if (preview_.track() == n) preview_.stop();
+                    else if (!preview_.start(n, wav)) loading_import_message_ = "Preview failed: unsupported or invalid WAV.";
+                    preview_.volume(setting("volume"), setting("loading_music_volume"));
+                }
+                float weight = setting(key);
+                if (slider(id, &weight, 0, 300, "%.0f%%")) set_setting(key, std::round(weight));
+            } else {
+                // Keep the same row height as installed tracks without an interactive slider.
+                cursor_ += px(52);
+                list_->AddLine(ImVec2(origin_.x, origin_.y + cursor_ - px(6)),
+                               ImVec2(origin_.x + panel_width_, origin_.y + cursor_ - px(6)),
+                               fade(IM_COL32(255, 255, 255, 16)));
+            }
+        }
+        return;
+    }
+
+    if (preview_.track() > 0 && loading_section_ == 0) preview_.stop();
+    row("PS2 loading music", "Optional WAV tracks for the original PS2 loading screens");
+    const char* toggle[] = {"Off", "On"};
+    int enabled = setting("loading_music") != 0 ? 1 : 0;
+    if (segmented("##ps2_enabled", toggle, 2, &enabled)) set_setting("loading_music", float(enabled));
+
+    if (!has_music) {
+        lead("No loading music found. Import numbered WAV tracks to unlock music settings.");
+    } else {
+        char count_label[80];
+        std::snprintf(count_label, sizeof(count_label), "%d of 18 loading tracks found", track_count);
+        lead(count_label);
+        row("Volume", "Also follows the game's overall volume");
+        float volume = setting("loading_music_volume");
+        if (slider("##ps2_volume", &volume, 0, 100, "%.0f")) {
+            set_setting("loading_music_volume", std::round(volume));
+            preview_.volume(setting("volume"), setting("loading_music_volume"));
+        }
+        // A negative track ID identifies the Settings-page volume test (loops until stopped).
+        const float test_y = origin_.y + cursor_;
+        if (small_button(preview_.track() < 0 ? "Stop test audio" : "Test audio",
+                         ImVec2(origin_.x, test_y), "##ps2_test_audio")) {
+            if (preview_.track() < 0) preview_.stop();
+            else {
+                for (int n = 1; n <= 18; ++n) if (installed_tracks[n]) {
+                    if (!preview_.start(-n, music_dir / (std::to_wstring(n) + L".wav")))
+                        loading_import_message_ = "Test audio failed: unsupported or invalid WAV.";
+                    preview_.volume(setting("volume"), setting("loading_music_volume"));
+                    break;
+                }
+            }
+        }
+        cursor_ += px(44);
+        row("Fade-out duration", "Seconds before playback finishes");
+        float fade = setting("loading_music_fade_seconds");
+        if (slider("##ps2_fade", &fade, 0, 5, "%.2f s")) set_setting("loading_music_fade_seconds", std::round(fade * 20) / 20);
+        row("Playback order", "Weighted unlocks individual track preferences");
+        const char* modes[] = {"In order", "Random", "Weighted"};
+        int mode = std::clamp(int(setting("loading_music_mode")), 0, 2);
+        if (segmented("##ps2_mode", modes, 3, &mode)) set_setting("loading_music_mode", float(mode));
+    }
+    // Import actions remain accessible before and after music has been installed.
+    const float y = origin_.y + cursor_ + px(8);
+    ImVec2 button_size;
+    if (small_button("Import folder", ImVec2(origin_.x, y), "##ps2_folder", &button_size)) music_dialog_ = MusicDialog::kLoadingFolder;
+    cursor_ += button_size.y + px(22);
+    if (!loading_import_message_.empty()) lead(loading_import_message_.c_str());
 }
 
 // In the game menu: the launcher again, as at the start (back_to_launcher).
@@ -4049,6 +4358,11 @@ std::optional<GameDisc> Launcher::run() {
         }
         if (music_dialog_ != MusicDialog::kNone) {
             const MusicDialog dialog = std::exchange(music_dialog_, MusicDialog::kNone);
+            if (dialog == MusicDialog::kLoadingFolder) {
+                const auto chosen = ask_for_music(window_, true);
+                if (!chosen.empty()) loading_import_message_ = install_loading_folder(chosen[0]);
+                continue;
+            }
             const std::vector<std::filesystem::path> chosen = ask_for_music(window_, dialog == MusicDialog::kFolder);
             if (!chosen.empty()) {
                 change_music(dialog == MusicDialog::kFolder

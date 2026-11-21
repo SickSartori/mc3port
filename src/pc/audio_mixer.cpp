@@ -21,6 +21,7 @@
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
+#include "pc/loading_music.h"
 #include "pc/profile.h"
 #include "pc/settings.h"
 #include "pc/xbox_types.h"
@@ -424,6 +425,7 @@ void mix(float* out, uint32_t frames) {
         }
         if (voice->envelope_stage == EnvelopeStage::kDone) finish_release(*voice);
     }
+    loading_music_mix(out, frames, kOutputRate);
     // Master level, then the look-ahead limiter (Limiter) for the moments when many voices add up past full scale.
     // With headroom and mix-in voices applied the game's own levels leave room, so little is taken off here.
     // Read every chunk: the in-game menu changes it.
