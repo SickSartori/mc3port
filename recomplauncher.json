@@ -145,6 +145,28 @@
       "defaults": { "loading_screen_seconds": "0" }
     },
     {
+      "id": "loading_music",
+      "label": "PS2 loading music",
+      "help": "The PS2 version's loading-screen music, from your own WAV files (1.wav to 18.wav in the loading_music folder; docs/loading_music/README.md says how). Longer loading screens give it time to play.",
+      "choices": [
+        { "label": "On", "set": { "loading_music": "1" } },
+        { "label": "Off", "set": { "loading_music": "0" } }
+      ],
+      "defaults": { "loading_music": "1" }
+    },
+    {
+      "id": "loading_music_volume",
+      "label": "Loading music volume",
+      "help": "The PS2 loading music's own volume; it also follows the overall volume.",
+      "choices": [
+        { "label": "100", "set": { "loading_music_volume": "100" } },
+        { "label": "70", "set": { "loading_music_volume": "70" } },
+        { "label": "50", "set": { "loading_music_volume": "50" } },
+        { "label": "25", "set": { "loading_music_volume": "25" } }
+      ],
+      "defaults": { "loading_music_volume": "70" }
+    },
+    {
       "id": "volume",
       "label": "Volume",
       "help": "Overall volume; 100 is the loudest.",

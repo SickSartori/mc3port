@@ -23,7 +23,8 @@
   from WAV files you supply (none come with mc3port), best with a longer loading-screen duration. The launcher's Music
   page has a PS2 Loading Music tab: import a folder with `1.wav` to `18.wav`, the volume, the fade-out, the order (in
   order, random, or weighted by each track's own weight) and a preview. The files go in `loading_music` in the game's
-  data folder; `docs/loading_music/README.md` in the package says how.
+  data folder; `docs/loading_music/README.md` in the package says how. RecompLauncher's page turns it on and off and
+  sets its volume.
 
 ### Improved
 
