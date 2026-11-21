@@ -48,25 +48,30 @@ bool read_wave(const std::filesystem::path& file, Track& track) {
     if (!in) return false;
     const auto length = in.tellg();
     if (length < 44 || length > 32 * 1024 * 1024) return false;
-    std::vector<uint8_t> bytes(static_cast<size_t>(length));
+    const size_t file_size = static_cast<size_t>(length);
+    uint8_t header[12];
     in.seekg(0);
-    if (!in.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()))) return false;
-    if (std::memcmp(bytes.data(), "RIFF", 4) || std::memcmp(bytes.data() + 8, "WAVE", 4)) return false;
+    if (!in.read(reinterpret_cast<char*>(header), sizeof(header))) return false;
+    if (std::memcmp(header, "RIFF", 4) || std::memcmp(header + 8, "WAVE", 4)) return false;
     size_t pos = 12;
     bool format_ok = false;
     size_t data_pos = 0, data_size = 0;
-    while (pos + 8 <= bytes.size()) {
-        const uint32_t size = u32(bytes.data() + pos + 4);
+    while (pos + 8 <= file_size) {
+        uint8_t chunk[8];
+        in.seekg(static_cast<std::streamoff>(pos));
+        if (!in.read(reinterpret_cast<char*>(chunk), sizeof(chunk))) return false;
+        const uint32_t size = u32(chunk + 4);
         const size_t body = pos + 8;
-        if (size > bytes.size() - body) return false;
-        if (!std::memcmp(bytes.data() + pos, "fmt ", 4) && size >= 16) {
-            const uint8_t* fmt = bytes.data() + body;
+        if (size > file_size - body) return false;
+        if (!std::memcmp(chunk, "fmt ", 4) && size >= 16) {
+            uint8_t fmt[16];
+            if (!in.read(reinterpret_cast<char*>(fmt), sizeof(fmt))) return false;
             track.channels = u16(fmt + 2);
             track.rate = u32(fmt + 4);
             format_ok = u16(fmt) == 1 && (track.channels == 1 || track.channels == 2) &&
                         track.rate >= 8000 && track.rate <= 192000 && u16(fmt + 14) == 16 &&
                         u16(fmt + 12) == track.channels * 2;
-        } else if (!std::memcmp(bytes.data() + pos, "data", 4)) {
+        } else if (!std::memcmp(chunk, "data", 4)) {
             data_pos = body;
             data_size = size;
         }
@@ -74,7 +79,9 @@ bool read_wave(const std::filesystem::path& file, Track& track) {
     }
     if (!format_ok || !data_pos || data_size < track.channels * 2 || data_size % (track.channels * 2)) return false;
     track.samples.resize(data_size / 2);
-    for (size_t i = 0; i < track.samples.size(); ++i) track.samples[i] = static_cast<int16_t>(u16(bytes.data() + data_pos + i * 2));
+    in.seekg(static_cast<std::streamoff>(data_pos));
+    // Windows x86 stores PCM16 samples in the WAV file's little-endian byte order.
+    if (!in.read(reinterpret_cast<char*>(track.samples.data()), static_cast<std::streamsize>(data_size))) return false;
     return true;
 }
 
