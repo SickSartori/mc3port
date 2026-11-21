@@ -589,9 +589,7 @@ bool loading_wave_header(const std::filesystem::path& path) {
 }
 
 std::filesystem::path loading_music_directory() {
-    wchar_t executable[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, executable, MAX_PATH);
-    return std::filesystem::path(executable).parent_path() / L"loading_music";
+    return data_directory() / "loading_music";
 }
 
 std::string install_loading_folder(const std::filesystem::path& folder) {

@@ -1,4 +1,5 @@
 #include "pc/loading_music.h"
+#include "pc/paths.h"
 
 #include <windows.h>
 
@@ -80,10 +81,7 @@ bool read_wave(const std::filesystem::path& file, Track& track) {
 void load_tracks() {
     if (g_loaded) return;
     g_loaded = true;
-    // Beside the executable, independent of the user's game-data/portable-mode location.
-    wchar_t module[MAX_PATH] = {};
-    if (!GetModuleFileNameW(nullptr, module, MAX_PATH)) return;
-    const auto folder = std::filesystem::path(module).parent_path() / L"loading_music";
+    const auto folder = data_directory() / "loading_music";
     for (int i = 1; i <= 18; ++i) {
         Track track;
         if (read_wave(folder / (std::to_wstring(i) + L".wav"), track)) {
