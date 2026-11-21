@@ -1099,6 +1099,7 @@ private:
     void page_launcher();
     void page_music();
     void page_loading_music();
+    void refresh_loading_music_cache();
     // The file dialog makes the game window its owner, which needs the window thread: never while g_ui_mutex is
     // held (that thread waits for it in window_hook). Clicks only ask for it; run() opens it between frames.
     void choose_disc() { choose_disc_requested_ = true; }
@@ -1110,6 +1111,10 @@ private:
     int music_section_ = 0, loading_section_ = 0;
     LoadingMusicPreview preview_;
     std::string loading_import_message_;
+    bool loading_cache_valid_ = false;
+    std::array<bool, 19> loading_installed_{};
+    std::array<std::string, 19> loading_titles_{};
+    int loading_track_count_ = 0;
     int loading_weight_page_ = 0;
     size_t music_dialog_index_ = 0;  // the playlist Add songs is for
     int music_open_ = -1, music_list_page_ = 0, music_song_page_ = 0, music_renaming_ = kNotRenaming;
@@ -2814,6 +2819,7 @@ void Launcher::frame(float now, float dt) {
         const Page targets[] = {Page::kPlay, Page::kSettings, Page::kControls, Page::kMusic, Page::kAbout, Page::kQuit};
         side_menu(now, since, labels, targets, 6);
     }
+    if (page_ != Page::kMusic) loading_cache_valid_ = false;
     if (page_ != Page::kMusic || music_section_ != 1) preview_.stop();
     panel(now, since);
     bottom_bar(since);
@@ -3911,6 +3917,7 @@ void Launcher::page_music() {
     tabs(music_tabs, 2, &music_section_);
     ImGui::PopID();
     if (music_section_ == 1) { page_loading_music(); return; }
+    loading_cache_valid_ = false;
     preview_.stop();
     std::unique_lock<std::mutex> lock(g_music.mutex);
     if (!g_music.loaded && !g_music.running) {
@@ -3997,20 +4004,29 @@ static std::string loading_track_title(int number) {
 
 // Two-level navigation: Music -> PS2 Loading Music -> Settings / Track Preferences.
 // Both pages fit the fixed-size launcher panel; no scroll area is introduced.
-void Launcher::page_loading_music() {
-    // Detect music on every frame so importing or removing files updates the page immediately.
+void Launcher::refresh_loading_music_cache() {
+    loading_installed_.fill(false);
+    loading_track_count_ = 0;
     const auto music_dir = loading_music_directory();
-    bool installed_tracks[19]{};
-    int track_count = 0;
     for (int n = 1; n <= 18; ++n) {
         const auto wav = music_dir / (std::to_wstring(n) + L".wav");
         std::error_code ec;
         if (std::filesystem::is_regular_file(wav, ec) && loading_wave_header(wav)) {
-            installed_tracks[n] = true;
-            ++track_count;
+            loading_installed_[n] = true;
+            loading_titles_[n] = loading_track_title(n);
+            ++loading_track_count_;
+        } else {
+            loading_titles_[n] = std::to_string(n) + ".wav";
         }
     }
-    const bool has_music = track_count > 0;
+    loading_cache_valid_ = true;
+}
+
+void Launcher::page_loading_music() {
+    // Scan only on entry or after importing, never during normal frame rendering.
+    if (!loading_cache_valid_) refresh_loading_music_cache();
+    const auto music_dir = loading_music_directory();
+    const bool has_music = loading_track_count_ > 0;
     const bool weighted = std::clamp(int(setting("loading_music_mode")), 0, 2) == 2;
     if (!has_music || !weighted) loading_section_ = 0;
     if (preview_.track()) preview_.volume(setting("volume"), setting("loading_music_volume"));
@@ -4030,8 +4046,8 @@ void Launcher::page_loading_music() {
             std::snprintf(id, sizeof(id), "##ps2_weight_%d", n);
             std::snprintf(preview_id, sizeof(preview_id), "##ps2_preview_%d", n);
             const auto wav = music_dir / (std::to_wstring(n) + L".wav");
-            const bool installed = installed_tracks[n];
-            const std::string name = installed ? loading_track_title(n) : std::to_string(n) + ".wav";
+            const bool installed = loading_installed_[n];
+            const std::string& name = loading_titles_[n];
             const std::string shown = name.size() > 23 ? name.substr(0, 20) + "..." : name;
             text(body_bold_, px(18), ImVec2(origin_.x, top + px(2)), installed ? kInk : kDim, shown.c_str());
             if (!installed) {
@@ -4071,7 +4087,7 @@ void Launcher::page_loading_music() {
         lead("No loading music found. Import numbered WAV tracks to unlock music settings.");
     } else {
         char count_label[80];
-        std::snprintf(count_label, sizeof(count_label), "%d of 18 loading tracks found", track_count);
+        std::snprintf(count_label, sizeof(count_label), "%d of 18 loading tracks found", loading_track_count_);
         lead(count_label);
         row("Volume", "Also follows the game's overall volume");
         float volume = setting("loading_music_volume");
@@ -4085,7 +4101,7 @@ void Launcher::page_loading_music() {
                          ImVec2(origin_.x, test_y), "##ps2_test_audio")) {
             if (preview_.track() < 0) preview_.stop();
             else {
-                for (int n = 1; n <= 18; ++n) if (installed_tracks[n]) {
+                for (int n = 1; n <= 18; ++n) if (loading_installed_[n]) {
                     if (!preview_.start(-n, music_dir / (std::to_wstring(n) + L".wav")))
                         loading_import_message_ = "Test audio failed: unsupported or invalid WAV.";
                     preview_.volume(setting("volume"), setting("loading_music_volume"));
@@ -4360,7 +4376,10 @@ std::optional<GameDisc> Launcher::run() {
             const MusicDialog dialog = std::exchange(music_dialog_, MusicDialog::kNone);
             if (dialog == MusicDialog::kLoadingFolder) {
                 const auto chosen = ask_for_music(window_, true);
-                if (!chosen.empty()) loading_import_message_ = install_loading_folder(chosen[0]);
+                if (!chosen.empty()) {
+                    loading_import_message_ = install_loading_folder(chosen[0]);
+                    loading_cache_valid_ = false;
+                }
                 continue;
             }
             const std::vector<std::filesystem::path> chosen = ask_for_music(window_, dialog == MusicDialog::kFolder);
