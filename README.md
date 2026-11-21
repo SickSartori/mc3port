@@ -81,6 +81,7 @@ And around the game:
 - **Sharp 2D pictures**: the radar's map, icons, letters and the cars' stickers enlarged with clean edges.
 - **Your own music** on the game's radio: playlists made in the launcher's Music page from MP3, FLAC, WAV, WMA or M4A
   files, chosen in the game in Pause > Options > Audio Options.
+- **PS2 loading-screen music**, optional, from your own WAV files: see [loading_music/README.md](loading_music/README.md).
 - **Cheats** in the in-game menu: money for your career, and the game's own codes with what each one does.
 - **Quality of life**: frame counter, opening films skipped, readable loading screens if you want them, an update
   check with a verified download, and a crash report that fills in the bug form for you.

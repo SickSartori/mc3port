@@ -19,6 +19,11 @@
   times with their edges kept, as Sharp pictures does for the HUD. It shows from close: signs and markings lose their
   steps. Nothing is added that the game does not have, and from afar the picture is the game's own. The textures
   sharpen a few seconds after a place loads, and take more graphics memory.
+- **PS2 loading-screen music** (#24, by Nekoniria), optional: the PS2 version's loading music on the loading screens,
+  from WAV files you supply (none come with mc3port), best with a longer loading-screen duration. The launcher's Music
+  page has a PS2 Loading Music tab: import a folder with `1.wav` to `18.wav`, the volume, the fade-out, the order (in
+  order, random, or weighted by each track's own weight) and a preview. The files go in `loading_music` in the game's
+  data folder; `loading_music/README.md` says how.
 
 ### Improved
 
