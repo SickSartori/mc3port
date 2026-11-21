@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <memory>
 #include <random>
 #include <array>
 #include <vector>
@@ -28,13 +29,12 @@ struct Track {
 };
 
 std::mutex g_mutex;
-std::vector<Track> g_tracks;
-bool g_loaded = false;
 size_t g_next = 0;
 std::mt19937 g_rng{std::random_device{}()};
 int g_last = -1, g_streak = 0;
 std::array<int, 18> g_cooldown{};
-const Track* g_active = nullptr;
+std::shared_ptr<const Track> g_active;
+uint64_t g_generation = 0;
 double g_position = 0;
 uint64_t g_started = 0;
 uint64_t g_end = 0;
@@ -78,75 +78,113 @@ bool read_wave(const std::filesystem::path& file, Track& track) {
     return true;
 }
 
-void load_tracks() {
-    if (g_loaded) return;
-    g_loaded = true;
+// Probe only filenames here. WAV decoding happens after a track is selected.
+std::vector<int> available_tracks() {
+    std::vector<int> tracks;
     const auto folder = data_directory() / "loading_music";
-    for (int i = 1; i <= 18; ++i) {
-        Track track;
-        if (read_wave(folder / (std::to_wstring(i) + L".wav"), track)) {
-            track.number = i;
-            g_tracks.push_back(std::move(track));
-        }
+    for (int number = 1; number <= 18; ++number) {
+        std::error_code error;
+        if (std::filesystem::is_regular_file(folder / (std::to_wstring(number) + L".wav"), error))
+            tracks.push_back(number);
     }
-    log_line("loading music: %u PCM WAV tracks found", static_cast<unsigned>(g_tracks.size()));
+    return tracks;
 }
 }  // namespace
 
 void loading_music_begin(uint64_t duration_ms) {
     if (setting("loading_music") == 0 || setting("loading_music_volume") <= 0) return;
-    std::lock_guard lock(g_mutex);
-    load_tracks();
-    if (g_tracks.empty()) return;
+
+    // Directory probing and WAV decoding must never hold the audio mix mutex.
+    const auto tracks = available_tracks();
+    if (tracks.empty()) return;
     const int mode = std::clamp(static_cast<int>(setting("loading_music_mode")), 0, 2);
-    size_t selected = g_next++ % g_tracks.size();
-    if (mode != 0) {
-        std::vector<size_t> eligible;
-        std::vector<double> weights;
-        for (size_t i = 0; i < g_tracks.size(); ++i) {
-            const int number = g_tracks[i].number;
+    std::array<double, 18> configured_weights{};
+    if (mode == 2) {
+        for (int number : tracks) {
             const std::string key = "loading_music_weight_" + std::to_string(number);
-            const double weight = mode == 1 ? 100.0 : std::clamp<double>(setting(key.c_str()), 0, 300);
-            if (weight <= 0 || g_cooldown[number - 1] > 0 || (number == g_last && g_streak >= 2)) continue;
-            eligible.push_back(i);
-            weights.push_back(weight);
+            configured_weights[number - 1] = std::clamp<double>(setting(key.c_str()), 0, 300);
         }
-        // When restrictions exclude every track, favor an enabled track and relax cooldowns.
-        if (eligible.empty()) {
-            for (size_t i = 0; i < g_tracks.size(); ++i) {
-                const std::string key = "loading_music_weight_" + std::to_string(g_tracks[i].number);
-                const double weight = mode == 1 ? 100.0 : std::clamp<double>(setting(key.c_str()), 0, 300);
-                if (weight > 0) { eligible.push_back(i); weights.push_back(weight); }
-            }
-        }
-        if (eligible.empty()) return; // All tracks intentionally disabled.
-        std::discrete_distribution<size_t> pick(weights.begin(), weights.end());
-        selected = eligible[pick(g_rng)];
     }
-    const int number = g_tracks[selected].number;
-    for (int& cooldown : g_cooldown) if (cooldown > 0) --cooldown;
-    if (number == g_last) ++g_streak;
-    else { g_last = number; g_streak = 1; }
-    if (mode != 0 && g_streak >= 2) g_cooldown[number - 1] = 3;
-    g_active = &g_tracks[selected];
-    g_position = 0;
-    g_started = GetTickCount64();
-    // Allow the audio to follow the visible loading-screen transition, which can
-    // outlast the minimum loading timer. Fade during this extra tail.
-    constexpr uint64_t kTransitionTailMs = 1000;
-    g_end = g_started + duration_ms + kTransitionTailMs;
+
+    int number = 0;
+    uint64_t generation = 0;
+    {
+        std::lock_guard lock(g_mutex);
+        size_t selected = g_next++ % tracks.size();
+        if (mode != 0) {
+            std::vector<size_t> eligible;
+            std::vector<double> weights;
+            for (size_t i = 0; i < tracks.size(); ++i) {
+                const int candidate = tracks[i];
+                const double weight = mode == 1 ? 100.0 : configured_weights[candidate - 1];
+                if (weight <= 0 || g_cooldown[candidate - 1] > 0 ||
+                    (candidate == g_last && g_streak >= 2)) continue;
+                eligible.push_back(i);
+                weights.push_back(weight);
+            }
+            // Relax cooldowns if they exclude every enabled track.
+            if (eligible.empty()) {
+                for (size_t i = 0; i < tracks.size(); ++i) {
+                    const double weight = mode == 1 ? 100.0 : configured_weights[tracks[i] - 1];
+                    if (weight > 0) { eligible.push_back(i); weights.push_back(weight); }
+                }
+            }
+            if (eligible.empty()) return; // All tracks intentionally disabled.
+            std::discrete_distribution<size_t> pick(weights.begin(), weights.end());
+            selected = eligible[pick(g_rng)];
+        }
+        number = tracks[selected];
+        // A later begin/end invalidates a load that is still in progress.
+        generation = ++g_generation;
+    }
+
+    auto loaded = std::make_shared<Track>();
+    const auto file = data_directory() / "loading_music" / (std::to_wstring(number) + L".wav");
+    if (!read_wave(file, *loaded)) {
+        log_line("loading music: cannot read PCM WAV track %d", number);
+        return;
+    }
+    loaded->number = number;
+
+    std::shared_ptr<const Track> previous;
+    {
+        std::lock_guard lock(g_mutex);
+        if (generation != g_generation) return;
+        for (int& cooldown : g_cooldown) if (cooldown > 0) --cooldown;
+        if (number == g_last) ++g_streak;
+        else { g_last = number; g_streak = 1; }
+        if (mode != 0 && g_streak >= 2) g_cooldown[number - 1] = 3;
+        previous = std::move(g_active);
+        g_active = std::move(loaded);
+        g_position = 0;
+        g_started = GetTickCount64();
+        // Follow the loading-screen transition and fade during its extra tail.
+        constexpr uint64_t kTransitionTailMs = 1000;
+        g_end = g_started + duration_ms + kTransitionTailMs;
+    }
+    // Release the previous WAV buffer outside the audio mutex.
 }
 
 void loading_music_end() {
-    std::lock_guard lock(g_mutex);
-    g_active = nullptr;
+    std::shared_ptr<const Track> previous;
+    {
+        std::lock_guard lock(g_mutex);
+        ++g_generation;
+        previous = std::move(g_active);
+    }
+    // Release the previous WAV buffer outside the audio mutex.
 }
 
 void loading_music_mix(float* stereo, uint32_t frames, uint32_t output_rate) {
-    std::lock_guard lock(g_mutex);
+    std::unique_lock lock(g_mutex);
     if (!g_active || !output_rate) return;
     const uint64_t now = GetTickCount64();
-    if (now >= g_end) { g_active = nullptr; return; }
+    if (now >= g_end) {
+        auto expired = std::move(g_active);
+        lock.unlock();
+        // Release the expired WAV buffer outside the audio mutex.
+        return;
+    }
     const auto& track = *g_active;
     const uint64_t count = track.frames();
     if (!count) return;
