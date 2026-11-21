@@ -68,6 +68,8 @@
   each on a core of its own. They could land on a slow core, or share one, and the frame rate swung with it.
 - **Full speed in the background**: Windows no longer slows mc3port down when its window is not in front or the
   battery saver is on.
+- **Linux and macOS**: at start the port checks that the picture it hands from one Direct3D device to the other
+  really arrives, and shows it the plain way where it does not. Not yet tried on those systems.
 
 ### Changed
 
