@@ -580,29 +580,6 @@ std::vector<std::filesystem::path> ask_for_music(HWND owner, bool folder) {
     return chosen;
 }
 
-std::vector<std::filesystem::path> ask_for_loading_zip(HWND owner) {
-    const HRESULT com = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    std::vector<std::filesystem::path> chosen;
-    ComPtr<IFileOpenDialog> dialog;
-    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
-        DWORD options = 0;
-        dialog->GetOptions(&options);
-        dialog->SetOptions(options | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST);
-        dialog->SetTitle(L"Import PS2 loading music ZIP");
-        const COMDLG_FILTERSPEC filter{L"ZIP archives", L"*.zip"};
-        dialog->SetFileTypes(1, &filter);
-        ComPtr<IShellItem> item;
-        PWSTR path = nullptr;
-        if (SUCCEEDED(dialog->Show(owner)) && SUCCEEDED(dialog->GetResult(&item)) &&
-            SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
-            chosen.emplace_back(path);
-            CoTaskMemFree(path);
-        }
-    }
-    if (SUCCEEDED(com)) CoUninitialize();
-    return chosen;
-}
-
 // Validate WAV header before copying. The playback loader performs full RIFF validation later.
 bool loading_wave_header(const std::filesystem::path& path) {
     std::ifstream in(path, std::ios::binary);
@@ -615,63 +592,6 @@ std::filesystem::path loading_music_directory() {
     wchar_t executable[MAX_PATH]{};
     GetModuleFileNameW(nullptr, executable, MAX_PATH);
     return std::filesystem::path(executable).parent_path() / L"loading_music";
-}
-
-std::string install_loading_folder(const std::filesystem::path& folder);
-// Extract only numbered WAV files. No archive paths are ever used as output paths.
-// PowerShell runs a fixed script via UTF-16 base64, so user filenames are not shell commands.
-std::string install_loading_zip(const std::filesystem::path& archive) {
-    std::error_code ec;
-    if (!std::filesystem::is_regular_file(archive, ec)) return "ZIP file not found.";
-    const auto staging = std::filesystem::temp_directory_path(ec) /
-        (L"mc3_loading_" + std::to_wstring(GetCurrentProcessId()) + L"_" + std::to_wstring(GetTickCount64()));
-    if (ec || !std::filesystem::create_directories(staging, ec)) return "Cannot create temporary folder.";
-    auto quote = [](std::wstring text) {
-        size_t pos = 0;
-        while ((pos = text.find(L'\'', pos)) != std::wstring::npos) { text.insert(pos, 1, L'\''); pos += 2; }
-        return L"'" + text + L"'";
-    };
-    const std::wstring script =
-        L"Add-Type -AssemblyName System.IO.Compression; "
-        L"$z=[System.IO.Compression.ZipFile]::OpenRead(" + quote(archive.wstring()) + L"); "
-        L"try { foreach($e in $z.Entries) { "
-        L"$name=[System.IO.Path]::GetFileName($e.FullName); "
-        L"if($name -cnotmatch '^(?:[1-9]|1[0-8])\\.wav$' -or $e.Length -gt 33554432 -or $e.Length -lt 44) { continue }; "
-        L"$out=[System.IO.Path]::Combine(" + quote(staging.wstring()) + L",$name); "
-        L"if([System.IO.File]::Exists($out)) { continue }; "
-        L"$inputStream=$e.Open(); try { $outputStream=[System.IO.File]::Create($out); "
-        L"try { $inputStream.CopyTo($outputStream) } finally { $outputStream.Dispose() } "
-        L"} finally { $inputStream.Dispose() } "
-        L"} } finally { $z.Dispose() }";
-    static constexpr wchar_t base64[] = L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::wstring encoded;
-    const auto* bytes = reinterpret_cast<const unsigned char*>(script.data());
-    const size_t count = script.size() * sizeof(wchar_t);
-    for (size_t i = 0; i < count; i += 3) {
-        const unsigned a = bytes[i], b = i + 1 < count ? bytes[i + 1] : 0, c = i + 2 < count ? bytes[i + 2] : 0;
-        encoded += base64[a >> 2]; encoded += base64[((a & 3) << 4) | (b >> 4)];
-        encoded += i + 1 < count ? base64[((b & 15) << 2) | (c >> 6)] : L'=';
-        encoded += i + 2 < count ? base64[c & 63] : L'=';
-    }
-    std::wstring command = L"powershell.exe -NoProfile -NonInteractive -EncodedCommand " + encoded;
-    STARTUPINFOW startup{sizeof(startup)};
-    PROCESS_INFORMATION process{};
-    startup.dwFlags = STARTF_USESHOWWINDOW;
-    startup.wShowWindow = SW_HIDE;
-    const bool launched = CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
-                                          nullptr, nullptr, &startup, &process);
-    std::string result = "Unable to start ZIP importer.";
-    if (launched) {
-        const DWORD wait = WaitForSingleObject(process.hProcess, 30000);
-        DWORD exit_code = 1;
-        if (wait == WAIT_TIMEOUT) { TerminateProcess(process.hProcess, 1); result = "ZIP import timed out."; }
-        else if (GetExitCodeProcess(process.hProcess, &exit_code) && exit_code == 0) result = install_loading_folder(staging);
-        else result = "Could not read ZIP archive.";
-        CloseHandle(process.hThread);
-        CloseHandle(process.hProcess);
-    }
-    std::filesystem::remove_all(staging, ec);
-    return result;
 }
 
 std::string install_loading_folder(const std::filesystem::path& folder) {
@@ -1185,7 +1105,7 @@ private:
     void choose_disc() { choose_disc_requested_ = true; }
     void run_disc_dialog();
     // Your music (page_music): the playlist open (-1 the list), the pages shown, the name being typed.
-    enum class MusicDialog { kNone, kFolder, kNewPlaylist, kAddSongs, kLoadingFolder, kLoadingZip };  // opened between frames, like the disc's
+    enum class MusicDialog { kNone, kFolder, kNewPlaylist, kAddSongs, kLoadingFolder };  // opened between frames, like the disc's
     static constexpr int kNotRenaming = -2, kRenamingPlaylist = -1;      // else the song renamed
     MusicDialog music_dialog_ = MusicDialog::kNone;
     int music_section_ = 0, loading_section_ = 0;
@@ -4187,7 +4107,6 @@ void Launcher::page_loading_music() {
     const float y = origin_.y + cursor_ + px(8);
     ImVec2 button_size;
     if (small_button("Import folder", ImVec2(origin_.x, y), "##ps2_folder", &button_size)) music_dialog_ = MusicDialog::kLoadingFolder;
-    if (small_button("Import ZIP", ImVec2(origin_.x + button_size.x + px(12), y), "##ps2_zip")) music_dialog_ = MusicDialog::kLoadingZip;
     cursor_ += button_size.y + px(22);
     if (!loading_import_message_.empty()) lead(loading_import_message_.c_str());
 }
@@ -4440,12 +4359,9 @@ std::optional<GameDisc> Launcher::run() {
         }
         if (music_dialog_ != MusicDialog::kNone) {
             const MusicDialog dialog = std::exchange(music_dialog_, MusicDialog::kNone);
-            if (dialog == MusicDialog::kLoadingFolder || dialog == MusicDialog::kLoadingZip) {
-                const auto chosen = dialog == MusicDialog::kLoadingFolder ? ask_for_music(window_, true) : ask_for_loading_zip(window_);
-                if (!chosen.empty()) {
-                    if (dialog == MusicDialog::kLoadingFolder) loading_import_message_ = install_loading_folder(chosen[0]);
-                    else loading_import_message_ = install_loading_zip(chosen[0]);
-                }
+            if (dialog == MusicDialog::kLoadingFolder) {
+                const auto chosen = ask_for_music(window_, true);
+                if (!chosen.empty()) loading_import_message_ = install_loading_folder(chosen[0]);
                 continue;
             }
             const std::vector<std::filesystem::path> chosen = ask_for_music(window_, dialog == MusicDialog::kFolder);
