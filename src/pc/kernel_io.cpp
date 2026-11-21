@@ -654,7 +654,18 @@ NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_rout
         } else {
             const ULONGLONG start = GetTickCount64();
             read = static_cast<uint32_t>(g_disc->read(file->disc_entry, offset, buffer, length));
-            if (read == 0 && length) status = kStatusUnsuccessful;
+            if (read == 0 && length) {
+                status = kStatusUnsuccessful;
+                // The game goes on with whatever the buffer held, so a damaged or incomplete image shows only as a
+                // crash later, in the game's code (issue #22): the first ones are named here.
+                static std::atomic<int> failures{0};
+                if (failures++ < 20) {
+                    log_line("disc: read of %s failed (offset %llX, %X bytes, file of %llX bytes): the disc image is "
+                             "incomplete or cannot be read",
+                             file->location.xbox_path.c_str(), static_cast<unsigned long long>(offset), length,
+                             static_cast<unsigned long long>(file->disc_entry.size));
+                }
+            }
             slow_disc_read(file->disc_entry.sector * 2048ull + offset, read);
             // A read the game waits on shows as a hitch: which file, and whether the game asked for it to be
             // asynchronous (an event or an APC), which a disc image answers at once anyway.

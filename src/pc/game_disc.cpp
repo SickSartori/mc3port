@@ -107,6 +107,9 @@ std::optional<GameDisc> check_game_disc(const std::filesystem::path& path, std::
                                             : text("several regions", "piu' regioni");
     log_line("disc: %s: '%s', title id %08X, region %X, default.xbe SHA-256 %s", utf8(path).c_str(), xbe->title().c_str(),
              xbe->title_id(), xbe->game_region(), hash.c_str());
+    if (const std::optional<std::string> cut = image->entry_past_end()) {
+        log_line("disc: the image is incomplete: '%s' lies past its end, the game will miss it", cut->c_str());
+    }
     const Release* release = nullptr;
     for (const Release& known : kReleases) {
         if (hash == known.xbe) release = &known;

@@ -68,6 +68,8 @@
   each on a core of its own. They could land on a slow core, or share one, and the frame rate swung with it.
 - **Full speed in the background**: Windows no longer slows mc3port down when its window is not in front or the
   battery saver is on.
+- **An incomplete disc image is named in the log** (issue 22): when a file or folder of the image lies past its end (a
+  download cut short), or a read from the disc fails, `mc3port.log` says so. Before, it showed only as a crash later.
 - **Linux and macOS**: at start the port checks that the picture it hands from one Direct3D device to the other
   really arrives, and shows it the plain way where it does not. Not yet tried on those systems.
 
