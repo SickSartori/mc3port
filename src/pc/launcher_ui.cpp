@@ -113,6 +113,8 @@ struct Texts {
     const char *back_to_launcher, *back_to_launcher_sub, *back_to_launcher_button, *menu_launcher;
     const char *menu_music, *music_lead;
     const char *support, *support_sub;
+    // PS2 loading music (English placeholders in non-English tables, pending translation).
+    const char *custom_radio, *ps2_loading_music, *ps2_settings, *ps2_track_preferences, *ps2_not_installed, *ps2_preview_failed, *ps2_loading_label, *ps2_loading_sub, *ps2_no_tracks, *ps2_tracks_found, *ps2_volume, *ps2_volume_sub, *ps2_stop_test, *ps2_test, *ps2_test_failed, *ps2_fade, *ps2_fade_sub, *ps2_playback_order, *ps2_playback_sub, *ps2_in_order, *ps2_random, *ps2_weighted, *ps2_import_folder, *ps2_play, *ps2_stop, *ps2_folder_missing, *ps2_create_folder_failed, *ps2_import_result;
 };
 
 const Texts kEnglish = {
@@ -182,6 +184,35 @@ const Texts kEnglish = {
     "OPEN THE LAUNCHER", "LAUNCHER",
     "MUSIC", "Your own songs on the game's radio. Make your playlists here (MP3, FLAC, WAV, WMA, M4A); in the game choose one in Pause > Options > Audio Options, the Music selector.",
     "Support the project", "Free, and always will be. A thank-you keeps it going.",
+     // PS2 loading music.
+    "Custom Radio",
+    "PS2 Loading Music",
+    "Settings",
+    "Track Preferences",
+    "Not installed",
+    "Preview failed: unsupported or invalid WAV.",
+    "PS2 loading music",
+    "Optional WAV tracks for the original PS2 loading screens",
+    "No loading music found. Import numbered WAV tracks to unlock music settings.",
+    "%d of 18 loading tracks found",
+    "Volume",
+    "Also follows the game's overall volume",
+    "Stop test audio",
+    "Test audio",
+    "Test audio failed: unsupported or invalid WAV.",
+    "Fade-out duration",
+    "Seconds before playback finishes",
+    "Playback order",
+    "Weighted unlocks individual track preferences",
+    "In order",
+    "Random",
+    "Weighted",
+    "Import folder",
+    "Play",
+    "Stop",
+    "Folder not found.",
+    "Cannot create loading_music folder.",
+    "Imported %d tracks (%d already installed). Restart the game to reload music."
 };
 
 const Texts kItalian = {
@@ -257,6 +288,35 @@ const Texts kItalian = {
     "APRI IL LAUNCHER", "LAUNCHER",
     "MUSICA", "I tuoi brani alla radio del gioco. Crea qui le tue playlist (MP3, FLAC, WAV, WMA, M4A); nel gioco scegline una in Pausa > Opzioni > Opzioni audio, selettore Musica.",
     "Sostieni il progetto", "Gratis, e lo rester\xC3\xA0. Un grazie lo fa andare avanti.",
+     // English placeholders — maintainer to translate.
+    "Custom Radio",
+    "PS2 Loading Music",
+    "Settings",
+    "Track Preferences",
+    "Not installed",
+    "Preview failed: unsupported or invalid WAV.",
+    "PS2 loading music",
+    "Optional WAV tracks for the original PS2 loading screens",
+    "No loading music found. Import numbered WAV tracks to unlock music settings.",
+    "%d of 18 loading tracks found",
+    "Volume",
+    "Also follows the game's overall volume",
+    "Stop test audio",
+    "Test audio",
+    "Test audio failed: unsupported or invalid WAV.",
+    "Fade-out duration",
+    "Seconds before playback finishes",
+    "Playback order",
+    "Weighted unlocks individual track preferences",
+    "In order",
+    "Random",
+    "Weighted",
+    "Import folder",
+    "Play",
+    "Stop",
+    "Folder not found.",
+    "Cannot create loading_music folder.",
+    "Imported %d tracks (%d already installed). Restart the game to reload music."
 };
 
 // Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
@@ -328,6 +388,35 @@ const Texts kPortuguese = {
     "ABRIR O LAUNCHER", "LAUNCHER",
     "MÚSICA", "Suas próprias músicas no rádio do jogo. Crie aqui as suas playlists (MP3, FLAC, WAV, WMA, M4A); no jogo escolha uma em Pause > Options > Audio Options, seletor Music.",
     "Apoie o projeto", "Gratuito, e sempre será. Um obrigado o mantém vivo.",
+     // English placeholders — maintainer to translate.
+    "Custom Radio",
+    "PS2 Loading Music",
+    "Settings",
+    "Track Preferences",
+    "Not installed",
+    "Preview failed: unsupported or invalid WAV.",
+    "PS2 loading music",
+    "Optional WAV tracks for the original PS2 loading screens",
+    "No loading music found. Import numbered WAV tracks to unlock music settings.",
+    "%d of 18 loading tracks found",
+    "Volume",
+    "Also follows the game's overall volume",
+    "Stop test audio",
+    "Test audio",
+    "Test audio failed: unsupported or invalid WAV.",
+    "Fade-out duration",
+    "Seconds before playback finishes",
+    "Playback order",
+    "Weighted unlocks individual track preferences",
+    "In order",
+    "Random",
+    "Weighted",
+    "Import folder",
+    "Play",
+    "Stop",
+    "Folder not found.",
+    "Cannot create loading_music folder.",
+    "Imported %d tracks (%d already installed). Restart the game to reload music."
 };
 
 const Texts kSpanish = {
@@ -398,6 +487,35 @@ const Texts kSpanish = {
     "ABRIR EL LAUNCHER", "LAUNCHER",
     "MÚSICA", "Tus propias canciones en la radio del juego. Crea aquí tus listas (MP3, FLAC, WAV, WMA, M4A); en el juego elige una en Pausa > Opciones > Opciones de audio, el selector de música.",
     "Apoya el proyecto", "Gratis, y siempre lo será. Un gracias lo mantiene vivo.",
+     // English placeholders — maintainer to translate.
+    "Custom Radio",
+    "PS2 Loading Music",
+    "Settings",
+    "Track Preferences",
+    "Not installed",
+    "Preview failed: unsupported or invalid WAV.",
+    "PS2 loading music",
+    "Optional WAV tracks for the original PS2 loading screens",
+    "No loading music found. Import numbered WAV tracks to unlock music settings.",
+    "%d of 18 loading tracks found",
+    "Volume",
+    "Also follows the game's overall volume",
+    "Stop test audio",
+    "Test audio",
+    "Test audio failed: unsupported or invalid WAV.",
+    "Fade-out duration",
+    "Seconds before playback finishes",
+    "Playback order",
+    "Weighted unlocks individual track preferences",
+    "In order",
+    "Random",
+    "Weighted",
+    "Import folder",
+    "Play",
+    "Stop",
+    "Folder not found.",
+    "Cannot create loading_music folder.",
+    "Imported %d tracks (%d already installed). Restart the game to reload music."
 };
 
 // The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
@@ -595,7 +713,7 @@ std::filesystem::path loading_music_directory() {
 
 std::string install_loading_folder(const std::filesystem::path& folder) {
     std::error_code ec;
-    if (!std::filesystem::is_directory(folder, ec)) return "Folder not found.";
+    if (!std::filesystem::is_directory(folder, ec)) return T().ps2_folder_missing;
     std::array<std::filesystem::path, 18> found{};
     size_t scanned = 0;
     for (std::filesystem::recursive_directory_iterator it(folder, std::filesystem::directory_options::skip_permission_denied, ec), end;
@@ -609,7 +727,7 @@ std::string install_loading_folder(const std::filesystem::path& folder) {
     }
     const auto dest = loading_music_directory();
     std::filesystem::create_directories(dest, ec);
-    if (ec) return "Cannot create loading_music folder.";
+    if (ec) return T().ps2_create_folder_failed;
     int copied = 0, existing = 0;
     for (int n = 1; n <= 18; ++n) {
         if (found[n - 1].empty()) continue;
@@ -618,7 +736,9 @@ std::string install_loading_folder(const std::filesystem::path& folder) {
         if (std::filesystem::copy_file(found[n - 1], target, std::filesystem::copy_options::none, ec)) ++copied;
         ec.clear();
     }
-    return "Imported " + std::to_string(copied) + " tracks (" + std::to_string(existing) + " already installed). Restart the game to reload music.";
+    char result[160];
+    std::snprintf(result, sizeof(result), T().ps2_import_result, copied, existing);
+    return result;
 }
 
 // --- colours ---
@@ -3912,7 +4032,7 @@ MusicChange Launcher::music_playlist(const MusicPlaylist& playlist, size_t index
 void Launcher::page_music() {
     const Texts& t = T();
     title(t.menu_music);
-    const char* music_tabs[] = {"Custom Radio", "PS2 Loading Music"};
+    const char* music_tabs[] = {t.custom_radio, t.ps2_loading_music};
     ImGui::PushID("music_main_tabs");
     tabs(music_tabs, 2, &music_section_);
     ImGui::PopID();
@@ -4023,6 +4143,7 @@ void Launcher::refresh_loading_music_cache() {
 }
 
 void Launcher::page_loading_music() {
+    const Texts& t = T();
     // Scan only on entry or after importing, never during normal frame rendering.
     if (!loading_cache_valid_) refresh_loading_music_cache();
     const auto music_dir = loading_music_directory();
@@ -4030,7 +4151,7 @@ void Launcher::page_loading_music() {
     const bool weighted = std::clamp(int(setting("loading_music_mode")), 0, 2) == 2;
     if (!has_music || !weighted) loading_section_ = 0;
     if (preview_.track()) preview_.volume(setting("volume"), setting("loading_music_volume"));
-    const char* sections[] = {"Settings", "Track Preferences"};
+    const char* sections[] = {t.ps2_settings, t.ps2_track_preferences};
     ImGui::PushID("ps2_loading_subtabs");
     tabs(sections, has_music && weighted ? 2 : 1, &loading_section_);
     ImGui::PopID();
@@ -4051,17 +4172,17 @@ void Launcher::page_loading_music() {
             const std::string shown = name.size() > 23 ? name.substr(0, 20) + "..." : name;
             text(body_bold_, px(18), ImVec2(origin_.x, top + px(2)), installed ? kInk : kDim, shown.c_str());
             if (!installed) {
-                text(body_, px(14), ImVec2(origin_.x, top + px(24)), kDim, "Not installed");
+                text(body_, px(14), ImVec2(origin_.x, top + px(24)), kDim, t.ps2_not_installed);
             } else if (name != std::to_string(n) + ".wav") {
                 char filename[32];
                 std::snprintf(filename, sizeof(filename), "%d.wav", n);
                 text(body_, px(14), ImVec2(origin_.x, top + px(24)), kDim, filename);
             }
             if (installed) {
-                const char* caption = preview_.track() == n ? "Stop" : "Play";
+                const char* caption = preview_.track() == n ? t.ps2_stop : t.ps2_play;
                 if (small_button(caption, ImVec2(origin_.x + px(156), top + px(2)), preview_id)) {
                     if (preview_.track() == n) preview_.stop();
-                    else if (!preview_.start(n, wav)) loading_import_message_ = "Preview failed: unsupported or invalid WAV.";
+                    else if (!preview_.start(n, wav)) loading_import_message_ = t.ps2_preview_failed;
                     preview_.volume(setting("volume"), setting("loading_music_volume"));
                 }
                 float weight = setting(key);
@@ -4078,18 +4199,18 @@ void Launcher::page_loading_music() {
     }
 
     if (preview_.track() > 0 && loading_section_ == 0) preview_.stop();
-    row("PS2 loading music", "Optional WAV tracks for the original PS2 loading screens");
-    const char* toggle[] = {"Off", "On"};
+    row(t.ps2_loading_label, t.ps2_loading_sub);
+    const char* toggle[] = {t.off, t.on};
     int enabled = setting("loading_music") != 0 ? 1 : 0;
     if (segmented("##ps2_enabled", toggle, 2, &enabled)) set_setting("loading_music", float(enabled));
 
     if (!has_music) {
-        lead("No loading music found. Import numbered WAV tracks to unlock music settings.");
+        lead(t.ps2_no_tracks);
     } else {
         char count_label[80];
-        std::snprintf(count_label, sizeof(count_label), "%d of 18 loading tracks found", loading_track_count_);
+        std::snprintf(count_label, sizeof(count_label), t.ps2_tracks_found, loading_track_count_);
         lead(count_label);
-        row("Volume", "Also follows the game's overall volume");
+        row(t.ps2_volume, t.ps2_volume_sub);
         float volume = setting("loading_music_volume");
         if (slider("##ps2_volume", &volume, 0, 100, "%.0f")) {
             set_setting("loading_music_volume", std::round(volume));
@@ -4097,31 +4218,31 @@ void Launcher::page_loading_music() {
         }
         // A negative track ID identifies the Settings-page volume test (loops until stopped).
         const float test_y = origin_.y + cursor_;
-        if (small_button(preview_.track() < 0 ? "Stop test audio" : "Test audio",
+        if (small_button(preview_.track() < 0 ? t.ps2_stop_test : t.ps2_test,
                          ImVec2(origin_.x, test_y), "##ps2_test_audio")) {
             if (preview_.track() < 0) preview_.stop();
             else {
                 for (int n = 1; n <= 18; ++n) if (loading_installed_[n]) {
                     if (!preview_.start(-n, music_dir / (std::to_wstring(n) + L".wav")))
-                        loading_import_message_ = "Test audio failed: unsupported or invalid WAV.";
+                        loading_import_message_ = t.ps2_test_failed;
                     preview_.volume(setting("volume"), setting("loading_music_volume"));
                     break;
                 }
             }
         }
         cursor_ += px(44);
-        row("Fade-out duration", "Seconds before playback finishes");
+        row(t.ps2_fade, t.ps2_fade_sub);
         float fade = setting("loading_music_fade_seconds");
         if (slider("##ps2_fade", &fade, 0, 5, "%.2f s")) set_setting("loading_music_fade_seconds", std::round(fade * 20) / 20);
-        row("Playback order", "Weighted unlocks individual track preferences");
-        const char* modes[] = {"In order", "Random", "Weighted"};
+        row(t.ps2_playback_order, t.ps2_playback_sub);
+        const char* modes[] = {t.ps2_in_order, t.ps2_random, t.ps2_weighted};
         int mode = std::clamp(int(setting("loading_music_mode")), 0, 2);
         if (segmented("##ps2_mode", modes, 3, &mode)) set_setting("loading_music_mode", float(mode));
     }
     // Import actions remain accessible before and after music has been installed.
     const float y = origin_.y + cursor_ + px(8);
     ImVec2 button_size;
-    if (small_button("Import folder", ImVec2(origin_.x, y), "##ps2_folder", &button_size)) music_dialog_ = MusicDialog::kLoadingFolder;
+    if (small_button(t.ps2_import_folder, ImVec2(origin_.x, y), "##ps2_folder", &button_size)) music_dialog_ = MusicDialog::kLoadingFolder;
     cursor_ += button_size.y + px(22);
     if (!loading_import_message_.empty()) lead(loading_import_message_.c_str());
 }
