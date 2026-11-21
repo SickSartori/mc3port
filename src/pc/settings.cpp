@@ -206,9 +206,6 @@ void settings_load(const std::filesystem::path& file) {
                 g_values[key] = static_cast<float>(std::atof(trim(entry.substr(entry.find('=') + 1)).c_str()));
         }
         if (weight_input.bad()) log_line("settings: error reading %s", weights.string().c_str());
-    } else {
-        std::error_code error;
-        if (!std::filesystem::exists(weights, error) && !error) write_weights();
     }
 
     // Before 0.2.5 render_scale was a whole 1 to 4: 2 and 4 become the nearest named resolution (1080p, 2160p).
