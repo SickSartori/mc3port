@@ -996,6 +996,9 @@ void interrupt_thread() {
         next += period;
         if (Clock::now() > next + period * 4) next = Clock::now() + period;  // do not try to catch up
 
+        // Counted before the GPU thread is woken to present: it reads the count to time the frame, and woken on
+        // another core it read it a blank short (one frame of 1 blank and the next of 3, where both had 2).
+        if (!paused) ++g_frames;
         if (g_renderer_ready) {
             g_present_requested = true;
             SetEvent(g_put_written);  // wake the GPU thread to present
@@ -1003,7 +1006,7 @@ void interrupt_thread() {
             present_front_buffer();
         }
         if (paused) continue;
-        if (++g_frames % 600 == 0) {
+        if (g_frames % 600 == 0) {
             log_line("nv2a: %llu vblanks, push buffer GET %08X, front buffer %08X",
                      static_cast<unsigned long long>(g_frames.load()), g_push.get.load(), reg(kPcrtcStart));
         }

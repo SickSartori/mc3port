@@ -82,6 +82,9 @@
 
 ### Fixed
 
+- **Frame timing**: a vertical blank was at times counted just after the frame that came with it, so two frames of
+  the same length were timed as one short and one long, for the game's clock and in the log. Now every frame at 60
+  fps counts its two blanks.
 - **Sharp pictures on the HUD's smallest pictures**: those enlarged four times got one level too many, Direct3D
   refused them (`cannot create an enlarged texture` in the log) and they stayed as the game's. Now they are sharp
   like the others.
