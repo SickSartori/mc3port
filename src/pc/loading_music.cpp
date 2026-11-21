@@ -165,16 +165,6 @@ void loading_music_begin(uint64_t duration_ms) {
     // Release the previous WAV buffer outside the audio mutex.
 }
 
-void loading_music_end() {
-    std::shared_ptr<const Track> previous;
-    {
-        std::lock_guard lock(g_mutex);
-        ++g_generation;
-        previous = std::move(g_active);
-    }
-    // Release the previous WAV buffer outside the audio mutex.
-}
-
 void loading_music_mix(float* stereo, uint32_t frames, uint32_t output_rate) {
     std::unique_lock lock(g_mutex);
     if (!g_active || !output_rate) return;

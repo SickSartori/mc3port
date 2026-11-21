@@ -10,9 +10,9 @@ The feature includes launcher-based music importing, customizable playback modes
 
 1. Open the mc3port launcher.
 2. Navigate to **Music → PS2 Loading Music → Settings**.
-3. Click **Import Folder** or **Import ZIP**.
-4. Select a folder or ZIP archive containing your legally extracted PS2 loading-screen music files.
-5. The launcher will detect and import supported tracks into the `loading_music` folder next to `mc3.exe`.
+3. Click **Import Folder**.
+4. Select a folder containing your legally extracted PS2 loading-screen music WAV files.
+5. The launcher will detect and import supported tracks into the `loading_music` folder inside the mc3port game data directory (normally `Documents\mc3port\loading_music` on Windows).
 
 The launcher displays how many valid tracks are installed.
 
@@ -20,7 +20,7 @@ Restart the game after importing music if it is already running.
 
 ### Option 2: Manual Installation
 
-Place your own legally extracted PS2 loading-screen music files in the `loading_music` folder next to `mc3.exe`.
+Place your own legally extracted PS2 loading-screen music files in the `loading_music` folder inside the mc3port game data directory (normally `Documents\mc3port\loading_music` on Windows).
 
 Name the files `1.wav` through `18.wav`.
 
@@ -51,7 +51,6 @@ All loading music settings can be configured through **Music → PS2 Loading Mus
 | Fade Duration | Configure how long the music takes to fade out. |
 | Playback Mode | Choose Sequential, Random, or Weighted playback. |
 | Import Folder | Import supported WAV files from a selected folder. |
-| Import ZIP | Import supported WAV files from a ZIP archive. |
 
 The Test Audio button allows you to listen to a track while adjusting the volume.
 
@@ -130,7 +129,7 @@ The following settings are available in `mc3port.ini`:
 | `loading_music_fade_seconds` | `0.75` | Set the fade-out duration in seconds. |
 | `loading_screen_seconds` | `0` | Set the minimum loading-screen duration in seconds. `0` uses the shortest supported duration of 2 seconds. |
 
-Additional playback mode and per-track weight settings are managed through the launcher and saved to the configuration file.
+Playback mode is configured through the launcher and stored in `mc3port.ini`. Individual track weights are stored separately in `loading_music/weights.txt` inside the mc3port game data directory.
 
 Loading music also follows the game's overall volume setting.
 
@@ -140,6 +139,8 @@ Loading music begins when a loading screen starts.
 
 Available tracks are selected according to the configured playback mode and loop when necessary.
 
-Music continues for approximately one second beyond the configured minimum loading-screen duration, with a fade-out near the end.
+Music continues for approximately one second beyond the effective minimum loading-screen duration, with a fade-out near the end.
+
+**Minimum duration of `0`:** The game still uses a shortest supported loading-screen duration of approximately 2 seconds, so loading music can play for approximately 3 seconds (including the extra one-second tail). Setting `0` does not disable loading music or make it stop immediately. For longer music playback, increase the minimum loading-screen duration in the launcher or set `loading_screen_seconds` to a higher value in `mc3port.ini`.
 
 **Note:** Playback timing is based on the minimum loading-screen duration rather than the exact visual transition. Depending on loading performance, music may briefly continue into gameplay or finish before the loading screen disappears.
