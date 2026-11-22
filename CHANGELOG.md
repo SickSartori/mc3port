@@ -81,6 +81,8 @@
 
 ### Changed
 
+- **A new launcher music**, made the same way as the one before it and under the same licence (CC BY 4.0, see
+  THIRD_PARTY.md).
 - **Updating from the launcher**: Update opens the new installer's link and your browser downloads it; you start it,
   as any download. The launcher no longer downloads and starts the installer itself, which antivirus programs take
   for the way malware brings in more of itself.
