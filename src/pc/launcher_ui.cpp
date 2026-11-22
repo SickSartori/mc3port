@@ -194,8 +194,8 @@ const Texts kEnglish = {
     "Not installed",
     "Preview failed: unsupported or invalid WAV.",
     "PS2 loading music",
-    "Optional WAV tracks for the original PS2 loading screens",
-    "No loading music found. Import numbered WAV tracks to unlock music settings.",
+    "Optional WAV tracks or original PS2 RAW files (converted on import)",
+    "No loading music found. Import numbered RAW or WAV tracks to unlock music settings.",
     "%d of 18 loading tracks found",
     "Volume",
     "Also follows the game's overall volume",
@@ -721,6 +721,53 @@ bool loading_wave_header(const std::filesystem::path& path) {
            std::filesystem::file_size(path) <= 32 * 1024 * 1024;
 }
 
+// The original PS2 loading-screen RAW files are headerless 24 kHz mono PCM16 LE.
+// A RAW file cannot prove its own encoding; reject invalid sizes before importing.
+bool loading_raw_size(const std::filesystem::path& path, uint32_t& bytes) {
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec || size < 2 || size > 32u * 1024u * 1024u - 44u || (size & 1u)) return false;
+    bytes = static_cast<uint32_t>(size);
+    return true;
+}
+
+// Stream RAW samples into a standard 44-byte PCM WAV; no full-file allocation.
+bool install_loading_raw(const std::filesystem::path& source, const std::filesystem::path& target) {
+    uint32_t bytes = 0;
+    if (!loading_raw_size(source, bytes)) return false;
+    std::ifstream in(source, std::ios::binary);
+    if (!in) return false;
+    // Use exclusive creation to preserve the existing no-overwrite behavior.
+    HANDLE out = CreateFileW(target.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (out == INVALID_HANDLE_VALUE) return false;
+    auto write = [&](const void* data, DWORD size) {
+        DWORD written = 0;
+        return WriteFile(out, data, size, &written, nullptr) && written == size;
+    };
+    auto put16 = [](uint8_t* p, uint16_t v) { p[0] = uint8_t(v); p[1] = uint8_t(v >> 8); };
+    auto put32 = [](uint8_t* p, uint32_t v) {
+        for (int i = 0; i < 4; ++i) p[i] = uint8_t(v >> (i * 8));
+    };
+    uint8_t header[44]{};
+    std::memcpy(header, "RIFF", 4); put32(header + 4, bytes + 36);
+    std::memcpy(header + 8, "WAVEfmt ", 8); put32(header + 16, 16);
+    put16(header + 20, 1); put16(header + 22, 1); put32(header + 24, 24000);
+    put32(header + 28, 48000); put16(header + 32, 2); put16(header + 34, 16);
+    std::memcpy(header + 36, "data", 4); put32(header + 40, bytes);
+    bool ok = write(header, sizeof(header));
+    std::array<char, 64 * 1024> buffer{};
+    uint32_t remaining = bytes;
+    while (ok && remaining) {
+        const auto amount = static_cast<std::streamsize>(std::min<uint32_t>(remaining, static_cast<uint32_t>(buffer.size())));
+        if (!in.read(buffer.data(), amount)) { ok = false; break; }
+        ok = write(buffer.data(), static_cast<DWORD>(amount));
+        remaining -= static_cast<uint32_t>(amount);
+    }
+    if (!CloseHandle(out)) ok = false;
+    if (!ok) { std::error_code ec; std::filesystem::remove(target, ec); }
+    return ok;
+}
+
 std::filesystem::path loading_music_directory() {
     return data_directory() / "loading_music";
 }
@@ -728,7 +775,7 @@ std::filesystem::path loading_music_directory() {
 std::string install_loading_folder(const std::filesystem::path& folder) {
     std::error_code ec;
     if (!std::filesystem::is_directory(folder, ec)) return T().ps2_folder_missing;
-    std::array<std::filesystem::path, 18> found{};
+    std::array<std::filesystem::path, 18> found_wav{}, found_raw{};
     size_t scanned = 0;
     for (std::filesystem::recursive_directory_iterator it(folder, std::filesystem::directory_options::skip_permission_denied, ec), end;
          it != end && !ec && scanned < 4096; it.increment(ec), ++scanned) {
@@ -736,7 +783,11 @@ std::string install_loading_folder(const std::filesystem::path& folder) {
         if (!it->is_regular_file(ec) || it->is_symlink(ec)) continue;
         const auto name = it->path().filename().wstring();
         for (int n = 1; n <= 18; ++n) {
-            if (name == std::to_wstring(n) + L".wav" && loading_wave_header(it->path())) found[n - 1] = it->path();
+            if (name == std::to_wstring(n) + L".wav" && loading_wave_header(it->path())) found_wav[n - 1] = it->path();
+            else if (name == std::to_wstring(n) + L".raw") {
+                uint32_t bytes = 0;
+                if (loading_raw_size(it->path(), bytes)) found_raw[n - 1] = it->path();
+            }
         }
     }
     const auto dest = loading_music_directory();
@@ -744,10 +795,12 @@ std::string install_loading_folder(const std::filesystem::path& folder) {
     if (ec) return T().ps2_create_folder_failed;
     int copied = 0, existing = 0;
     for (int n = 1; n <= 18; ++n) {
-        if (found[n - 1].empty()) continue;
+        if (found_wav[n - 1].empty() && found_raw[n - 1].empty()) continue;
         const auto target = dest / (std::to_wstring(n) + L".wav");
         if (std::filesystem::exists(target, ec)) { ++existing; continue; } // Never overwrite silently.
-        if (std::filesystem::copy_file(found[n - 1], target, std::filesystem::copy_options::none, ec)) ++copied;
+        if (!found_wav[n - 1].empty()) {
+            if (std::filesystem::copy_file(found_wav[n - 1], target, std::filesystem::copy_options::none, ec)) ++copied;
+        } else if (install_loading_raw(found_raw[n - 1], target)) ++copied;
         ec.clear();
     }
     char result[160];
