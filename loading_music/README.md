@@ -11,10 +11,10 @@ The feature includes launcher-based music importing, customizable playback modes
 1. Open the mc3port launcher.
 2. Navigate to **Music → PS2 Loading Music → Settings**.
 3. Click **Import Folder**.
-4. Select a folder containing your legally extracted PS2 loading-screen music WAV files.
-5. The launcher will detect and import supported tracks into the `loading_music` folder inside the mc3port game data directory (normally `Documents\mc3port\loading_music` on Windows).
+4. Select a folder containing your legally extracted PS2 loading-screen music files named `1.raw`–`18.raw` or `1.wav`–`18.wav`.
+5. The launcher validates file sizes and converts supported RAW files to WAV during import. Imported tracks are saved in the `loading_music` folder inside the mc3port game data directory (normally `Documents\mc3port\loading_music` on Windows).
 
-The launcher displays how many valid tracks are installed.
+The launcher displays how many valid tracks are installed. If both a WAV and RAW file exist for the same numbered track, the WAV is preferred. Existing installed tracks are not overwritten.
 
 Imported tracks play from the next loading screen. Tracks copied into the folder by hand while the game runs do too: no restart is needed.
 
@@ -28,14 +28,26 @@ The feature automatically detects available valid tracks, so all 18 files are no
 
 ### Supported Audio Format
 
+**WAV playback and manual installation:**
+
 - Uncompressed 16-bit PCM WAV
 - Mono or stereo
 - Sample rates from 8,000 Hz to 192,000 Hz
 - 24,000 Hz mono recommended for original PS2 tracks
 
+**Original PS2 RAW files (launcher import only):**
+
+- Headerless, uncompressed signed 16-bit PCM
+- 24,000 Hz, mono (one channel)
+- Little-endian byte order
+- File must contain at least one complete 16-bit sample (2 bytes), have an even byte count, and be no larger than 32 MiB minus 44 bytes for the WAV header
+- The launcher adds a standard WAV header and copies the audio data in small chunks; it does not resample or change the samples
+
+RAW files contain no format header. The importer can reject invalid file sizes, but cannot verify sample rate, channel count, byte order, or whether the contents are actually PCM. A file with a valid size but the wrong encoding may still produce noise. Only import RAW files in the format described above.
+
 No copyrighted music files are included with mc3port.
 
-If no valid WAV files are found, the game continues normally without loading music.
+If no valid WAV files are installed, the game continues normally without loading music.
 
 ## Launcher Configuration
 
@@ -50,7 +62,7 @@ All loading music settings can be configured through **Music → PS2 Loading Mus
 | Test Audio | Preview an installed track at the current volume settings. |
 | Fade Duration | Configure how long the music takes to fade out. |
 | Playback Mode | Choose Sequential, Random, or Weighted playback. |
-| Import Folder | Import supported WAV files from a selected folder. |
+| Import Folder | Import supported WAV files or convert original PS2 RAW files to WAV from a selected folder. |
 
 The Test Audio button allows you to listen to a track while adjusting the volume.
 
