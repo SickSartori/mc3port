@@ -17,6 +17,7 @@
 #include <array>
 #include <atomic>
 #include <cctype>
+#include <cwctype>
 #include <cstdint>
 #include <cmath>
 #include <cstdio>
@@ -301,8 +302,8 @@ const Texts kItalian = {
     "Non installato",
     "Anteprima non riuscita: WAV non supportato o non valido.",
     "Musica dei caricamenti PS2",
-    "Brani WAV facoltativi per le schermate di caricamento originali della PS2",
-    "Nessuna musica dei caricamenti trovata. Importa i brani WAV numerati per sbloccare le impostazioni.",
+    "Brani WAV facoltativi, o i file RAW originali della PS2 (convertiti all'importazione)",
+    "Nessuna musica dei caricamenti trovata. Importa i brani RAW o WAV numerati per sbloccare le impostazioni.",
     "%d brani di caricamento su 18 trovati",
     "Volume",
     "Segue anche il volume generale del gioco",
@@ -404,8 +405,8 @@ const Texts kPortuguese = {
     "Não instalada",
     "Falha na prévia: WAV inválido ou não suportado.",
     "Música de carregamento do PS2",
-    "Faixas WAV opcionais para as telas de carregamento originais do PS2",
-    "Nenhuma música de carregamento encontrada. Importe as faixas WAV numeradas para liberar as configurações.",
+    "Faixas WAV opcionais, ou os arquivos RAW originais do PS2 (convertidos na importação)",
+    "Nenhuma música de carregamento encontrada. Importe as faixas RAW ou WAV numeradas para liberar as configurações.",
     "%d de 18 faixas de carregamento encontradas",
     "Volume",
     "Também segue o volume geral do jogo",
@@ -506,8 +507,8 @@ const Texts kSpanish = {
     "No instalada",
     "Falló la vista previa: WAV no compatible o no válido.",
     "Música de carga de PS2",
-    "Pistas WAV opcionales para las pantallas de carga originales de PS2",
-    "No se encontró música de carga. Importa las pistas WAV numeradas para desbloquear los ajustes.",
+    "Pistas WAV opcionales, o los archivos RAW originales de PS2 (convertidos al importar)",
+    "No se encontró música de carga. Importa las pistas RAW o WAV numeradas para desbloquear los ajustes.",
     "%d de 18 pistas de carga encontradas",
     "Volumen",
     "También sigue el volumen general del juego",
@@ -781,7 +782,8 @@ std::string install_loading_folder(const std::filesystem::path& folder) {
          it != end && !ec && scanned < 4096; it.increment(ec), ++scanned) {
         if (it.depth() > 4) { it.disable_recursion_pending(); continue; }
         if (!it->is_regular_file(ec) || it->is_symlink(ec)) continue;
-        const auto name = it->path().filename().wstring();
+        auto name = it->path().filename().wstring();
+        for (wchar_t& letter : name) letter = static_cast<wchar_t>(std::towlower(letter));  // 1.RAW, 1.WAV: as tools for the PS2 disc name them
         for (int n = 1; n <= 18; ++n) {
             if (name == std::to_wstring(n) + L".wav" && loading_wave_header(it->path())) found_wav[n - 1] = it->path();
             else if (name == std::to_wstring(n) + L".raw") {
