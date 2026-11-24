@@ -21,7 +21,8 @@
   sharpen a few seconds after a place loads, and take more graphics memory.
 - **PS2 loading-screen music** (#24, by Nekoniria), optional: the PS2 version's loading music on the loading screens,
   from WAV files you supply (none come with mc3port), best with a longer loading-screen duration. The launcher's Music
-  page has a PS2 Loading Music tab: import a folder with `1.wav` to `18.wav`, the volume, the fade-out, the order (in
+  page has a PS2 Loading Music tab: import a folder with `1.wav` to `18.wav`, or the PS2 disc's own `1.raw` to `18.raw`
+  (#25, converted to WAV as they are imported), the volume, the fade-out, the order (in
   order, random, or weighted by each track's own weight) and a preview. The files go in `loading_music` in the game's
   data folder; `docs/loading_music/README.md` in the package says how. RecompLauncher's page turns it on and off and
   sets its volume.
