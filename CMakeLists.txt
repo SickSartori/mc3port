@@ -83,6 +83,9 @@ if(WIN32)
                                MC3PORT_VERSION="${PROJECT_VERSION}" ${MC3_VERSION_DEFINES})
     target_compile_options(mc3runtime PRIVATE /utf-8)
     target_include_directories(mc3runtime PRIVATE src res)
+    # The checksum in the PE header, which the linker leaves at 0 without /RELEASE: antivirus heuristics count an
+    # empty one against an unsigned file. Also for mc3.exe below.
+    target_link_options(mc3runtime PRIVATE /RELEASE)
     # Not XPORT_DATA_WITH_RECOMPLAUNCHER: mc3port's RecompLauncher players have their data in Documents\mc3port.
     xport_identity(mc3runtime mc3port MC3PORT MC3_)
     # The GPU thread's hot path crosses files (methods, physical memory, renderer).
@@ -99,7 +102,7 @@ if(WIN32)
     target_link_options(mc3 PRIVATE
         /NODEFAULTLIB /ENTRY:LauncherEntry /SUBSYSTEM:WINDOWS
         /BASE:0x10000 /FIXED /DYNAMICBASE:NO /LARGEADDRESSAWARE
-        /SAFESEH:NO /INCREMENTAL:NO
+        /SAFESEH:NO /INCREMENTAL:NO /RELEASE
     )
     add_dependencies(mc3 mc3runtime)
 

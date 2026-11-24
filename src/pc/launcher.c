@@ -46,7 +46,10 @@ static BOOL supervise(DWORD* exit_code) {
         startup.cbReserved2 = 0;
         startup.lpReserved2 = NULL;
         lstrcpyW(command, line); /* CreateProcessW may write to it */
-        if (!CreateProcessW(exe, command, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &startup, &process)) {
+        /* Not suspended: a program that starts a suspended copy of itself and resumes it is what process hollowing
+         * looks like, and antivirus heuristics flag it. The job takes the game at once, long before it opens
+         * anything. */
+        if (!CreateProcessW(exe, command, NULL, NULL, FALSE, 0, NULL, NULL, &startup, &process)) {
             if (first) {
                 SetEnvironmentVariableW(L"MC3_SUPERVISED", NULL);
                 return FALSE;
@@ -57,7 +60,6 @@ static BOOL supervise(DWORD* exit_code) {
         first = FALSE;
         if (job) AssignProcessToJobObject(job, process.hProcess);
         AllowSetForegroundWindow(process.dwProcessId); /* the game's window in front, as if RecompLauncher started it */
-        ResumeThread(process.hThread);
         CloseHandle(process.hThread);
         WaitForSingleObject(process.hProcess, INFINITE);
         if (!GetExitCodeProcess(process.hProcess, exit_code)) *exit_code = 1;
