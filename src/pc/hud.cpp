@@ -127,6 +127,17 @@ struct Special {
 Special g_special;
 uint32_t g_gauge_texture = 0;  // the tracks' texture, known from the slipstream's
 
+// The radar's ring: one quad of the radar's texture (its lower right quarter: the dark disc, the ring and the tab with
+// the N), about 127 x 127 in the lower left, before the map and the icons. The game's stays (its dark disc is under
+// the map); the new HUD draws its own ring over its ring and tab.
+// shortcut: one player only; in split screen each radar keeps the game's ring. Read them per player when that is wanted.
+struct Radar {
+    float x = 0, y = 0, side = 0;  // centre and side of the quad (it turns with the map: north is up on it)
+    float north_x = 0, north_y = -1;  // towards its tab
+    int presents_since = 1000;
+};
+Radar g_radar;
+
 // One frame's reading, complete: its players replace the last ones (a reading without a speedometer and its needle,
 // a frame cut short, changes nothing).
 void publish(Reading& r) {
@@ -267,6 +278,24 @@ bool hud_take_quad(const HudQuad& q) {
     Reading& r = g_reading;
 
     if (q.left_half) {
+        const float side = std::hypot(q.x[1] - q.x[0], q.y[1] - q.y[0]);
+        if (hide && !q.program && g_players.size() == 1 && side > 90 && side < 170 && std::fabs(u0 - 0.5f) < 0.02f &&
+            std::fabs(v0 - 0.5f) < 0.02f && std::fabs(u1 - 1) < 0.02f && std::fabs(v1 - 1) < 0.02f) {
+            // Turned or not: the centre is the corners' middle, the tab is on the side of the larger v (seen in play).
+            float cx = 0, cy = 0, nx = 0, ny = 0;
+            int on_top = 0;
+            for (int i = 0; i < 4; ++i) {
+                cx += q.x[i] / 4, cy += q.y[i] / 4;
+                if (q.v[i] > (v0 + v1) / 2) nx += q.x[i], ny += q.y[i], ++on_top;
+            }
+            if (on_top == 2) {
+                const float dx = nx / 2 - cx, dy = ny / 2 - cy, length = std::max(std::hypot(dx, dy), 1e-3f);
+                g_radar.x = cx, g_radar.y = cy, g_radar.side = side;
+                g_radar.north_x = dx / length, g_radar.north_y = dy / length;
+                g_radar.presents_since = 0;
+            }
+            return false;
+        }
         if (!hide || !q.program || !aligned || !g_gauge_texture || q.texture != g_gauge_texture || width < 20 ||
             g_players.size() != 1) {
             return false;
@@ -410,6 +439,7 @@ bool hud_take_quad(const HudQuad& q) {
 
 void hud_frame_shown() {
     if (g_special.presents_since < 1000) ++g_special.presents_since;
+    if (g_radar.presents_since < 1000) ++g_radar.presents_since;
     // A menu or a loading screen: no dials for a while.
     if (hud_reading() && ++g_presents_without > 30 && !g_players.empty()) {
         g_players.clear();
@@ -527,6 +557,26 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         if (g_special.charge > 0 && charged_from < kSteps) {
             list->AddPolyline(points + charged_from, kSteps + 1 - charged_from, accent, ImDrawFlags_None, 4 * s);
         }
+    }
+    if (g_radar.presents_since < 30) {
+        // The radar's ring, in the dials' style: a dark band over the game's ring (the map stays inside it), a line in
+        // the HUD's colour, and the N in a disc like the gear's, over the game's tab. Narrowed towards the left edge as
+        // the radar is. In the texture the ring's outer edge is 60.5 of its 128 texels, centred.
+        const float texel = g_radar.side / 128;
+        const ImVec2 c(pic.window_left + (g_radar.x * narrow - pic.surface_left) * scale_x,
+                       pic.window_top + (g_radar.y - pic.surface_top) * scale_y);
+        const float r = 60.5f * texel * scale_y, band = 9.5f * texel * scale_y;
+        list->AddCircle(c, r - band / 2, colour(17, 17, 20, 0.96f), 96, band);
+        list->AddCircle(c, r - band + 1.5f * texel * scale_y, accent, 96, 1.6f * texel * scale_y);
+        list->AddCircle(c, r - 0.4f * texel * scale_y, colour(255, 255, 255, 0.14f), 96, 0.8f * texel * scale_y);
+        const float out = r - 2 * texel * scale_y;  // the N where the game's tab is: it turns with the map
+        const ImVec2 n(c.x + g_radar.north_x * out, c.y + g_radar.north_y * out);
+        const float nr = 9.5f * texel * scale_y;
+        list->AddCircleFilled(ImVec2(n.x, n.y + 1.5f * texel * scale_y), nr + texel * scale_y, colour(0, 0, 0, 0.45f), 32);
+        list->AddCircleFilled(n, nr, accent, 32);
+        list->AddCircle(n, nr, colour(11, 11, 13), 32, 1.5f * texel * scale_y);
+        centred_text(list, fonts.numbers, 13 * texel * scale_y, ImVec2(n.x - 0.3f * texel * scale_y, n.y), colour(17, 17, 17),
+                     "N");
     }
     for (const Player& p : g_players) {
         // Style A's layout (1280 x 720), around the speedometer: s = 1 when the game's face is 108 lines of 480.

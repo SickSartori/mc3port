@@ -10,8 +10,15 @@
   dark or too light: they change the 3D scene only, at once, with the modern effects on or off; the HUD, the menus and
   the films stay as they are. No style changes them.
 
+- **A third HUD, the game's own redrawn**: in the settings (Game) the HUD is now the game's, the game's redrawn or
+  mc3port's. The redrawn one is the game's HUD with its pictures drawn again sharp, from the folder `hud_redrawn` in
+  the data folder; mc3port ships none of them.
+
 ### Improved
 
+- **mc3port's HUD, the radar**: its ring is drawn again in the dials' style, a dark band with a line in the HUD's
+  colour, and the N in a disc like the gear's, turning with the map as the game's tab does. The map and its icons
+  stay the game's.
 - **More settings on RecompLauncher's page**: 120 frames per second, 21:9, the field of view, the texture filter,
   sharp textures, the modern effects and the frame counter, which the launcher and the in-game menu already had.
 - **Replacement pictures with the game's colours**: a PNG with a palette in `textures_replace`, for a picture of the
