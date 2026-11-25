@@ -36,7 +36,7 @@
     {
       "id": "window",
       "label": "Window",
-      "help": "Full screen or a window. Big Picture mode always starts full screen.",
+      "help": "Full screen (without a border, so Alt+Tab is instant) or a window. Big Picture mode always starts full screen.",
       "choices": [
         { "label": "Windowed", "set": { "fullscreen": "0" } },
         { "label": "Fullscreen", "set": { "fullscreen": "1" } }

@@ -200,7 +200,7 @@ changed in the launcher's **Controls** page.
 | PC key | Action |
 |---|---|
 | F1 (controller: Back+Start) | in-game menu: settings, controls, resume, exit; the game pauses meanwhile |
-| F11 or Alt+Enter | full screen on and off |
+| F11 or Alt+Enter | full screen (without a border, so Alt+Tab is instant) on and off |
 | F10 | modern effects on and off |
 
 <details>

@@ -34,7 +34,7 @@ const Setting kSettings[] = {
     {"sharp_textures", 0, "The textures of the 3D scene (roads, buildings, cars) enlarged two times with their edges kept, as sharp_2d does for the HUD: 1 = sharper from close, 0 = as the game's. Needs more graphics memory; they sharpen a few seconds after a place loads."},
     {"hud_style", 1, "HUD: 0 = the game's, 1 = mc3port's (speedometer, rev counter and gear redrawn, sharp at any resolution)."},
     {"hud_units", 0, "Speed in mc3port's HUD: 0 = mph, 1 = km/h."},
-    {"fullscreen", 0, "Start in full screen: 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},
+    {"fullscreen", 0, "Start in full screen, without a border (Alt+Tab is instant): 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},
     {"volume", 100, "Overall volume, 0 to 100."},
     {"launcher_music", 70, "Volume of the launcher's background music, 0 to 100 (0 = off)."},
     {"launcher_mute", 0, "1 = the launcher's background music is off (the speaker button in its bottom bar)."},

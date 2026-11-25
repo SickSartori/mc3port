@@ -10,6 +10,9 @@
 
 ### Fixed
 
+- **The window mode in the settings after F11 or Alt+Enter**: the row showed the mode in `mc3port.ini`, not the
+  window's own, so after F11 the in-game menu could say "Window" in full screen. It now shows the window as it is.
+  The settings also say that full screen has no border, which it always had: Alt+Tab is instant.
 - **mc3port's HUD, the special ability**: the arc over the radar that charges Zone, Agro or Roar is now drawn by the
   new HUD too, sharp at any resolution and in the HUD's colour; it stayed the game's thin one. The arc beside the
   speedometer that was described as the special ability is the slipstream turbo (it fills behind an opponent and is
