@@ -14,6 +14,9 @@
   new HUD too, sharp at any resolution and in the HUD's colour; it stayed the game's thin one. The arc beside the
   speedometer that was described as the special ability is the slipstream turbo (it fills behind an opponent and is
   used with the nitrous button): it is named so now. The marks of the charges you have stored stay the game's.
+- **mc3port's HUD, the damage meter**: the red pieces that light one by one around the speedometer as the car takes
+  heavy hits were left out, taken for a rev limiter light. The new HUD draws them again, at the lower left of its
+  speedometer.
 
 ## 0.4.0 (2026-11-25)
 

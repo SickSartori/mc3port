@@ -35,6 +35,8 @@ struct Player {
     float slipstream = -1;  // the slipstream turbo's charge, 0 to 1; -1 none seen
     float nitro = -1;    // what is left of the nitrous, 0 to 1; -1 none seen (a car without it)
     float nitro_colour[3] = {};
+    std::vector<std::pair<float, float>> damage;  // the damage meter's lit pieces: (degrees clockwise from up around
+                                                  // the speedometer, alpha)
 };
 struct Reading {
     std::vector<Dial> faces;  // in draw order, with their textures
@@ -49,7 +51,7 @@ struct Reading {
     };
     std::vector<Arc> arcs;
     struct Segment {
-        float x, y;
+        float x, y, alpha;
     };
     std::vector<Segment> segments;
     struct Nitro {
@@ -161,6 +163,12 @@ void publish(Reading& r) {
         if (Player* p = nearest((arc.left + arc.right) / 2, arc.bottom)) {
             const float span = std::max(1.0f, arc.fill_bottom - arc.top);
             p->slipstream = arc.filled ? std::clamp((arc.fill_bottom - arc.fill_top) / span, 0.0f, 1.0f) : 0;
+        }
+    }
+    for (const Reading::Segment& s : r.segments) {
+        if (Player* p = nearest(s.x, s.y)) {
+            const float degrees = std::atan2(s.x - p->speed.centre_x(), p->speed.centre_y() - s.y) * 180 / kPi;
+            p->damage.push_back({degrees < 0 ? degrees + 360 : degrees, s.alpha});
         }
     }
     for (const Reading::Nitro& nitro : r.nitros) {
@@ -386,14 +394,15 @@ bool hud_take_quad(const HudQuad& q) {
         }
     }
     if (!q.program && q.colour[0] > 0.6f && q.colour[1] < 0.2f && q.colour[2] < 0.2f && width < 40 && height < 40) {
-        // The red bar under the speedometer (the rev limiter): ten small segments around a speedometer already read
-        // (a small red letter elsewhere stays). Left out with the dials.
+        // The damage meter: eleven red pieces around a speedometer already read, about 23 degrees apart from its foot
+        // clockwise, always drawn; lit ones (alpha above 0) from the foot, one more with heavy hits (seen in a race
+        // steered into walls; a small red letter elsewhere stays). Drawn again on the port's speedometer.
         const float x = (left + right) / 2, y = (top + bottom) / 2;
         const bool near_speedometer = std::any_of(g_players.begin(), g_players.end(), [&](const Player& p) {
             return std::hypot(p.speed.centre_x() - x, p.speed.centre_y() - y) < p.speed.size() * 0.75f;
         });
         if (!near_speedometer) return false;
-        r.segments.push_back({x, y});
+        if (q.colour[3] > 0.02f) r.segments.push_back({x, y, q.colour[3]});  // unlit pieces: alpha 0
         return hide;
     }
     return false;
@@ -559,8 +568,12 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
             arc(list, speed_centre, r, 18, 18 + 32 * p.nitro,
                 colour(channel(p.nitro_colour[0]), channel(p.nitro_colour[1]), channel(p.nitro_colour[2])), 5 * s);
         }
-        // The game's red bar under the speedometer is not redrawn: it lights only at the rev limiter, which the rev
-        // counter's red zone already shows.
+        // The damage meter, at the angles the game's pieces have around its speedometer. The game lights them at
+        // alpha 0.4 (all that was seen): full here, as the port's other arcs.
+        for (const auto& [degrees, alpha] : p.damage) {
+            arc(list, speed_centre, 123 * s, degrees - 10, degrees + 10, colour(232, 57, 47, std::min(1.0f, alpha / 0.4f)),
+                5 * s);
+        }
         if (p.slipstream > 0) {  // the slipstream turbo: an arc outside the speedometer, lower right, filling upwards;
                                  // none while it is empty
             const float r = 127 * s;
