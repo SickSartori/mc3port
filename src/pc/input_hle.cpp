@@ -195,6 +195,7 @@ bool key(int virtual_key) { return key_down(virtual_key); }
 void press(XboxGamepad& pad, const std::string& button) {
     if (button == "start") pad.buttons |= kStart;
     else if (button == "back") pad.buttons |= kBack;
+    else if (button == "ls") pad.buttons |= kLeftThumb;  // the left stick's click
     else if (button == "up") pad.buttons |= kDpadUp;
     else if (button == "down") pad.buttons |= kDpadDown;
     else if (button == "left") pad.buttons |= kDpadLeft;
