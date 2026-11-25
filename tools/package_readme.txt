@@ -42,8 +42,10 @@ FIRST START
 1. Portable zip: extract it where you like; it contains this "mc3port"
    folder. Installer: run it; it installs for your user only, without
    administrator rights.
-2. Start mc3.exe. The files are not code signed, so Windows SmartScreen
-   may ask once: "More info", then "Run anyway". To check a download,
+2. Start mc3.exe. The files are code signed (publisher: Open Source
+   Developer Gabriel Sartori); the certificate is new, so Windows
+   SmartScreen may still ask once: "More info", then "Run anyway". To
+   check a download,
    compare its SHA-256 with the SHA256SUMS file of the release.
 3. The launcher asks for your disc image: choose the .iso (or .cci) file. mc3port
    checks it and remembers where it is; if you move the file later,
@@ -78,8 +80,8 @@ UPDATING
 --------
 
 Installer: when a new version is out, the launcher says so on its first
-page and offers to update. It downloads the new installer, checks its
-SHA-256 and shows it in Explorer: start it to install the update.
+page and offers to update: your browser downloads the new installer, and
+you start it to install the update. Settings and saves are kept.
 
 Portable zip: extract the new version in the same place, replacing the
 files of this folder. Settings and saves are kept.

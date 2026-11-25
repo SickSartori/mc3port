@@ -13,9 +13,51 @@
 #include "pc/game_pause.h"
 #include "pc/log.h"
 #include "pc/nv2a.h"
+#include "pc/renderer_d3d11.h"
+#include "pc/settings.h"
 
 namespace xport::pc {
 namespace {
+
+// --- picture shape and field of view ---
+//
+// The game's video modes (0x4B4D80, 16 bytes each: size, flags, shape) give its 720x480 widescreen modes 16/9; the
+// camera's perspective (0x2D4AE0) keeps the vertical angle and divides by that shape, so a wider value widens the view
+// to the sides. Setting widescreen 2 puts the screen's shape there (renderer_aspect). The same function turns the
+// vertical angle (degrees) into half of it in radians with fmul [0x476EBC] (pi / 360, read nowhere else): that
+// instruction reads g_half_degree instead, scaled by setting field_of_view.
+constexpr uint32_t kWideModeShapes[] = {0x004B4D98, 0x004B4DB8};
+constexpr uint32_t kSixteenNinths = 0x3FE38E39;  // 16/9 as the game stores it
+constexpr uint32_t kHalfDegreeSite = 0x002D4B24;   // fmul dword ptr [0x476EBC]
+constexpr float kHalfDegree = 0.0087266462f;        // pi / 360
+volatile float g_half_degree = kHalfDegree;
+
+void scale_field_of_view() {
+    g_half_degree = kHalfDegree * std::clamp(setting("field_of_view"), 50.0f, 150.0f) / 100;
+}
+
+void patch_shape_and_field_of_view() {
+    const float shape = renderer_aspect();
+    for (const uint32_t address : kWideModeShapes) {
+        auto* value = reinterpret_cast<uint32_t*>(static_cast<uintptr_t>(address));
+        if (*value != kSixteenNinths) {
+            log_line("HLE: video mode shape at %08X does not match this XBE, not changed", address);
+        } else if (shape > 16.0f / 9.0f) {
+            std::memcpy(value, &shape, sizeof(shape));
+            log_line("HLE: video mode shape at %08X set to %.3f", address, shape);
+        }
+    }
+    auto* code = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(kHalfDegreeSite));
+    static const uint8_t kFmul[] = {0xD8, 0x0D, 0xBC, 0x6E, 0x47, 0x00};
+    if (std::memcmp(code, kFmul, sizeof(kFmul)) != 0) {
+        log_line("HLE: field of view at %08X does not match this XBE, not patched", kHalfDegreeSite);
+        return;
+    }
+    const auto ours = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&g_half_degree));
+    std::memcpy(code + 2, &ours, sizeof(ours));
+    scale_field_of_view();
+    log_line("HLE: field of view at %08X reads the port's copy", kHalfDegreeSite);
+}
 
 // --- time stamp counter ---
 //
@@ -109,8 +151,13 @@ void __cdecl set_fixed_step(float rate, uint32_t count) {
     use_fixed_step(period > 0 ? period : 1.0f / (static_cast<float>(count) * rate));
     *g_step = *g_fixed_step;
 }
-constexpr float kSixtieth = 1.0f / 60;
+// The shortest step and the unit steps are whole multiples of: 1/60 s as on the Xbox, 1/120 s at 120 fps
+// (apply_hle_patches sets it before the game runs).
+float g_step_unit = 1.0f / 60;
 constexpr float kMaximumCarry = 1.0f / 20;
+
+// Steps a second at the shortest step: 60, or 120 with frame_rate 120.
+float step_rate() { return nv2a_vblank_hz() >= 240 ? 120.0f : 60.0f; }
 float g_step_carry = 0;
 
 // Replaces the round-up (0x20B737, measured seconds in xmm0); stores the step and continues at 0x20B776 like it.
@@ -118,14 +165,14 @@ __declspec(naked) void quantize_frame_step() {
     __asm {
         addss xmm0, g_step_carry  // wanted = measured + carry
         movss xmm1, xmm0
-        divss xmm1, kSixtieth
+        divss xmm1, g_step_unit
         cvtss2si eax, xmm1        // nearest whole sixtieths, at least one
         cmp eax, 1
         jge whole
         mov eax, 1
     whole:
         cvtsi2ss xmm1, eax
-        mulss xmm1, kSixtieth
+        mulss xmm1, g_step_unit
         subss xmm0, xmm1          // carry = wanted - step, kept small
         movss xmm2, kMaximumCarry
         minss xmm0, xmm2
@@ -298,6 +345,7 @@ void time_frame_shown(uint32_t vblanks) {
     }
     static uint32_t recent[8] = {};
     static uint32_t shown = 0;
+    scale_field_of_view();  // the in-game menu changes it while playing
     recent[shown++ % 8] = std::min<uint32_t>(vblanks, 8);
     if (shown < 8) return;
     uint32_t total = 0;
@@ -313,8 +361,8 @@ void time_frame_shown(uint32_t vblanks) {
     }();
     const float average = static_cast<float>(total) / 8.0f / static_cast<float>(nv2a_vblank_hz());
     static float sixtieths = 0;
-    sixtieths = step_sixtieths(sixtieths, average * 60.0f);
-    const float period = std::max(sixtieths / 60.0f, floor);
+    sixtieths = step_sixtieths(sixtieths, average * step_rate());  // in 1/120 s at 120 fps
+    const float period = std::max(sixtieths / step_rate(), floor);
     g_frame_period = period;
     if (*g_fixed_mode == 1) use_fixed_step(period);
 }
@@ -339,6 +387,7 @@ int32_t* career_money() {
 
 void apply_hle_patches(const Xbe& /*xbe*/) {
     g_game_loaded = true;
+    g_step_unit = 1.0f / step_rate();
     for (const Patch& patch : kPatches) {
         auto* code = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(patch.address));
         if (std::memcmp(code, patch.original.data(), patch.original.size()) != 0) {
@@ -359,6 +408,7 @@ void apply_hle_patches(const Xbe& /*xbe*/) {
         std::memcpy(code + 1, &relative, sizeof(relative));
         log_line("HLE: %s at %08X redirected", patch.name, patch.address);
     }
+    patch_shape_and_field_of_view();
 }
 
 }  // namespace xport::pc

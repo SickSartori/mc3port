@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "pc/log.h"
+#include "pc/paths.h"
 
 namespace xport::pc {
 namespace {
@@ -24,23 +25,51 @@ struct Setting {
 
 const Setting kSettings[] = {
     {"game_language", 0, "Game language: 0 = like Windows, 1 = English, 3 = German, 4 = French, 5 = Spanish, 6 = Italian."},
-    {"frame_rate", 60, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work)."},
+    {"frame_rate", 60, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work), 120 for a fast processor and a 120 Hz screen."},
     {"vsync", 0, "Wait for the screen before showing a frame: 1 = the picture never tears (on a slow PC the game may drop to 30 fps), 0 = more frames per second."},
-    {"widescreen", 1, "16:9 widescreen: 1 = the game's own widescreen mode (wider view, no black bars), 0 = 4:3 like a classic TV."},
+    {"widescreen", 1, "Picture shape: 1 = 16:9, the game's own widescreen mode (wider view, no black bars); 0 = 4:3 like a classic TV; 2 = your screen's shape when it is wider than 16:9 (21:9, 32:9: the view widens to the sides, films and loading screens stay 16:9)."},
+    {"field_of_view", 100, "Field of view, in percent of the game's own: 100 = like the Xbox, more = wider (75 to 130 in the launcher)."},
     {"hud_aspect", 1, "In 16:9, keep the HUD's round shapes round (radar, dials): 1 = yes, 0 = stretched as on the Xbox."},
     {"sharp_2d", 1, "The HUD's pictures (radar map, icons, letters) and the cars' stickers enlarged with their edges kept: 1 = sharper at high resolutions, 0 = as the game's."},
+    {"sharp_textures", 0, "The textures of the 3D scene (roads, buildings, cars) enlarged two times with their edges kept, as sharp_2d does for the HUD: 1 = sharper from close, 0 = as the game's. Needs more graphics memory; they sharpen a few seconds after a place loads."},
     {"hud_style", 1, "HUD: 0 = the game's, 1 = mc3port's (speedometer, rev counter and gear redrawn, sharp at any resolution)."},
     {"hud_units", 0, "Speed in mc3port's HUD: 0 = mph, 1 = km/h."},
     {"fullscreen", 0, "Start in full screen: 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},
     {"volume", 100, "Overall volume, 0 to 100."},
     {"launcher_music", 70, "Volume of the launcher's background music, 0 to 100 (0 = off)."},
+    {"launcher_mute", 0, "1 = the launcher's background music is off (the speaker button in its bottom bar)."},
     {"fps_counter", 0, "Frames per second shown in a corner while playing: 1 = yes, 0 = no."},
+    {"loading_music", 1, "Play optional PS2 loading music from loading_music/1.wav through 18.wav in the game data folder: 1 = on, 0 = off."},
+    {"loading_music_mode", 0, "Loading music order: 0 = sequential, 1 = random, 2 = weighted random."},
+    {"loading_music_weight_1", 100, "Relative selection weight for PS2 loading track 1: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_2", 100, "Relative selection weight for PS2 loading track 2: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_3", 100, "Relative selection weight for PS2 loading track 3: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_4", 100, "Relative selection weight for PS2 loading track 4: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_5", 100, "Relative selection weight for PS2 loading track 5: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_6", 100, "Relative selection weight for PS2 loading track 6: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_7", 100, "Relative selection weight for PS2 loading track 7: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_8", 100, "Relative selection weight for PS2 loading track 8: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_9", 100, "Relative selection weight for PS2 loading track 9: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_10", 100, "Relative selection weight for PS2 loading track 10: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_11", 100, "Relative selection weight for PS2 loading track 11: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_12", 100, "Relative selection weight for PS2 loading track 12: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_13", 100, "Relative selection weight for PS2 loading track 13: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_14", 100, "Relative selection weight for PS2 loading track 14: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_15", 100, "Relative selection weight for PS2 loading track 15: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_16", 100, "Relative selection weight for PS2 loading track 16: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_17", 100, "Relative selection weight for PS2 loading track 17: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_weight_18", 100, "Relative selection weight for PS2 loading track 18: 0 = disabled, 100 = normal, 300 = most frequent."},
+    {"loading_music_volume", 70, "PS2 loading music volume, 0 to 100 (also follows overall volume)."},
+    {"loading_music_fade_seconds", 0.75f, "Fade out PS2 loading music over this many seconds near the end of playback."},
     {"loading_screen_seconds", 0, "The game's loading screens stay at least this many seconds, any number; never less than 2 (0 = the shortest)."},
     {"skip_intro", 1, "Skip the films at start (Rockstar logos and the game's intro): 1 = yes, 0 = show them."},
     {"pause_in_background", 1, "Pause the game (in-game menu) when its window goes to the background: 1 = yes, 0 = no."},
     {"check_updates", 1, "Look for a newer mc3port release on GitHub when the launcher opens: 1 = yes, 0 = no."},
+    {"render_thread", 1, "Drawing on a thread of its own, beside the one that reads the game's drawing commands: 1 = yes (faster, most of all in split screen; needs four processor threads or more), 0 = as before, if the picture or the game misbehaves."},
     {"gpu_vertices", 1, "Vertex processing on the graphics card: 1 = yes (faster), 0 = on the processor."},
     {"render_scale", 0, "Internal resolution, times the game's 480 lines: 0 = like the screen, 1 = like the Xbox (480p), 1.5 = 720p, 2.25 = 1080p, 3 = 1440p, 4.5 = 2160p (4K), 6 = 2880p (5K). Higher = smoother edges."},
+    {"upscaler", 0, "Upscaling, experimental (only with upscale64.exe beside the game, not in the releases yet): 0 = off (the internal resolution above), 2 = NVIDIA DLSS on an RTX graphics card: the game is drawn at the lines its profile sets (upscaler_quality) and DLSS brings it to the screen's."},
+    {"upscaler_quality", 1, "Upscaling profile: 0 = native (DLAA: the screen's lines, the best edges), 1 = Quality, 2 = Balanced, 3 = Performance (the fewest lines, the most frames)."},
     {"anisotropy", 16, "Anisotropic texture filtering: 1 = off, up to 16."},
     {"effects", 1, "Modern effects: 1 = on, 0 = original picture (F10 toggles them while playing)."},
     {"sharpen", 0.5f, "Adaptive sharpening: 0 = off, 1 = strongest."},
@@ -72,6 +101,19 @@ std::map<std::string, float> g_values;
 std::map<std::string, float> g_start_values;  // settings_freeze
 std::map<std::string, std::string> g_texts;
 
+// Track weights are separate from mc3port.ini, but keep their existing setting keys for the launcher.
+bool is_track_weight(const std::string& key) {
+    constexpr char prefix[] = "loading_music_weight_";
+    if (key.compare(0, sizeof(prefix) - 1, prefix) != 0) return false;
+    const std::string number = key.substr(sizeof(prefix) - 1);
+    if (number.empty() || number.size() > 2 || number.find_first_not_of("0123456789") != std::string::npos) return false;
+    const int index = std::atoi(number.c_str());
+    return index >= 1 && index <= 18 && std::to_string(index) == number;
+}
+
+std::filesystem::path weights_file() { return data_directory() / "loading_music" / "weights.txt"; }
+
+
 std::string environment_name(const char* key) {
     std::string name = "MC3_";
     for (const char* c = key; *c; ++c) name += static_cast<char>(std::toupper(static_cast<unsigned char>(*c)));
@@ -98,10 +140,37 @@ void write_defaults(const std::filesystem::path& file) {
            "# Any key can also be given as an environment variable MC3_<KEY> (for example MC3_BLOOM=0).\n\n";
     for (const TextSetting& s : kTextSettings) out << "# " << s.comment << "\n" << s.key << " =\n\n";
     for (const Setting& s : kSettings) {
+        if (is_track_weight(s.key)) continue;
         char value[32];
         std::snprintf(value, sizeof(value), "%g", s.value);
         out << "# " << s.comment << "\n" << s.key << " = " << value << "\n\n";
     }
+}
+
+// Save the full set of weights so the file is usable even before the user touches a slider.
+// A failed write leaves the existing file untouched.
+bool write_weights() {
+    const auto target = weights_file();
+    std::error_code error;
+    std::filesystem::create_directories(target.parent_path(), error);
+    if (error) { log_line("settings: cannot create loading_music folder: %s", error.message().c_str()); return false; }
+    auto temporary = target;
+    temporary += ".tmp";
+    {
+        std::ofstream out(temporary, std::ios::trunc);
+        out << "# PS2 loading music track weights (0 to 300; 0 = disabled, 100 = normal).\n";
+        for (int n = 1; n <= 18; ++n) {
+            const std::string key = "loading_music_weight_" + std::to_string(n);
+            out << key << " = " << g_values[key] << "\n";
+        }
+        out.close();
+        if (!out) { log_line("settings: cannot write %s", temporary.string().c_str()); return false; }
+    }
+    if (!MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        log_line("settings: cannot replace %s (error %lu)", target.string().c_str(), GetLastError());
+        return false;
+    }
+    return true;
 }
 
 }  // namespace
@@ -119,6 +188,7 @@ void settings_load(const std::filesystem::path& file) {
         const std::string key = line_key(line);
         if (key.empty()) continue;
         const std::string value = trim(line.substr(line.find('=') + 1));
+        if (is_track_weight(key)) continue;  // Never load weights from mc3port.ini.
         if (g_values.count(key)) {
             g_values[key] = static_cast<float>(std::atof(value.c_str()));  // stops at a trailing # comment
         } else {
@@ -127,6 +197,19 @@ void settings_load(const std::filesystem::path& file) {
             }
         }
     }
+    in.close();
+    // Track weights are stored only in loading_music/weights.txt.
+    const auto weights = weights_file();
+    std::ifstream weight_input(weights);
+    if (weight_input) {
+        for (std::string entry; std::getline(weight_input, entry);) {
+            const std::string key = line_key(entry);
+            if (is_track_weight(key))
+                g_values[key] = static_cast<float>(std::atof(trim(entry.substr(entry.find('=') + 1)).c_str()));
+        }
+        if (weight_input.bad()) log_line("settings: error reading %s", weights.string().c_str());
+    }
+
     // Before 0.2.5 render_scale was a whole 1 to 4: 2 and 4 become the nearest named resolution (1080p, 2160p).
     if (const float old_scale = g_values["render_scale"]; old_scale == 2 || old_scale == 4) {
         setting_save("render_scale", old_scale == 2 ? 2.25f : 4.5f);
@@ -222,6 +305,10 @@ float setting_default(const char* key) {
 
 void setting_save(const char* key, float value) {
     g_values[key] = value;
+    if (is_track_weight(key)) {
+        write_weights();
+        return;
+    }
     const char* comment = nullptr;
     for (const Setting& s : kSettings) {
         if (std::strcmp(s.key, key) == 0) comment = s.comment;

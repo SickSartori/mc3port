@@ -11,6 +11,7 @@
 #include <windows.h>
 #include <xinput.h>
 
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -189,7 +190,7 @@ bool game_has_focus() {
     return process == GetCurrentProcessId();
 }
 
-bool key(int virtual_key) { return (GetAsyncKeyState(virtual_key) & 0x8000) != 0; }
+bool key(int virtual_key) { return key_down(virtual_key); }
 
 void press(XboxGamepad& pad, const std::string& button) {
     if (button == "start") pad.buttons |= kStart;
@@ -555,5 +556,67 @@ void install_input_hle(const Xbe& xbe) {
     log_line("input: %u XPP entry points redirected to SDL and the keyboard",
              static_cast<uint32_t>(sizeof(kRedirects) / sizeof(kRedirects[0])));
 }
+
+// The keys down, from the game window's messages (input_note_window_message).
+std::atomic<bool> g_down[256];
+
+void set_down(int virtual_key, bool down) {
+    if (virtual_key > 0 && virtual_key < 256) g_down[virtual_key] = down;
+}
+
+int key_from_message(uintptr_t wparam, intptr_t lparam) {
+    const UINT scan = (lparam >> 16) & 0xFF;
+    const bool extended = (lparam >> 24) & 1;
+    switch (wparam) {
+        case VK_SHIFT: return static_cast<int>(MapVirtualKeyW(scan, MAPVK_VSC_TO_VK_EX));
+        case VK_CONTROL: return extended ? VK_RCONTROL : VK_LCONTROL;
+        case VK_MENU: return extended ? VK_RMENU : VK_LMENU;
+        default: return static_cast<int>(wparam);
+    }
+}
+
+void input_note_window_message(void* window, unsigned message, uintptr_t wparam, intptr_t lparam) {
+    // While a mouse button is down the window keeps the mouse, so that letting it go outside reaches it too.
+    const auto hold_mouse = [&](bool down) {
+        if (down) SetCapture(static_cast<HWND>(window));
+        else if (!(g_down[VK_LBUTTON] || g_down[VK_RBUTTON] || g_down[VK_MBUTTON] || g_down[VK_XBUTTON1] ||
+                   g_down[VK_XBUTTON2]) && GetCapture() == window) ReleaseCapture();
+    };
+    switch (message) {
+        case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP: {
+            const bool down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
+            set_down(key_from_message(wparam, lparam), down);
+            // Shift, Ctrl and Alt are also asked for without a side.
+            g_down[VK_SHIFT] = g_down[VK_LSHIFT] || g_down[VK_RSHIFT];
+            g_down[VK_CONTROL] = g_down[VK_LCONTROL] || g_down[VK_RCONTROL];
+            g_down[VK_MENU] = g_down[VK_LMENU] || g_down[VK_RMENU];
+            break;
+        }
+        case WM_LBUTTONDOWN: case WM_LBUTTONUP:
+            set_down(VK_LBUTTON, message == WM_LBUTTONDOWN), hold_mouse(message == WM_LBUTTONDOWN);
+            break;
+        case WM_RBUTTONDOWN: case WM_RBUTTONUP:
+            set_down(VK_RBUTTON, message == WM_RBUTTONDOWN), hold_mouse(message == WM_RBUTTONDOWN);
+            break;
+        case WM_MBUTTONDOWN: case WM_MBUTTONUP:
+            set_down(VK_MBUTTON, message == WM_MBUTTONDOWN), hold_mouse(message == WM_MBUTTONDOWN);
+            break;
+        case WM_XBUTTONDOWN: case WM_XBUTTONUP:
+            set_down(GET_XBUTTON_WPARAM(wparam) == XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2, message == WM_XBUTTONDOWN);
+            hold_mouse(message == WM_XBUTTONDOWN);
+            break;
+        case WM_MOUSEMOVE:  // the buttons' state comes with it too: none stays down through a missed message
+            set_down(VK_LBUTTON, wparam & MK_LBUTTON), set_down(VK_RBUTTON, wparam & MK_RBUTTON);
+            set_down(VK_MBUTTON, wparam & MK_MBUTTON), set_down(VK_XBUTTON1, wparam & MK_XBUTTON1);
+            set_down(VK_XBUTTON2, wparam & MK_XBUTTON2);
+            break;
+        case WM_KILLFOCUS:
+            for (std::atomic<bool>& down : g_down) down = false;
+            break;
+        default: break;
+    }
+}
+
+bool key_down(int virtual_key) { return virtual_key > 0 && virtual_key < 256 && g_down[virtual_key]; }
 
 }  // namespace xport::pc

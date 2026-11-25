@@ -9,7 +9,6 @@
 
 <a href="https://recomplauncher.com/game/mc3port"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
 
-<a href="https://github.com/sponsors/SickSartori"><img alt="Sponsor on GitHub" src="https://img.shields.io/badge/Sponsor-on_GitHub-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white" height="36"></a>
 <a href="https://ko-fi.com/sicksartori"><img alt="Support me on Ko-fi" src="https://ko-fi.com/img/githubbutton_sm.svg" height="36"></a>
 
 [![Latest release](https://img.shields.io/github/v/release/SickSartori/mc3port?label=release)](https://github.com/SickSartori/mc3port/releases/latest)
@@ -55,7 +54,7 @@
 | | |
 |---|---|
 | ![A race in Tokyo, 16:9](docs/screenshots/race-16x9.jpg) | ![The launcher](docs/screenshots/launcher.jpg) |
-| ![Launcher settings: the style above the tabs, then the Picture tab](docs/screenshots/launcher-settings.jpg) | ![Launcher controls: what each button does, rebindable keys](docs/screenshots/launcher-controls.jpg) |
+| ![Launcher settings: the style above the tabs, then the Display tab](docs/screenshots/launcher-settings.jpg) | ![Launcher controls: what each button does, rebindable keys](docs/screenshots/launcher-controls.jpg) |
 
 <sub>The launcher speaks English or Italian, following Windows; these captures come from an Italian Windows. Its logo
 and pictures are read from the player's disc. The game content in the screenshots belongs to its owners.</sub>
@@ -69,7 +68,7 @@ NV2A graphics chip (on Direct3D 11), the sound chip (on XAudio2) and the control
 | | Xbox | mc3port |
 |---|---|---|
 | Aspect ratio | 4:3, or 16:9 with a stretched HUD | **True 16:9**: the game's widescreen mode, wider view, HUD kept round |
-| Frame rate | 30 fps | **60 fps**, or 30 like the Xbox |
+| Frame rate | 30 fps | **60 fps**, 30 like the Xbox, or 120 on a fast processor |
 | Resolution | 480p | **Up to 5K**, or as many lines as your screen, with 16x anisotropic filtering |
 | Picture | as shipped | **Modern effects**, all optional: glow, sharpening, colour, vignette, ambient occlusion (F10 to compare) |
 | Controllers | Xbox pads | Xbox, **PlayStation, Switch** and most USB or Bluetooth pads, or the **keyboard** with rebindable keys |
@@ -82,6 +81,7 @@ And around the game:
 - **Sharp 2D pictures**: the radar's map, icons, letters and the cars' stickers enlarged with clean edges.
 - **Your own music** on the game's radio: playlists made in the launcher's Music page from MP3, FLAC, WAV, WMA or M4A
   files, chosen in the game in Pause > Options > Audio Options.
+- **PS2 loading-screen music**, optional, from your own WAV files: see [loading_music/README.md](loading_music/README.md).
 - **Cheats** in the in-game menu: money for your career, and the game's own codes with what each one does.
 - **Quality of life**: frame counter, opening films skipped, readable loading screens if you want them, an update
   check with a verified download, and a crash report that fills in the bug form for you.
@@ -121,15 +121,14 @@ be switched off, see [Privacy](#privacy)). Without an audio device the game simp
 | Way | How | Updates |
 |---|---|---|
 | **[RecompLauncher](https://recomplauncher.com/game/mc3port)** (easiest) | Find mc3port in the catalog and install it. The launcher checks your disc, keeps the main settings on the game's page and starts the game straight away. | Automatic |
-| **Installer** | Download `mc3port-<version>-windows-x86-setup.zip` from the [latest release](https://github.com/SickSartori/mc3port/releases/latest), extract it and run the setup inside. It installs for your user only (no administrator rights), with Start menu and desktop shortcuts. | Offered by the launcher: it downloads the new installer, checks its SHA-256 and shows it to you |
-| **Portable** | Download `mc3port-<version>-windows-x86.zip`, extract it anywhere and start `mc3port\mc3.exe`. | Extract the new version over the old one |
+| **Installer** | Download `mc3port-<version>-windows-setup.exe` from the [latest release](https://github.com/SickSartori/mc3port/releases/latest) and run it. It installs for your user only (no administrator rights), with Start menu and desktop shortcuts. | The launcher tells you; its Update button has your browser download the new installer |
+| **Portable** | Download `mc3port-<version>-windows-portable.zip`, extract it anywhere and start `mc3port\mc3.exe`. | Extract the new version over the old one |
 | **Linux (Wine)** | Download `mc3port-<version>-linux.tar.gz`: see [Linux](#linux-experimental). | Run `install.sh` again |
 
 Every package contains `README.txt`, a short guide, and `CHANGELOG.md`. To check a download, compare its SHA-256 with
-the release's `SHA256SUMS`. The files are not code signed yet (see [Code signing policy](#code-signing-policy)), so
-browsers may warn about the download and Windows SmartScreen may ask once whether you trust them ("More info", then
-"Run anyway"). The installer is also attached as a plain `-setup.exe`, which the launcher uses for its updates; some
-browsers block that one, the zip gets through.
+the release's `SHA256SUMS`. From 0.4.0 the files are code signed (see [Code signing policy](#code-signing-policy));
+the certificate is new, so browsers may still warn about the download ("Keep") and Windows SmartScreen may still ask
+once whether you trust them ("More info", then "Run anyway").
 
 ### First start
 
@@ -239,7 +238,8 @@ The quickest choice is the **style**, above the tabs:
 | Game language | English, French, German, Spanish or Italian; by default like Windows |
 | Frames per second | 60, or 30 like the Xbox |
 | VSync | off by default: more frames per second, but the picture can tear (a horizontal line where two frames meet). On: it never tears, but a PC that cannot keep up may drop to 30 fps |
-| Aspect ratio | 16:9 (the game's widescreen mode) or 4:3 |
+| Aspect ratio | 16:9 (the game's widescreen mode), 4:3, or 21:9: your screen's own shape when it is wider than 16:9 (21:9, 32:9), with the view widened to the sides; films and loading screens stay 16:9, with bars at the sides |
+| Field of view | how wide the camera sees, 75% to 130% of the game's own (100%, the default); it changes at once, also from the in-game menu |
 | Texture filter | anisotropic filtering, 1x to 16x |
 | Internal resolution | Auto (as many lines as your screen; at most 1080 on integrated graphics), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p, 4K 2160p or 5K 2880p |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
@@ -248,6 +248,7 @@ The quickest choice is the **style**, above the tabs:
 | Frame counter | frames per second in a corner while playing; off by default |
 | HUD | the game's, or mc3port's: speedometer, rev counter, gear, nitrous and special ability drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |
 | Sharp pictures | the radar's map, the icons, the letters and the cars' stickers enlarged with clean edges; on by default |
+| Sharp textures | the textures of roads, buildings and cars enlarged two times with clean edges, for when you see them from close: nothing is added that the game does not have, and from afar the picture is the game's own. They sharpen a few seconds after a place loads and take more graphics memory; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
 | Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
 | Loading screens | how long the game waits before loading, with the screen animating: 2 seconds (off, the default), or 4, 8 or 12; any other number in `mc3port.ini` (`loading_screen_seconds`), never less than 2 |
@@ -258,9 +259,12 @@ The quickest choice is the **style**, above the tabs:
 <details>
 <summary>Replacement pictures and mods</summary>
 
-**Replacement pictures**: a PNG or JPG in a folder `textures_replace` next to `mc3port.ini`, named after a 2D
+**Replacement pictures**: a PNG or JPG in a folder `textures_replace` next to `mc3port.ini`, named after a
 picture's hash (16 hex digits, for example `83E5DF1E4AC28289.png`), is drawn instead of the game's picture, at any
-size. `MC3_DUMP_2D=1` saves the HUD's pictures with their hash in the name (see `docs/DEVELOPMENT.md`). Pictures in a
+size: the HUD's pictures and the textures of roads, buildings and cars alike. Starting the game with the environment
+variable `MC3_DUMP_TEXTURE=all` saves every texture it draws with as `textures_dump\<hash>.png` next to `mc3port.ini`:
+enlarge or redraw them with a tool of your own (most of the game's are 128 x 128 pixels) and put them in
+`textures_replace` under the same name. `MC3_DUMP_2D=1` saves only the HUD's (see `docs/DEVELOPMENT.md`). Pictures in a
 folder `launcher_backgrounds` (PNG, JPG and the other formats Windows reads) become the launcher's backgrounds
 instead of the disc's artwork; the left part goes under the menu.
 
@@ -285,7 +289,7 @@ a city. The results are kept in the `shader_cache` folder, so later runs do not 
 
 - Only the European and USA releases of the Remix are supported.
 - Online play (Xbox Live) is not available. Split screen works.
-- On monitors wider than 16:9 there are thin black bars at the sides.
+- On screens wider than 16:9, choose 21:9 in the settings: the game's own texts and prompts are then a little wider than they should be, and films and loading screens keep bars at the sides.
 - The Xbox sound chip's own effects, such as reverb, are not reproduced: the sound can be drier than on the console.
 - Linux (Wine, Proton) is experimental and only partly tested: see [Linux](#linux-experimental).
 
@@ -306,7 +310,8 @@ No. mc3port works only with the Xbox Remix, European or USA release.
 
 **Is it safe? My antivirus flagged it.**
 The files are built by GitHub from this repository, and each release lists their SHA-256 in `SHA256SUMS`. Some
-antivirus engines flag new, unsigned programs that load code at runtime; Microsoft reviewed `mc3runtime.dll` 0.3.4
+antivirus engines flag new programs that load code at runtime, and from 0.4.0 the files are
+[code signed](#code-signing-policy); Microsoft reviewed `mc3runtime.dll` 0.3.4
 and confirmed it is not malware. Check your download against `SHA256SUMS`, and report a flag in
 [#9](https://github.com/SickSartori/mc3port/issues/9).
 
@@ -375,27 +380,29 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 
 ## Code signing policy
 
-The releases are not code signed yet. Every Windows file is built from this repository and
+From 0.4.0 the Windows files (`mc3.exe`, `mc3runtime.dll`, the installer and its uninstaller) are code signed with a
+Certum Open Source Code Signing certificate issued to the author: Windows shows the publisher
+**Open Source Developer Gabriel Sartori**. Every file is built from this repository and
 [xport](https://github.com/SickSartori/xport) by GitHub Actions ([release workflow](.github/workflows/release.yml));
-each release lists their SHA-256 in `SHA256SUMS`.
+the author then signs those same files on their own PC (`tools/package.ps1 -From <the workflow's zip> -Sign`: the
+key cannot leave Certum's service, so the workflow cannot sign) and uploads them to the release, which lists their
+SHA-256 in `SHA256SUMS`. Earlier releases are not signed.
 
 ## Privacy
 
 mc3port collects no personal data and has no telemetry. The only connection it makes on its own is the update check:
 when the launcher opens, it asks `api.github.com` for this project's latest release. You can turn it off in the
 installer, or at any time with `check_updates = 0` in `Documents\mc3port\mc3port.ini`; started from RecompLauncher, it
-is always off. If you accept an update, the launcher downloads the new installer and `SHA256SUMS` from this project's
-GitHub releases. **Report a problem** only opens GitHub's bug form in your browser, filled in for you to read and send
+is always off. If you accept an update, the launcher opens the new installer's link on this project's GitHub
+releases in your browser, which downloads it; mc3port itself downloads and starts nothing. **Report a problem** only opens GitHub's bug form in your browser, filled in for you to read and send
 yourself. The game's online play is not available.
 
 ## Supporting the project
 
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-support_the_project-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/SickSartori)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/sicksartori)
 
 mc3port is free and always will be: no paid builds, no early access, no locked features. If you enjoy it and want to
-say thanks, you can support its author on [GitHub Sponsors](https://github.com/sponsors/SickSartori) or
-[Ko-fi](https://ko-fi.com/sicksartori). It is never needed to play, and it buys nothing: it gives more time for fixes,
+say thanks, you can support its author on [Ko-fi](https://ko-fi.com/sicksartori). It is never needed to play, and it buys nothing: it gives more time for fixes,
 features and the next port.
 
 ## Licence

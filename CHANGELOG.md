@@ -1,5 +1,118 @@
 # Changelog
 
+## 0.4.0 (2026-11-25)
+
+### New
+
+- **21:9** (issue 18): a third aspect ratio next to 4:3 and 16:9 in the launcher's and the in-game menu's settings. On a
+  screen wider than 16:9 (21:9, 32:9) the game takes your screen's shape and sees more to the sides, as it does in 16:9
+  compared with 4:3; the radar and the dials stay round. Films and loading screens are made for 16:9 and keep bars
+  at the sides. The game's own texts and prompts come out a little wider than they should.
+- **Field of view**, in the same settings: how wide the camera sees, from 75% to 130% of the game's own. It changes at
+  once, also from the in-game menu.
+
+- **120 frames per second**: a third choice next to 30 and 60 in the launcher's and the in-game menu's settings. The
+  game runs at the same speed, with twice the frames of 60. It needs a fast processor (one of its cores does the
+  work twice as often) and a screen of 120 Hz or more to show them; where the PC cannot keep up, the game stays smooth
+  at the frames it reaches.
+- **Sharp textures** (off by default, in the same settings): the textures of roads, buildings and cars enlarged two
+  times with their edges kept, as Sharp pictures does for the HUD. It shows from close: signs and markings lose their
+  steps. Nothing is added that the game does not have, and from afar the picture is the game's own. The textures
+  sharpen a few seconds after a place loads, and take more graphics memory.
+- **PS2 loading-screen music** (#24, by Nekoniria), optional: the PS2 version's loading music on the loading screens,
+  from WAV files you supply (none come with mc3port), best with a longer loading-screen duration. The launcher's Music
+  page has a PS2 Loading Music tab: import a folder with `1.wav` to `18.wav`, or the PS2 disc's own `1.raw` to `18.raw`
+  (#25, converted to WAV as they are imported), the volume, the fade-out, the order (in
+  order, random, or weighted by each track's own weight) and a preview. The files go in `loading_music` in the game's
+  data folder; `docs/loading_music/README.md` in the package says how. RecompLauncher's page turns it on and off and
+  sets its volume.
+
+### Improved
+
+- **More natural light and colour from the modern effects**: the glow, contrast, saturation and vignette now apply to
+  the 3D scene before the HUD is drawn, so the HUD keeps its own colours. Contrast follows a curve that keeps
+  detail in the darkest and brightest parts (before, night scenes lost their dark detail and lights burnt
+  out), and the glow around lights is softer and wider.
+- **The launcher's buttons**: Report a problem and Support the project sit above the bottom bar, on every page and in
+  the in-game menu, and a speaker at the left of the bar turns the launcher's music off and on (`launcher_mute` in
+  `mc3port.ini`; the game's volume stays in the settings). The hints' keys are drawn as keyboard keys. Support goes to
+  Ko-fi only.
+- **First start**: after the disc and the style the launcher opens its menu, with every page, instead of starting the
+  game. The style is chosen from three cards that say what each one turns on.
+- **Drawing on two threads**: one reads the game's drawing commands, the other makes the picture with Direct3D; before,
+  one thread did both and was the limit of the frame rate. On the PC it was measured on, with the two ways taking
+  turns in the same race: 50 frames a second instead of 37 in two-player split screen, 68 instead of 54 with one
+  player at 120 fps. It needs four processor threads or more; `render_thread = 0` in `mc3port.ini` goes back to one
+  thread, should the picture or the game misbehave. The two threads each have processor cores of their own: with
+  Windows choosing, a test had some 10-second stretches in the city at 85 frames a second where they held 120.
+- **A little faster again where the PC works hardest**: for each draw the textures and the vertex state are found
+  without being looked up again, a few percent less work on the thread that limits the frame rate.
+- **Replacement pictures for any texture**, not only the HUD's: `MC3_DUMP_TEXTURE=all` saves every texture the
+  game draws with as a PNG in a folder `textures_dump` next to `mc3port.ini`. Redrawn or enlarged with a tool of
+  your own and put in `textures_replace` under the same name, at any size, they are drawn instead of the game's:
+  the way to textures with more detail than the game has (most of its own are 128 x 128 pixels).
+- **The launcher's new layout**, in the in-game menu too: each page sits in a column from the top of the window to the
+  bottom bar, with Play at its foot. A page longer than the window scrolls (the mouse wheel, or the selection kept in
+  sight with the keys and the controller): the Picture tab's last rows were hidden under the bottom bar on a 720p
+  window. In a 4:3 or smaller window everything is larger than before (it was sized for 16:9 and shrank). A slider's
+  value now sits beside its grab instead of under it, the rows of a page come in one after another, a light runs round
+  Play when the game is ready and along the menu's selected item. The internal resolution is a drop-down list, like
+  the game language, instead of seven narrow buttons.
+- **Settings in five shorter tabs**: Picture, with ten rows, is now Display (aspect ratio, field of view, window, frames
+  per second, VSync) and Graphics (internal resolution, texture filter, sharp pictures and textures, vertices on the
+  graphics card), next to Effects, Game and Audio.
+- **The launcher's light trails** run on three planes, the nearer ones lower, thicker and brighter, and come more
+  often and faster when the music gets louder.
+
+- **Fewer pauses the first time you reach a place**: the shaders a scene needs the first time are made on two helper
+  threads instead of in the middle of a frame; a frame waits for them at most 8 ms, and what is still missing is
+  drawn a frame or two later. Entering the city with no shaders made yet ran at about 42 fps instead of 32 in tests.
+
+- **Faster where the PC works hardest**: the work that turns each frame's Xbox drawing commands into Direct3D takes about
+  a quarter less time than in 0.3.9, which counts most in two-player split screen, where the city is drawn twice, and at 120
+  frames per second.
+- **Processors with fast and slow cores** (Intel's P and E cores): the game and its drawing work stay on the fast ones,
+  each on a core of its own. They could land on a slow core, or share one, and the frame rate swung with it.
+- **Full speed in the background**: Windows no longer slows mc3port down when its window is not in front or the
+  battery saver is on.
+- **An incomplete disc image is named in the log** (issue 22): when a file or folder of the image lies past its end (a
+  download cut short), or a read from the disc fails, `mc3port.log` says so. Before, it showed only as a crash later.
+- **Linux and macOS**: at start the port checks that the picture it hands from one Direct3D device to the other
+  really arrives, and shows it the plain way where it does not. Not yet tried on those systems.
+- **Fewer antivirus false alarms** (VirusTotal flagged the 0.3.9 package with 4 engines). Started by RecompLauncher, `mc3.exe` no longer starts the game
+  process suspended and then resumes it, which is how malware hides its code in another process: the game process
+  starts as usual and joins `mc3.exe`'s job at once. `mc3.exe` and `mc3runtime.dll` also carry the checksum in
+  their header, which was left empty.
+- **Code signed files**: `mc3.exe`, `mc3runtime.dll`, the installer and its uninstaller are signed (Windows shows the
+  publisher "Open Source Developer Gabriel Sartori"), which Windows and antivirus programs trust more than
+  unsigned files. The certificate is new, so SmartScreen may still ask once until it has seen enough downloads.
+
+### Changed
+
+- **A new launcher music**, made the same way as the one before it and under the same licence (CC BY 4.0, see
+  THIRD_PARTY.md).
+- **Updating from the launcher**: Update opens the new installer's link and your browser downloads it; you start it,
+  as any download. The launcher no longer downloads and starts the installer itself, which antivirus programs take
+  for the way malware brings in more of itself.
+- **The keyboard is read from the game's window**, no longer by asking Windows for the whole keyboard's state, which
+  antivirus programs also distrust. Keys pressed in other windows no longer reach the game.
+- **Fewer files to choose from in a release**, with names that say what they are: `-windows-setup.exe` (the
+  installer), `-windows-portable.zip` and `-linux.tar.gz`, and a "Which file?" list at the end of the release notes, right above the files. The
+  installer is no longer attached a second time in a zip, and "x86" is gone from the names.
+
+### Fixed
+
+- **Frame timing**: a vertical blank was at times counted just after the frame that came with it, so two frames of
+  the same length were timed as one short and one long, for the game's clock and in the log. Now every frame at 60
+  fps counts its two blanks, and the blanks come from a more precise timer.
+- **Sharp pictures on the HUD's smallest pictures**: those enlarged four times got one level too many, Direct3D
+  refused them (`cannot create an enlarged texture` in the log) and they stayed as the game's. Now they are sharp
+  like the others.
+- **White blotches over the launcher's background**: some of the disc's pictures have cut-out shapes, whose hidden
+  parts were drawn in white. They are now dark, as the rest of the background.
+- **No pale box around pedestrians and lamp posts at night**: the ambient occlusion lightened the shaded wall behind
+  anything standing in front of it, in a rectangle as wide as its radius. It now shades the wall right up to the figure.
+
 ## 0.3.9 (2026-11-17)
 
 ### Improved

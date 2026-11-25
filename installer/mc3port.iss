@@ -45,7 +45,12 @@ CloseApplications=yes
 ChangesAssociations=yes
 RestartApplications=no
 OutputDir={#OutputDir}
-OutputBaseFilename=mc3port-{#AppVersion}-windows-x86-setup
+OutputBaseFilename=mc3port-{#AppVersion}-windows-setup
+; With /DSign (tools/package.ps1 -Sign): the installer and the uninstaller inside it are code signed.
+#ifdef Sign
+SignTool=sign
+SignedUninstaller=yes
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 
@@ -100,6 +105,7 @@ Source: "{#SourceDir}\docs\README.md"; DestDir: "{app}\docs"; Flags: ignoreversi
 Source: "{#SourceDir}\docs\CHANGELOG.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\THIRD_PARTY.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "{#SourceDir}\docs\loading_music\README.md"; DestDir: "{app}\docs\loading_music"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\licenses\*"; DestDir: "{app}\docs\licenses"; Flags: ignoreversion
 
 [Icons]

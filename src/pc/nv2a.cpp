@@ -16,6 +16,7 @@
 
 #include "pc/game_pause.h"
 #include "pc/hle_patches.h"
+#include "pc/input_hle.h"
 #include "pc/kernel_internal.h"
 #include "pc/log.h"
 #include "pc/mmio.h"
@@ -138,7 +139,10 @@ struct DisplayMode {
 };
 
 struct PushBufferState {
+    // What the game is told: how far the commands are done, drawing included. With the renderer's render thread that
+    // is behind `decoded`, how far the GPU thread has read them (publish_get).
     std::atomic<uint32_t> get{0};
+    uint32_t decoded = 0;
     uint32_t subroutine_return = 0;
     bool subroutine_active = false;
     uint32_t method = 0;
@@ -414,6 +418,7 @@ void set_flip_field(uint32_t shift, uint32_t value) {
 // While the driver keeps PGRAPH's FIFO access off (kPgraphFifo), no method runs.
 void wait_for_pgraph_access() {
     while (!g_pgraph_fifo_enabled) {
+        renderer_flush();  // the driver holds PGRAPH: nothing of it is still on its way
         {
             ProfileScope scope(ProfileTime::access_waits);
             WaitForSingleObject(g_gpu_resume, 1);
@@ -567,7 +572,7 @@ bool image_blit_method(uint32_t method, uint32_t argument) {
 }
 
 void execute_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
-    wait_for_pgraph_access();
+    if (!g_pgraph_fifo_enabled) wait_for_pgraph_access();  // checked here: a call for every word cost 3% of the thread
     if (g_collect_statistics) ++g_method_counts[(subchannel << 16) | method];
     if (g_trace_budget > 0 && g_frames >= g_trace_after_frame) {
         --g_trace_budget;
@@ -580,30 +585,43 @@ void execute_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
             return;
         }
         case kSetContextDmaSemaphore: g_kelvin.dma_semaphore = dma_base(argument); return;
+        // The methods by which the game learns how far the GPU has come (and after which it may change what the draws
+        // before them use): what was asked for so far is drawn first (renderer_flush).
         case kSetReference: {
+            renderer_flush();
             std::lock_guard<std::mutex> lock(g_register_mutex);
             reg(kUserRef) = argument;
             return;
         }
         case kNoOperation:
-            if (argument) trap_software_method(subchannel, method, argument);
+            if (argument) {
+                renderer_flush();
+                trap_software_method(subchannel, method, argument);
+            }
             return;
         case kSetFlipRead: set_flip_field(24, argument); return;
         case kSetFlipWrite: set_flip_field(20, argument); return;
         case kSetFlipModulo: set_flip_field(28, argument); return;
         case kFlipIncrementWrite: {
+            renderer_flush();
             std::lock_guard<std::mutex> lock(g_register_mutex);
             const uint32_t surface = reg(kPgraphSurface);
             const uint32_t modulo = std::max<uint32_t>(1, (surface >> 28) & 7);
             set_flip_field_locked(20, (((surface >> 20) & 7) + 1) % modulo);
             return;
         }
-        case kFlipStall: flip_stall(); return;
+        case kFlipStall:
+            renderer_flush();
+            flip_stall();
+            return;
         case kSetSemaphoreOffset: g_kelvin.semaphore_offset = argument; return;
         case kBackEndWriteSemaphoreRelease:
-            if (uint8_t* semaphore = physical_pointer(g_kelvin.dma_semaphore + g_kelvin.semaphore_offset)) {
-                *reinterpret_cast<volatile uint32_t*>(semaphore) = argument;
-            }
+            // Direct3D's fences, over twenty a frame: written when the drawing has come this far, without waiting for it.
+            renderer_after_drawing(
+                [](uint32_t address, uint32_t value) {
+                    if (uint8_t* semaphore = physical_pointer(address)) *reinterpret_cast<volatile uint32_t*>(semaphore) = value;
+                },
+                g_kelvin.dma_semaphore + g_kelvin.semaphore_offset, argument);
             return;
         default: {
             const uint8_t class_id = g_subchannel_class[subchannel & 7];
@@ -625,7 +643,7 @@ void execute_method(uint32_t subchannel, uint32_t method, uint32_t argument) {
 // PUT are physical addresses; the driver leaves a jump to the real buffer at address 0.
 void run_push_buffer(uint32_t put) {
     PushBufferState& s = g_push;
-    uint32_t get = s.get;
+    uint32_t get = s.decoded;
     while (get != put) {
         // A vertical blank during a long run is presented at once, between two words, not when the run ends: a
         // flip shown a blank late makes the frame after it look early (uneven frames at the same frame rate).
@@ -650,6 +668,33 @@ void run_push_buffer(uint32_t put) {
                 get += count * 4;
                 s.method_count -= count;
                 continue;
+            }
+        }
+        // The other words of a Kelvin run (state, matrices, constants: a million a second in a city) go straight to
+        // kelvin_method, the checks above made once for the run and not for every word. The methods execute_method
+        // answers itself (flips, semaphores, below 0x180) and those Kelvin does not know end the block: the word
+        // path below takes them.
+        if (s.method_count && put > get && g_subchannel_class[s.subchannel & 7] == kClassKelvin &&
+            !g_collect_statistics && g_trace_budget <= 0) {
+            const uint32_t count = std::min(s.method_count, (put - get) / 4);
+            if (count && physical_pointer(get + count * 4 - 1)) {
+                const auto* words = reinterpret_cast<const uint32_t*>(pointer);
+                const uint32_t step = s.non_increasing ? 0 : 4;
+                uint32_t method = s.method, done = 0;
+                for (; done < count; ++done, method += step) {
+                    if (method < 0x0180 || method == kSetContextDmaSemaphore || method == kSetSemaphoreOffset ||
+                        method == kBackEndWriteSemaphoreRelease) {
+                        break;
+                    }
+                    if (!g_pgraph_fifo_enabled) wait_for_pgraph_access();
+                    if (!kelvin_method(method, words[done])) break;
+                }
+                if (done) {
+                    get += done * 4;
+                    s.method = method;
+                    s.method_count -= done;
+                    continue;
+                }
             }
         }
         const uint32_t word = *reinterpret_cast<const uint32_t*>(pointer);
@@ -684,9 +729,12 @@ void run_push_buffer(uint32_t put) {
         } else {
             log_line("nv2a: unknown push buffer command %08X at %08X", word, get - 4);
         }
-        s.get = get;
+        s.decoded = get;
+        renderer_progress(get);
     }
-    s.get = get;
+    s.decoded = get;
+    renderer_progress(get);
+    renderer_mark();  // what is still being drawn publishes it when done
 }
 
 // Direct3D 11 did not start: nothing would be drawn (the game's pictures exist only there), so the player is told
@@ -722,9 +770,11 @@ void run_push_buffer(uint32_t put) {
 void gpu_thread() {
     // The GPU is a processor of its own: off the game's core when there is another one. Above the game's threads
     // anyway: when it has to share the core, it must preempt a thread spinning on a register.
-    if (const unsigned long cores = emulation_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
+    if (const unsigned long cores = gpu_cores()) SetThreadAffinityMask(GetCurrentThread(), cores);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
     profile_name_thread(false, "gpu");
+    // GET follows the drawing: a plain store (the default one locks the bus, at every command).
+    renderer_set_progress([](uint32_t get) { g_push.get.store(get, std::memory_order_release); });
     g_renderer_ready = renderer_start(g_window);
     if (!g_renderer_ready && !GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0)) no_direct3d();
     bool started = false;
@@ -744,7 +794,7 @@ void gpu_thread() {
             log_line("nv2a: first push buffer kick-off, PUT %08X", put);
             started = true;
         }
-        if (started && put != g_push.get) run_push_buffer(put);
+        if (started && put != g_push.decoded) run_push_buffer(put);
         static ULONGLONG last_statistics = GetTickCount64();
         if (g_collect_statistics && GetTickCount64() - last_statistics >= 10000) {
             last_statistics = GetTickCount64();
@@ -788,6 +838,7 @@ std::atomic<WindowHook> g_window_hook{nullptr};  // nv2a_set_window_hook
 constexpr UINT kSetFullScreenMessage = WM_APP + 1;
 
 LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
+    input_note_window_message(window, message, wparam, lparam);  // before the hook, which keeps some messages
     if (message == kSetFullScreenMessage) {
         if ((wparam != 0) != g_full_screen) toggle_full_screen(window);
         return 0;
@@ -920,14 +971,33 @@ void interrupt_thread() {
     // The game shows a frame every second vertical blank: 30 fps at the Xbox's 60 Hz. Its logic runs on real time
     // (the same acceleration at 60 and 120 Hz), so 120 Hz blanks give 60 game frames per second (setting frame_rate).
     const auto period = std::chrono::nanoseconds(1000000000 / nv2a_vblank_hz());
+    // The blanks from a high-resolution timer: a wait in whole milliseconds made each one late by up to a millisecond,
+    // and the next one early by as much, which a frame of nearly a whole blank then missed (Spider-Man 2 at 120 fps:
+    // 111 fps, 119.7 with the timer). Windows before 10 1803 has no such timer: there the waits in milliseconds.
+    const HANDLE timer =
+        CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     auto next = Clock::now() + period;
     for (;;) {
         const auto now = Clock::now();
-        const DWORD wait = now >= next ? 0 : static_cast<DWORD>(
-            std::chrono::duration_cast<std::chrono::milliseconds>(next - now).count() + 1);
         {
             ProfileScope scope(ProfileTime::idle);
-            WaitForSingleObject(g_interrupt_request, wait);
+            if (now >= next) {
+                WaitForSingleObject(g_interrupt_request, 0);
+            } else {
+                // The wait in milliseconds stays as a backstop: a timer that cannot be set or does not fire (Wine) never
+                // stops the blanks.
+                const DWORD milliseconds = static_cast<DWORD>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(next - now).count() + 1);
+                LARGE_INTEGER due;
+                const long long left = std::chrono::duration_cast<std::chrono::nanoseconds>(next - now).count();
+                due.QuadPart = -std::max(1LL, left / 100);  // relative, in 100 ns
+                if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) {
+                    const HANDLE waits[2] = {g_interrupt_request, timer};
+                    WaitForMultipleObjects(2, waits, FALSE, milliseconds);
+                } else {
+                    WaitForSingleObject(g_interrupt_request, milliseconds);
+                }
+            }
         }
         const bool vblank = Clock::now() >= next;
         // A paused game gets no interrupts (they stay pending until it resumes); the picture is still presented,
@@ -945,6 +1015,9 @@ void interrupt_thread() {
         next += period;
         if (Clock::now() > next + period * 4) next = Clock::now() + period;  // do not try to catch up
 
+        // Counted before the GPU thread is woken to present: it reads the count to time the frame, and woken on
+        // another core it read it a blank short (one frame of 1 blank and the next of 3, where both had 2).
+        if (!paused) ++g_frames;
         if (g_renderer_ready) {
             g_present_requested = true;
             SetEvent(g_put_written);  // wake the GPU thread to present
@@ -952,7 +1025,7 @@ void interrupt_thread() {
             present_front_buffer();
         }
         if (paused) continue;
-        if (++g_frames % 600 == 0) {
+        if (g_frames % 600 == 0) {
             log_line("nv2a: %llu vblanks, push buffer GET %08X, front buffer %08X",
                      static_cast<unsigned long long>(g_frames.load()), g_push.get.load(), reg(kPcrtcStart));
         }
@@ -1045,7 +1118,11 @@ void nv2a_set_window_hook(WindowHook hook) { g_window_hook = hook; }
 
 uint32_t nv2a_frames_shown() { return g_frames_shown; }
 
-int nv2a_vblank_hz() { return setting_at_start("frame_rate") >= 60 ? 120 : 60; }
+// Two blanks for each game frame: 60 Hz for the Xbox's 30 fps, 120 Hz for 60 fps, 240 Hz for 120 fps.
+int nv2a_vblank_hz() {
+    const float rate = setting_at_start("frame_rate");
+    return rate >= 120 ? 240 : rate >= 60 ? 120 : 60;
+}
 
 void nv2a_set_full_screen(bool full_screen) {
     if (g_window) PostMessageW(g_window, kSetFullScreenMessage, full_screen, 0);

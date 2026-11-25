@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(mc3port VERSION 0.3.9 LANGUAGES C CXX)
+project(mc3port VERSION 0.4.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -69,6 +69,7 @@ if(WIN32)
         src/pc/keyboard_bindings.cpp
         src/pc/launcher_art.cpp
         src/pc/launcher_ui.cpp
+        src/pc/loading_music.cpp
         src/pc/nv2a.cpp
         src/pc/nv2a_kelvin.cpp
         src/pc/renderer_game.cpp
@@ -82,6 +83,9 @@ if(WIN32)
                                MC3PORT_VERSION="${PROJECT_VERSION}" ${MC3_VERSION_DEFINES})
     target_compile_options(mc3runtime PRIVATE /utf-8)
     target_include_directories(mc3runtime PRIVATE src res)
+    # The checksum in the PE header, which the linker leaves at 0 without /RELEASE: antivirus heuristics count an
+    # empty one against an unsigned file. Also for mc3.exe below.
+    target_link_options(mc3runtime PRIVATE /RELEASE)
     # Not XPORT_DATA_WITH_RECOMPLAUNCHER: mc3port's RecompLauncher players have their data in Documents\mc3port.
     xport_identity(mc3runtime mc3port MC3PORT MC3_)
     # The GPU thread's hot path crosses files (methods, physical memory, renderer).
@@ -98,7 +102,7 @@ if(WIN32)
     target_link_options(mc3 PRIVATE
         /NODEFAULTLIB /ENTRY:LauncherEntry /SUBSYSTEM:WINDOWS
         /BASE:0x10000 /FIXED /DYNAMICBASE:NO /LARGEADDRESSAWARE
-        /SAFESEH:NO /INCREMENTAL:NO
+        /SAFESEH:NO /INCREMENTAL:NO /RELEASE
     )
     add_dependencies(mc3 mc3runtime)
 
@@ -119,8 +123,10 @@ if(WIN32)
         mc3_test(test_soundtracks src/pc/soundtracks.cpp)
         target_link_libraries(test_soundtracks PRIVATE mf mfplat mfreadwrite mfuuid ole32 shell32)
         mc3_test(test_audio_gains)
-        mc3_test(test_launcher_style src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp)
-        mc3_test(test_settings src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp)
+        mc3_test(test_launcher_style src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp ${XPORT_DIR}/src/pc/paths.cpp)
+        mc3_test(test_settings src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp ${XPORT_DIR}/src/pc/paths.cpp)
+        xport_identity(test_launcher_style mc3port MC3PORT MC3_)
+        xport_identity(test_settings mc3port MC3PORT MC3_)
         xport_add_tests(mc3port MC3PORT MC3_)
         mc3_test(test_game_disc src/pc/game_disc.cpp)
         target_link_libraries(test_game_disc PRIVATE bcrypt comdlg32 shell32 user32)

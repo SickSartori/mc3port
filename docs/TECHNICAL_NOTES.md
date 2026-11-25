@@ -43,7 +43,20 @@ gira invariato e `src/pc/nv2a.cpp` fa la parte dell'hardware.
   arrivano con una chiamata. Le eccezioni scendono da circa 14.000 a 2.400 al secondo in città.
 - **Push buffer**: salti, chiamate, metodi; oggetti risolti tramite RAMHT; semafori e reference per i fence. Gli
   argomenti di `ARRAY_ELEMENT16` e `INLINE_ARRAY`, due terzi delle parole, si prendono a blocchi.
-- **Vblank** a 60 Hz verso l'ISR del driver; la finestra Win32 mostra il front buffer (`PCRTC_START`).
+- **Vblank** a 60 Hz verso l'ISR del driver; la finestra Win32 mostra il front buffer (`PCRTC_START`). Il gioco mostra
+  un frame ogni due blank, quindi `frame_rate` sceglie la frequenza dei blank: 60 Hz per 30 fps, 120 Hz per 60,
+  240 Hz per 120 (`nv2a_vblank_hz`). Il passo fisso del gioco segue il tempo vero dei frame in multipli di 1/60 s,
+  di 1/120 s a 120 fps (`hle_patches.cpp`).
+- **Due thread per la GPU** (impostazione `render_thread`, accesa di serie): il thread della GPU legge il push buffer
+  e copia ogni draw e ogni clear (stato, costanti, byte dei vertici, indici) in una coda; un thread di rendering li
+  esegue in ordine con Direct3D (`renderer_d3d11.cpp` di xport, "the render thread"). Tutto il resto (presentazione,
+  blit, letture di debug) avviene sul thread che chiama, a coda vuota: i due non toccano mai Direct3D insieme. Il gioco
+  sa a che punto è la GPU da GET e dai fence di Direct3D (`BACK_END_WRITE_SEMAPHORE_RELEASE`, più di venti per frame):
+  GET è pubblicato e i fence sono scritti quando il disegno è arrivato lì, non quando il comando è stato letto, così
+  il gioco non cambia una texture che un draw in coda deve ancora leggere. Prima di flip, trap e accessi a PGRAPH il
+  thread della GPU aspetta la coda (4-6 volte per frame). Misurato alternando i due modi ogni 4 s nella stessa gara
+  (`MC3_RENDER_THREAD=2`), su un i7-1360P con altri programmi attivi: 50 fps invece di 37 in due giocatori, 68 invece
+  di 54 con un giocatore a 120 fps.
 - **Rendering** (`nv2a_kelvin.cpp` -> `renderer_d3d11.cpp`): i vertici passano dal vertex program NV2A interpretato
   sulla CPU (`nv2a_vsh.cpp`) oppure dalla pipeline fixed-function (matrice composita, offset del viewport, texgen
   lineari, matrici delle texture, 8 luci infinite/locali/spot con color material, speculare separato o sommato);
@@ -92,7 +105,7 @@ Modalità provate (con lo script di input, 25 ottobre 2026):
 |---|---|
 | Carriera | funziona: profilo, video, garage, acquisto dell'auto, prima gara; i progressi (auto comprata) si salvano e si ricaricano |
 | Arcade | funziona: guida libera a San Diego e Tokyo |
-| Arcade a 2 giocatori | funziona a schermo diviso (32 fps, la città è disegnata due volte); il riquadro nero dietro ogni auto è lo specchietto retrovisore, che come nell'originale mostra solo i fari delle auto dietro |
+| Arcade a 2 giocatori | funziona a schermo diviso (la città è disegnata due volte: 32 fps a ottobre, 50-60 fps con la 0.3.10 su un i7-1360P, dove il thread della GPU è il limite); il riquadro nero dietro ogni auto è lo specchietto retrovisore, che come nell'originale mostra solo i fari delle auto dietro |
 | Rete | corretto senza connessione: "Il cavo di rete non è connesso" |
 | Sfida di Tokyo | funziona (provata anche a mano, con il fiume percorribile) |
 | Editor di gare | funziona: si entra, la telecamera si muove, il menu dell'editor si apre (provato anche a mano) |

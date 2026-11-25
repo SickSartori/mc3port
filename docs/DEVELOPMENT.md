@@ -49,7 +49,18 @@ artifact: una build rotta si vede subito.
 
 Pubblicare una versione: su `develop` aggiornare `project(... VERSION x.y.z)` in `CMakeLists.txt` e aggiungere la
 sezione `## x.y.z` in `CHANGELOG.md`; unire `develop` in `main` e inviare il tag `vx.y.z`. Il workflow compila e
-pubblica la release con le note prese dal CHANGELOG (`tools/release_notes.ps1`).
+crea la release in bozza con le note prese dal CHANGELOG (`tools/release_notes.ps1`).
+
+Firma: il workflow non può firmare (la chiave del certificato Certum si raggiunge solo da SimplySign Desktop, con
+un codice usa e getta). Con la sessione di SimplySign aperta, scaricare dalla bozza lo zip portable e firmare gli
+stessi file compilati dal workflow, poi sostituire gli asset della bozza:
+
+```
+pwsh tools/package.ps1 -From <zip portable della bozza> -Sign
+gh release upload vx.y.z (Get-ChildItem dist -File).FullName --clobber
+```
+
+Poi VirusTotal sullo zip firmato e pubblicazione della bozza a mano.
 
 ## Struttura del repository
 
@@ -122,6 +133,7 @@ Variabili d'ambiente:
 | `MC3_AO_VIEW=1` | mostra solo l'ombreggiatura ambientale, in grigio, al posto della scena (per regolarla) |
 | `MC3_LANGUAGE` | lingua del gioco: 1 inglese, 3 tedesco, 4 francese, 5 spagnolo, 6 italiano (altrimenti `game_language`, poi la lingua di Windows) |
 | `MC3_GPU_PREFERENCE=0` | usa la GPU predefinita di Windows invece di quella ad alte prestazioni (portatili con due schede) |
+| `MC3_SCREEN_SHAPE=<larghezza/altezza>` | con `widescreen = 2`, quella forma dello schermo invece di quella vera (per provare il 21:9 senza uno schermo 21:9, per esempio 2.389) |
 | `MC3_MULTICORE=1` | usa tutti i core; per default il gioco gira su un core solo, come sull'Xbox |
 | `MC3_NO_DIALOG=1` | niente finestre di dialogo e niente launcher (per i test automatici) |
 | `MC3_SKIP_LAUNCHER=1` | parte direttamente il gioco |
@@ -136,6 +148,8 @@ Variabili d'ambiente:
 | `MC3_DEBUG_FULLSCREEN=1` | con `MC3_DEBUG_FRAME_AT`, solo i draw che coprono quasi tutta la superficie (gli effetti a schermo intero), così la finestra può durare a lungo |
 | `MC3_DEBUG_ADDITIVE=1` | con `MC3_DEBUG_FRAME_AT`, solo i draw che aggiungono luce (fusione con destinazione ONE: aloni, scie, bagliori) |
 | `MC3_DUMP_TEXTURE=<indirizzo hex>` | salva le texture decodificate di quella pagina di 4 KB come `texture-<indirizzo>.bmp` (con l'alfa) |
+| `MC3_DUMP_TEXTURE=all` | salva ogni texture che il gioco usa, una volta, come `textures_dump\<hash>.png` nella cartella dei dati (BGRA con l'alfa, qualunque sia il formato del gioco): `<hash>` è il nome da dare all'immagine in `textures_replace` |
+| `MC3_RENDER_THREAD=2` | il thread di rendering (impostazione `render_thread`) acceso e spento a turno ogni 4 s, con draw e fotogrammi al secondo di ciascun modo nel log (`renderer: render thread on/off: ...`): il confronto leggibile su un PC la cui velocità cambia da una prova all'altra. `0` lo spegne |
 | `MC3_DUMP_2D=1` | salva ogni texture dei draw piatti dell'HUD come `texture-<indirizzo>-<hash>.bmp` (le compresse a blocchi così come sono, in `.dds`); l'hash è il nome da dare all'immagine in `textures_replace` |
 | `MC3_GPU_STATS=1` | ogni 10 s, i metodi GPU più usati |
 | `MC3_PROFILE=1` | ogni 10 s, oltre alla riga `profile:` sempre presente (fps del gioco, vblank per fotogramma, carico del core del gioco e del thread della GPU): tempo CPU e attese di ogni thread, registri della GPU letti o scritti dal gioco tramite eccezioni, con l'indirizzo del codice. Anche una riga `late frame` per ogni fotogramma che arriva dopo 4 vblank o più, con dove è andato il tempo |
@@ -146,7 +160,7 @@ Variabili d'ambiente:
 | `MC3_AUDIO_DUMP=<s>` | i primi `s` secondi dell'audio in uscita in `audio.wav` (cartella di lavoro) |
 | `MC3_AUDIO_VOICES=1` | ogni 10 s, l'elenco delle voci audio attive con formato, volume, tono, regioni, età e uscite |
 | `MC3_AUDIO_TRACE=1` | una riga di log per ogni play, stop, fine del rilascio e fine naturale di una voce (tempo, formato, volume, tono, regione, mixbin), fino a 4000 righe |
-| `MC3_SKIP=<texture>:<superficie>:<fusione>` / `MC3_DUMP_DRAW=...` | salta, o salva prima e dopo, i draw corrispondenti (per isolare un difetto grafico) |
+| `MC3_SKIP=<texture>:<superficie>:<fusione>` / `MC3_DUMP_DRAW=...` | salta, o salva prima e dopo, i draw corrispondenti (per isolare un difetto grafico); `MC3_DUMP_DRAW` agisce solo nella finestra di `MC3_DEBUG_FRAME_AT` o di F9 (il primo draw corrispondente) e fuori lascia i vertici alla GPU |
 | `MC3_DISC_MBPS=<MB/s>` | letture del disco lente come da un lettore DVD (la Xbox fa circa 6 MB/s), più `MC3_DISC_SEEK_MS` (80 ms) quando la lettura salta: trova i bug che un'immagine veloce nasconde |
 | `MC3_WATCHDOG=<s>` | ogni `s` secondi, dove si trovano i thread del gioco (cambia la temporizzazione) |
 

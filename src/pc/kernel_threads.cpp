@@ -8,6 +8,7 @@
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/loading_screen.h"
+#include "pc/loading_music.h"
 #include "pc/log.h"
 #include "pc/profile.h"
 #include "pc/settings.h"
@@ -179,7 +180,11 @@ void __fastcall ObfDereferenceObject(uint32_t /*object*/) {}
 
 }  // namespace
 
-void note_loading_screen() { t_loading_screen_since = GetTickCount64(); }
+void note_loading_screen() {
+    t_loading_screen_since = GetTickCount64();
+    const auto duration = static_cast<uint64_t>(std::max(kShortestLoadingScreen, setting("loading_screen_seconds")) * 1000);
+    loading_music_begin(duration);
+}
 
 void hold_loading_screen() {
     if (!t_loading_screen_since) return;
@@ -190,6 +195,7 @@ void hold_loading_screen() {
     log_line("loading screen held %llu ms before loading", until - now);
     ProfileScope scope(ProfileTime::sleeps);
     Sleep(static_cast<DWORD>(until - now));
+    // Music has its own short fade-out tail after the minimum loading timer.
 }
 
 void register_thread_functions() {

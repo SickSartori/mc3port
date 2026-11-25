@@ -5,16 +5,20 @@
 #include <dxgi1_2.h>
 #include <shellapi.h>
 #include <shobjidl.h>
-#include <bcrypt.h>
 #include <winhttp.h>
+#include <mmsystem.h>
+#include <xaudio2.h>
 #include <wrl/client.h>
 #include <xinput.h>
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
+#include <cwctype>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -76,9 +80,9 @@ struct Texts {
     const char *play, *settings, *controls, *about, *quit;
     const char *ready, *ready_lead, *disc_ok, *disc_none, *disc_none_sub, *change, *choose_iso;
     const char *pad_on, *pad_on_sub, *pad_off, *pad_off_sub, *edit;
-    const char *tab_picture, *tab_effects, *tab_game, *tab_audio;
+    const char *tab_display, *tab_graphics, *tab_effects, *tab_game, *tab_audio;
     const char *game_language, *game_language_sub, *like_windows, *fps, *fps_sub, *volume, *music_volume, *music_volume_sub;
-    const char *aspect, *aspect_sub, *window_mode, *window_mode_sub, *windowed, *fullscreen;
+    const char *aspect, *aspect_sub, *field_of_view, *field_of_view_sub, *window_mode, *window_mode_sub, *windowed, *fullscreen;
     const char *style, *original_sub, *enhanced_sub, *custom_sub, *original, *enhanced, *custom, *scale, *scale_sub;
     const char *anisotropy, *gpu_vertices, *gpu_vertices_sub, *effects, *effects_sub, *on, *off;
     const char *sharpen, *bloom, *bloom_threshold, *saturation, *contrast, *vignette, *occlusion, *occlusion_radius;
@@ -86,17 +90,17 @@ struct Texts {
     const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *report, *report_sub, *update_to,
         *legal,
         *credits;
-    const char *update_now, *update_install_sub, *downloading, *update_failed;
-    const char *update_title, *update_lead, *update_big, *update_install, *update_install_note, *update_page,
-        *update_portable_note, *update_later, *update_progress, *update_ready, *update_install_small;
-    const char *welcome, *welcome_lead, *next, *style_title, *style_lead, *all_set, *all_set_lead;
+    const char *update_now, *update_install_sub;
+    const char *update_title, *update_lead, *update_big, *update_install_note, *update_page, *update_portable_note,
+        *update_later;
+    const char *welcome, *welcome_lead, *next, *style_title, *style_lead;
     const char *bar_disc, *bar_disc_ok, *bar_disc_none, *bar_pad, *bar_pad_on, *bar_pad_off, *bar_version, *select, *back;
     const char *resume, *back_to_game, *paused, *paused_lead, *exit_game, *exit_lead, *exit_now, *next_start, *menu_key;
     const char *fps_counter, *fps_counter_sub, *background_pause, *background_pause_sub, *resume_hint, *tabs_hint, *play_hint;
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
     const char *light_streaks;
     const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
-    const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub;
+    const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub, *sharp_textures, *sharp_textures_sub;
     const char *cheats, *cheats_lead, *cheat_money, *cheat_money_sub, *add_money, *game_codes, *game_codes_lead;
     const char *loading_screens, *loading_screens_sub;
     const char *crash_heading, *crash_sub, *crash_button, *crash_link;
@@ -110,6 +114,10 @@ struct Texts {
     const char *back_to_launcher, *back_to_launcher_sub, *back_to_launcher_button, *menu_launcher;
     const char *menu_music, *music_lead;
     const char *support, *support_sub;
+    // PS2 loading music (loading_music.cpp)
+    const char *custom_radio, *ps2_loading_music, *ps2_settings, *ps2_track_preferences, *ps2_not_installed, *ps2_preview_failed, *ps2_loading_label, *ps2_loading_sub, *ps2_no_tracks, *ps2_tracks_found, *ps2_volume, *ps2_volume_sub, *ps2_stop_test, *ps2_test, *ps2_test_failed, *ps2_fade, *ps2_fade_sub, *ps2_playback_order, *ps2_playback_sub, *ps2_in_order, *ps2_random, *ps2_weighted, *ps2_import_folder, *ps2_play, *ps2_stop, *ps2_folder_missing, *ps2_create_folder_failed, *ps2_import_result;
+    const char *upscaling, *upscaling_sub, *upscaling_checking, *upscaling_missing, *profile, *profile_sub, *profile_dlaa,
+        *profile_quality, *profile_balanced, *profile_performance;
 };
 
 const Texts kEnglish = {
@@ -117,10 +125,11 @@ const Texts kEnglish = {
     "READY TO RACE", "The streets of San Diego, Atlanta, Detroit and Tokyo are waiting.", "Disc verified",
     "No disc chosen", "Choose the disc image (ISO) of your Xbox copy (Europe or USA).", "Change", "Choose the ISO",
     "Controller connected", "Xbox, PlayStation and other pads", "No controller", "The keyboard works too", "Edit",
-    "Picture", "Effects", "Game", "Audio",
-    "Game language", "The game's text and speech", "Like Windows", "Frames per second", "60 is smoother; 30 like the Xbox",
+    "Display", "Graphics", "Effects", "Game", "Audio",
+    "Game language", "The game's text and speech", "Like Windows", "Frames per second", "60 is smoother; 30 like the Xbox; 120 for a fast processor",
     "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
-    "Aspect ratio", "16:9 uses the game's own widescreen mode", "Window mode", "Alt+Enter or F11 while playing",
+    "Aspect ratio", "16:9 is the game's own widescreen mode; 21:9 fills a wider screen",
+    "Field of view", "How wide the camera sees: 100% is the game's own", "Window mode", "Alt+Enter or F11 while playing",
     "Window", "Full screen",
     "Style", "As on the Xbox: 30 fps, 4:3, 480p, no modern effects", "60 fps, 16:9, your screen's resolution, modern effects", "Your own choices",
     "Original", "Enhanced", "Custom",
@@ -138,15 +147,12 @@ const Texts kEnglish = {
     "The form on GitHub, already filled in, and the log to attach", "Update to %s",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "Licences, credits and how to contribute: on GitHub",
-    "Update", "Downloads and checks the installer; then you start it with one click", "Downloading the update...",
-    "The update could not be downloaded or checked",
-    "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE", "INSTALL",
-    "The launcher closes and the installer opens. Your saves and settings stay.", "OPEN THE PAGE",
-    "This copy is portable: download the new version from the release page.", "Later", "%.1f of %.1f MB",
-    "Update ready", "Install",
+    "Update", "Your browser downloads the installer; open it to update",
+    "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE",
+    "Your browser downloads the installer: open it and it replaces this version. Your saves and settings stay.",
+    "OPEN THE PAGE", "This copy is portable: download the new version from the release page.", "Later",
     "WELCOME", "You need your own copy: a disc image (ISO) of the Xbox Midnight Club 3: DUB Edition Remix, Europe or USA.",
-    "NEXT", "STYLE", "Original is the game as it was on the Xbox, Enhanced the best this port can show. You can change it any time in the settings.", "ALL SET",
-    "Disc verified. Connect a controller or use the keyboard.",
+    "NEXT", "STYLE", "Original is the game as it was on the Xbox, Enhanced the best this port can show. You can change it any time in the settings.",
     "Disc", "Xbox \xC2\xB7 Europe or USA", "none", "Controller", "connected", "not connected", "Version", "Select", "Back",
     "RESUME", "BACK TO GAME", "PAUSED", "The game is paused. F1 or Esc takes you back.", "EXIT GAME",
     "Progress since the last save will be lost.", "EXIT", "Applies the next time the game starts", "In-game menu",
@@ -159,6 +165,7 @@ const Texts kEnglish = {
     "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
     "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
     "Sharp pictures", "The radar's map, icons, letters and car stickers enlarged with clean edges",
+    "Sharp textures", "Roads, buildings and cars from close: enlarged with clean edges (more graphics memory)",
     "CHEATS", "mc3port's own, with a career loaded, from the menu during the game; and the game's codes, to look up.",
     "Money", "Added to the career: it stays once the game saves", "+ $10,000", "The game's codes",
     "Type them in the game's menu, Options > Cheat Codes (as found in the game's own check).",
@@ -180,6 +187,38 @@ const Texts kEnglish = {
     "OPEN THE LAUNCHER", "LAUNCHER",
     "MUSIC", "Your own songs on the game's radio. Make your playlists here (MP3, FLAC, WAV, WMA, M4A); in the game choose one in Pause > Options > Audio Options, the Music selector.",
     "Support the project", "Free, and always will be. A thank-you keeps it going.",
+    // PS2 loading music (loading_music.cpp)
+    "Custom Radio",
+    "PS2 Loading Music",
+    "Settings",
+    "Track Preferences",
+    "Not installed",
+    "Preview failed: unsupported or invalid WAV.",
+    "PS2 loading music",
+    "Optional WAV tracks or original PS2 RAW files (converted on import)",
+    "No loading music found. Import numbered RAW or WAV tracks to unlock music settings.",
+    "%d of 18 loading tracks found",
+    "Volume",
+    "Also follows the game's overall volume",
+    "Stop test audio",
+    "Test audio",
+    "Test audio failed: unsupported or invalid WAV.",
+    "Fade-out duration",
+    "Seconds before playback finishes",
+    "Playback order",
+    "Weighted unlocks individual track preferences",
+    "In order",
+    "Random",
+    "Weighted",
+    "Import folder",
+    "Play",
+    "Stop",
+    "Folder not found.",
+    "Cannot create loading_music folder.",
+    "Imported %d tracks (%d already installed). They play from the next loading screen.",
+    "Upscaling", "NVIDIA DLSS: the game drawn smaller and made sharp at your screen's size", "Checking whether this graphics card has DLSS...",
+    "DLSS needs an NVIDIA RTX graphics card and its driver", "Profile", "Drawn at %dp, brought to %dp", "Native (DLAA)", "Quality",
+    "Balanced", "Performance",
 };
 
 const Texts kItalian = {
@@ -187,11 +226,12 @@ const Texts kItalian = {
     "PRONTO A CORRERE", "Le strade di San Diego, Atlanta, Detroit e Tokyo ti aspettano.", "Disco verificato",
     "Nessun disco scelto", "Scegli l'immagine del disco (ISO) della tua copia Xbox (Europa o USA).", "Cambia", "Scegli l'ISO",
     "Controller collegato", "Controller Xbox, PlayStation e altri", "Nessun controller", "Anche la tastiera funziona", "Modifica",
-    "Immagine", "Effetti", "Gioco", "Audio",
+    "Schermo", "Grafica", "Effetti", "Gioco", "Audio",
     "Lingua del gioco", "Testi e voci del gioco", "Come Windows", "Fotogrammi al secondo",
-    "60 \xC3\xA8 pi\xC3\xB9 fluido; 30 come l'Xbox", "Volume del gioco", "Musica del launcher",
+    "60 \xC3\xA8 pi\xC3\xB9 fluido; 30 come l'Xbox; 120 per un processore veloce", "Volume del gioco", "Musica del launcher",
     "La musica di sottofondo di questa schermata; 0 la spegne",
-    "Formato", "16:9 usa la modalit\xC3\xA0 panoramica del gioco", "Modalit\xC3\xA0 finestra",
+    "Formato", "16:9 \xC3\xA8 la modalit\xC3\xA0 panoramica del gioco; 21:9 riempie uno schermo pi\xC3\xB9 largo",
+    "Campo visivo", "Quanto vede la telecamera: 100% \xC3\xA8 quello del gioco", "Modalit\xC3\xA0 finestra",
     "Alt+Invio o F11 durante il gioco", "Finestra", "Schermo intero",
     "Stile", "Come sull'Xbox: 30 fps, 4:3, 480p, senza effetti moderni", "60 fps, 16:9, risoluzione dello schermo, effetti moderni", "Le tue scelte",
     "Originale", "Migliorata", "Personalizzata", "Risoluzione interna", "Bordi pi\xC3\xB9 lisci, pi\xC3\xB9 lavoro per la scheda video",
@@ -210,16 +250,14 @@ const Texts kItalian = {
     "Il modulo su GitHub, gi\xC3\xA0 compilato, e il log da allegare", "Aggiorna alla %s",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenze, crediti e come contribuire: su GitHub",
-    "Aggiorna", "Scarica e verifica l'installer, poi lo avvii con un clic", "Scarico l'aggiornamento...",
-    "Non \xC3\xA8 stato possibile scaricare o verificare l'aggiornamento",
-    "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA", "INSTALLA",
-    "Il launcher si chiude e si apre l'installer. Salvataggi e impostazioni restano.", "APRI LA PAGINA",
-    "Questa copia \xC3\xA8 portatile: scarica la nuova versione dalla pagina della release.", "Pi\xC3\xB9 tardi",
-    "%.1f di %.1f MB", "Aggiornamento pronto", "Installa",
+    "Aggiorna", "Il browser scarica l'installer: aprilo per aggiornare",
+    "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA",
+    "Il browser scarica l'installer: aprilo e sostituisce questa versione. Salvataggi e impostazioni restano.",
+    "APRI LA PAGINA", "Questa copia \xC3\xA8 portatile: scarica la nuova versione dalla pagina della release.",
+    "Pi\xC3\xB9 tardi",
     "BENVENUTO",
     "Per giocare serve la tua copia: l'immagine ISO del disco Xbox di Midnight Club 3: DUB Edition Remix, Europa o USA.",
-    "AVANTI", "STILE", "Originale \xC3\xA8 il gioco com'era sull'Xbox, Migliorata il meglio che questo port sa mostrare. Potrai cambiarlo quando vuoi nelle impostazioni.", "TUTTO PRONTO",
-    "Disco verificato. Collega un controller o usa la tastiera.",
+    "AVANTI", "STILE", "Originale \xC3\xA8 il gioco com'era sull'Xbox, Migliorata il meglio che questo port sa mostrare. Potrai cambiarlo quando vuoi nelle impostazioni.",
     "Disco", "Xbox \xC2\xB7 Europa", "nessuno", "Controller", "collegato", "non collegato", "Versione", "Seleziona",
     "Indietro",
     "RIPRENDI", "TORNA AL GIOCO", "IN PAUSA", "Il gioco \xC3\xA8 in pausa. F1 o Esc per tornare.", "ESCI DAL GIOCO",
@@ -233,6 +271,7 @@ const Texts kItalian = {
     "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
     "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
     "Immagini nitide", "Mappa del radar, icone, lettere e adesivi delle auto ingranditi con bordi puliti",
+    "Texture nitide", "Strade, edifici e auto da vicino: ingranditi con bordi puliti (pi\xC3\xB9 memoria grafica)",
     "CHEAT", "Quelli di mc3port, con una carriera caricata, dal menu durante il gioco; e i codici del gioco, da consultare.",
     "Soldi", "Si aggiungono alla carriera: restano quando il gioco salva", "+ 10.000 $", "Codici del gioco",
     "Da scrivere nel menu del gioco, Opzioni > Codici (come li controlla il gioco stesso).",
@@ -255,6 +294,38 @@ const Texts kItalian = {
     "APRI IL LAUNCHER", "LAUNCHER",
     "MUSICA", "I tuoi brani alla radio del gioco. Crea qui le tue playlist (MP3, FLAC, WAV, WMA, M4A); nel gioco scegline una in Pausa > Opzioni > Opzioni audio, selettore Musica.",
     "Sostieni il progetto", "Gratis, e lo rester\xC3\xA0. Un grazie lo fa andare avanti.",
+    // PS2 loading music (loading_music.cpp)
+    "Radio personalizzata",
+    "Musica dei caricamenti PS2",
+    "Impostazioni",
+    "Preferenze dei brani",
+    "Non installato",
+    "Anteprima non riuscita: WAV non supportato o non valido.",
+    "Musica dei caricamenti PS2",
+    "Brani WAV facoltativi, o i file RAW originali della PS2 (convertiti all'importazione)",
+    "Nessuna musica dei caricamenti trovata. Importa i brani RAW o WAV numerati per sbloccare le impostazioni.",
+    "%d brani di caricamento su 18 trovati",
+    "Volume",
+    "Segue anche il volume generale del gioco",
+    "Ferma la prova audio",
+    "Prova audio",
+    "Prova audio non riuscita: WAV non supportato o non valido.",
+    "Dissolvenza finale",
+    "Secondi prima che la musica finisca",
+    "Ordine di riproduzione",
+    "Ponderato sblocca le preferenze dei singoli brani",
+    "In ordine",
+    "Casuale",
+    "Ponderato",
+    "Importa cartella",
+    "Riproduci",
+    "Ferma",
+    "Cartella non trovata.",
+    "Impossibile creare la cartella loading_music.",
+    "Importati %d brani (%d gi\xC3\xA0 installati). Suonano dalla prossima schermata di caricamento.",
+    "Upscaling", "NVIDIA DLSS: il gioco disegnato pi\xC3\xB9 piccolo e reso nitido alla grandezza dello schermo",
+    "Controllo se questa scheda video ha DLSS...", "DLSS richiede una scheda video NVIDIA RTX e il suo driver", "Profilo",
+    "Disegnato a %dp, portato a %dp", "Nativo (DLAA)", "Qualit\xC3\xA0", "Bilanciato", "Prestazioni",
 };
 
 // Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
@@ -263,10 +334,11 @@ const Texts kPortuguese = {
     "PRONTO PARA CORRER", "As ruas de San Diego, Atlanta, Detroit e Tóquio esperam por você.", "Disco verificado",
     "Nenhum disco escolhido", "Escolha a imagem do disco (ISO) da sua cópia de Xbox (Europa ou EUA).", "Trocar", "Escolher a ISO",
     "Controle conectado", "Xbox, PlayStation e outros controles", "Nenhum controle", "O teclado também funciona", "Editar",
-    "Imagem", "Efeitos", "Jogo", "Áudio",
-    "Idioma do jogo", "Textos e vozes do jogo (não há português)", "Como o Windows", "Quadros por segundo", "60 é mais fluido; 30 como no Xbox",
+    "Tela", "Gráficos", "Efeitos", "Jogo", "Áudio",
+    "Idioma do jogo", "Textos e vozes do jogo (não há português)", "Como o Windows", "Quadros por segundo", "60 é mais fluido; 30 como no Xbox; 120 para um processador rápido",
     "Volume do jogo", "Música do launcher", "A música de fundo desta tela; 0 desliga",
-    "Proporção", "16:9 usa o modo widescreen do próprio jogo", "Modo de janela", "Alt+Enter ou F11 durante o jogo",
+    "Proporção", "16:9 é o modo widescreen do próprio jogo; 21:9 preenche uma tela mais larga",
+    "Campo de visão", "O quanto a câmera vê: 100% é o do próprio jogo", "Modo de janela", "Alt+Enter ou F11 durante o jogo",
     "Janela", "Tela cheia",
     "Estilo", "Como no Xbox: 30 fps, 4:3, 480p, sem efeitos modernos", "60 fps, 16:9, a resolução da sua tela, efeitos modernos", "As suas escolhas",
     "Original", "Melhorado", "Personalizado",
@@ -284,15 +356,12 @@ const Texts kPortuguese = {
     "O formulário no GitHub, já preenchido, e o log para anexar", "Atualizar para %s",
     "Midnight Club é uma marca da Take-Two Interactive / Rockstar Games. Este projeto não tem ligação com elas.",
     "Licenças, créditos e como contribuir: no GitHub",
-    "Atualizar", "Baixa e verifica o instalador; depois você o inicia com um clique", "Baixando a atualização...",
-    "Não foi possível baixar ou verificar a atualização",
-    "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR", "INSTALAR",
-    "O launcher fecha e o instalador abre. Seus saves e configurações ficam.", "ABRIR A PÁGINA",
-    "Esta cópia é portátil: baixe a nova versão na página da versão.", "Mais tarde", "%.1f de %.1f MB",
-    "Atualização pronta", "Instalar",
+    "Atualizar", "O navegador baixa o instalador: abra-o para atualizar",
+    "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR",
+    "O navegador baixa o instalador: abra-o e ele substitui esta versão. Seus saves e configurações ficam.",
+    "ABRIR A PÁGINA", "Esta cópia é portátil: baixe a nova versão na página da versão.", "Mais tarde",
     "BEM-VINDO", "Você precisa da sua cópia: uma imagem de disco (ISO) do Midnight Club 3: DUB Edition Remix de Xbox, Europa ou EUA.",
-    "AVANÇAR", "ESTILO", "Original é o jogo como era no Xbox, Melhorado o melhor que este port consegue mostrar. Você pode mudar quando quiser nas configurações.", "TUDO PRONTO",
-    "Disco verificado. Conecte um controle ou use o teclado.",
+    "AVANÇAR", "ESTILO", "Original é o jogo como era no Xbox, Melhorado o melhor que este port consegue mostrar. Você pode mudar quando quiser nas configurações.",
     "Disco", "Xbox · Europa ou EUA", "nenhum", "Controle", "conectado", "não conectado", "Versão", "Selecionar", "Voltar",
     "CONTINUAR", "VOLTAR AO JOGO", "PAUSADO", "O jogo está pausado. F1 ou Esc para voltar.", "SAIR DO JOGO",
     "O progresso desde o último save será perdido.", "SAIR", "Vale a partir do próximo início do jogo", "Menu do jogo",
@@ -305,6 +374,7 @@ const Texts kPortuguese = {
     "Reinício necessário", "Para as mudanças que valem no início; o progresso não salvo é perdido", "Reiniciar agora",
     "HUD", "O do mc3port: mostradores redesenhados, nítidos em qualquer resolução", "O do jogo", "Unidade de velocidade",
     "Imagens nítidas", "Mapa do radar, ícones, letras e adesivos dos carros ampliados com bordas limpas",
+    "Texturas nítidas", "Ruas, prédios e carros de perto: ampliados com bordas limpas (mais memória gráfica)",
     "TRAPAÇAS", "As do mc3port, com uma carreira carregada, pelo menu durante o jogo; e os códigos do jogo, para consultar.",
     "Dinheiro", "Somado à carreira: fica quando o jogo salva", "+ US$ 10.000", "Códigos do jogo",
     "Digite-os no menu do jogo, Options > Cheat Codes (como o próprio jogo os confere).",
@@ -327,6 +397,38 @@ const Texts kPortuguese = {
     "ABRIR O LAUNCHER", "LAUNCHER",
     "MÚSICA", "Suas próprias músicas no rádio do jogo. Crie aqui as suas playlists (MP3, FLAC, WAV, WMA, M4A); no jogo escolha uma em Pause > Options > Audio Options, seletor Music.",
     "Apoie o projeto", "Gratuito, e sempre será. Um obrigado o mantém vivo.",
+    // PS2 loading music (loading_music.cpp)
+    "Rádio personalizada",
+    "Música de carregamento do PS2",
+    "Configurações",
+    "Preferências das faixas",
+    "Não instalada",
+    "Falha na prévia: WAV inválido ou não suportado.",
+    "Música de carregamento do PS2",
+    "Faixas WAV opcionais, ou os arquivos RAW originais do PS2 (convertidos na importação)",
+    "Nenhuma música de carregamento encontrada. Importe as faixas RAW ou WAV numeradas para liberar as configurações.",
+    "%d de 18 faixas de carregamento encontradas",
+    "Volume",
+    "Também segue o volume geral do jogo",
+    "Parar o teste de áudio",
+    "Testar áudio",
+    "Falha no teste de áudio: WAV inválido ou não suportado.",
+    "Esmaecimento final",
+    "Segundos antes de a música terminar",
+    "Ordem de reprodução",
+    "Ponderada libera as preferências de cada faixa",
+    "Em ordem",
+    "Aleatória",
+    "Ponderada",
+    "Importar pasta",
+    "Tocar",
+    "Parar",
+    "Pasta não encontrada.",
+    "Não foi possível criar a pasta loading_music.",
+    "%d faixas importadas (%d já instaladas). Tocam a partir da próxima tela de carregamento.",
+    "Upscaling", "NVIDIA DLSS: o jogo desenhado menor e deixado nítido no tamanho da sua tela",
+    "Verificando se esta placa de vídeo tem DLSS...", "O DLSS precisa de uma placa de vídeo NVIDIA RTX e do seu driver", "Perfil",
+    "Desenhado em %dp, levado a %dp", "Nativo (DLAA)", "Qualidade", "Equilibrado", "Desempenho",
 };
 
 const Texts kSpanish = {
@@ -334,10 +436,11 @@ const Texts kSpanish = {
     "LISTO PARA CORRER", "Las calles de San Diego, Atlanta, Detroit y Tokio te esperan.", "Disco verificado",
     "Ningún disco elegido", "Elige la imagen del disco (ISO) de tu copia de Xbox (Europa o EE. UU.).", "Cambiar", "Elegir la ISO",
     "Mando conectado", "Mandos de Xbox, PlayStation y otros", "Ningún mando", "El teclado también funciona", "Editar",
-    "Imagen", "Efectos", "Juego", "Audio",
-    "Idioma del juego", "Textos y voces del juego", "Como Windows", "Fotogramas por segundo", "60 es más fluido; 30 como en Xbox",
+    "Pantalla", "Gráficos", "Efectos", "Juego", "Audio",
+    "Idioma del juego", "Textos y voces del juego", "Como Windows", "Fotogramas por segundo", "60 es más fluido; 30 como en Xbox; 120 para un procesador rápido",
     "Volumen del juego", "Música del launcher", "La música de fondo de esta pantalla; 0 la apaga",
-    "Relación de aspecto", "16:9 usa el modo panorámico del propio juego", "Modo de ventana", "Alt+Intro o F11 mientras juegas",
+    "Relación de aspecto", "16:9 es el modo panorámico del propio juego; 21:9 llena una pantalla más ancha",
+    "Campo de visión", "Cuánto ve la cámara: 100% es el del propio juego", "Modo de ventana", "Alt+Intro o F11 mientras juegas",
     "Ventana", "Pantalla completa",
     "Estilo", "Como en Xbox: 30 fps, 4:3, 480p, sin efectos modernos", "60 fps, 16:9, la resolución de tu pantalla, efectos modernos", "Tus elecciones",
     "Original", "Mejorado", "Personalizado",
@@ -355,15 +458,12 @@ const Texts kSpanish = {
     "El formulario en GitHub, ya rellenado, y el registro para adjuntar", "Actualizar a %s",
     "Midnight Club es una marca de Take-Two Interactive / Rockstar Games. Este proyecto no está afiliado a ellas.",
     "Licencias, créditos y cómo contribuir: en GitHub",
-    "Actualizar", "Descarga y comprueba el instalador; luego lo inicias con un clic", "Descargando la actualización...",
-    "No se pudo descargar o comprobar la actualización",
-    "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR", "INSTALAR",
-    "El launcher se cierra y se abre el instalador. Tus partidas y ajustes se quedan.", "ABRIR LA PÁGINA",
-    "Esta copia es portátil: descarga la nueva versión desde la página de la versión.", "Más tarde", "%.1f de %.1f MB",
-    "Actualización lista", "Instalar",
+    "Actualizar", "El navegador descarga el instalador: ábrelo para actualizar",
+    "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR",
+    "El navegador descarga el instalador: ábrelo y sustituye esta versión. Tus partidas y ajustes se quedan.",
+    "ABRIR LA PÁGINA", "Esta copia es portátil: descarga la nueva versión desde la página de la versión.", "Más tarde",
     "BIENVENIDO", "Necesitas tu copia: una imagen de disco (ISO) de Midnight Club 3: DUB Edition Remix de Xbox, Europa o EE. UU.",
-    "SIGUIENTE", "ESTILO", "Original es el juego como era en Xbox, Mejorado lo mejor que este port puede mostrar. Puedes cambiarlo cuando quieras en los ajustes.", "TODO LISTO",
-    "Disco verificado. Conecta un mando o usa el teclado.",
+    "SIGUIENTE", "ESTILO", "Original es el juego como era en Xbox, Mejorado lo mejor que este port puede mostrar. Puedes cambiarlo cuando quieras en los ajustes.",
     "Disco", "Xbox · Europa o EE. UU.", "ninguno", "Mando", "conectado", "no conectado", "Versión", "Elegir", "Volver",
     "CONTINUAR", "VOLVER AL JUEGO", "EN PAUSA", "El juego está en pausa. F1 o Esc para volver.", "SALIR DEL JUEGO",
     "Se perderá el progreso desde la última partida guardada.", "SALIR", "Se aplica la próxima vez que empiece el juego", "Menú del juego",
@@ -376,6 +476,7 @@ const Texts kSpanish = {
     "Hace falta reiniciar", "Para los cambios que se aplican al empezar; se pierde el progreso no guardado", "Reiniciar ahora",
     "HUD", "El de mc3port: indicadores redibujados, nítidos a cualquier resolución", "El del juego", "Unidad de velocidad",
     "Imágenes nítidas", "El mapa del radar, iconos, letras y pegatinas de los coches ampliados con bordes limpios",
+    "Texturas nítidas", "Calles, edificios y coches de cerca: ampliados con bordes limpios (más memoria gráfica)",
     "TRUCOS", "Los de mc3port, con una carrera cargada, desde el menú durante el juego; y los códigos del juego, para consultar.",
     "Dinero", "Se suma a la carrera: se queda cuando el juego guarda", "+ 10.000 $", "Códigos del juego",
     "Escríbelos en el menú del juego, en las opciones de trucos (tal como los comprueba el propio juego).",
@@ -398,6 +499,38 @@ const Texts kSpanish = {
     "ABRIR EL LAUNCHER", "LAUNCHER",
     "MÚSICA", "Tus propias canciones en la radio del juego. Crea aquí tus listas (MP3, FLAC, WAV, WMA, M4A); en el juego elige una en Pausa > Opciones > Opciones de audio, el selector de música.",
     "Apoya el proyecto", "Gratis, y siempre lo será. Un gracias lo mantiene vivo.",
+    // PS2 loading music (loading_music.cpp)
+    "Radio personalizada",
+    "Música de carga de PS2",
+    "Ajustes",
+    "Preferencias de pistas",
+    "No instalada",
+    "Falló la vista previa: WAV no compatible o no válido.",
+    "Música de carga de PS2",
+    "Pistas WAV opcionales, o los archivos RAW originales de PS2 (convertidos al importar)",
+    "No se encontró música de carga. Importa las pistas RAW o WAV numeradas para desbloquear los ajustes.",
+    "%d de 18 pistas de carga encontradas",
+    "Volumen",
+    "También sigue el volumen general del juego",
+    "Detener la prueba de audio",
+    "Probar audio",
+    "Falló la prueba de audio: WAV no compatible o no válido.",
+    "Desvanecimiento final",
+    "Segundos antes de que termine la música",
+    "Orden de reproducción",
+    "Ponderado desbloquea las preferencias de cada pista",
+    "En orden",
+    "Aleatorio",
+    "Ponderado",
+    "Importar carpeta",
+    "Reproducir",
+    "Detener",
+    "Carpeta no encontrada.",
+    "No se pudo crear la carpeta loading_music.",
+    "%d pistas importadas (%d ya instaladas). Suenan desde la próxima pantalla de carga.",
+    "Escalado", "NVIDIA DLSS: el juego dibujado más pequeño y nítido al tamaño de tu pantalla",
+    "Comprobando si esta tarjeta gráfica tiene DLSS...", "DLSS necesita una tarjeta gráfica NVIDIA RTX y su controlador", "Perfil",
+    "Dibujado a %dp, llevado a %dp", "Nativo (DLAA)", "Calidad", "Equilibrado", "Rendimiento",
 };
 
 // The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
@@ -581,6 +714,102 @@ std::vector<std::filesystem::path> ask_for_music(HWND owner, bool folder) {
     return chosen;
 }
 
+// Validate WAV header before copying. The playback loader performs full RIFF validation later.
+bool loading_wave_header(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    char header[12]{};
+    return in.read(header, sizeof(header)) && !std::memcmp(header, "RIFF", 4) && !std::memcmp(header + 8, "WAVE", 4) &&
+           std::filesystem::file_size(path) <= 32 * 1024 * 1024;
+}
+
+// The original PS2 loading-screen RAW files are headerless 24 kHz mono PCM16 LE.
+// A RAW file cannot prove its own encoding; reject invalid sizes before importing.
+bool loading_raw_size(const std::filesystem::path& path, uint32_t& bytes) {
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec || size < 2 || size > 32u * 1024u * 1024u - 44u || (size & 1u)) return false;
+    bytes = static_cast<uint32_t>(size);
+    return true;
+}
+
+// Stream RAW samples into a standard 44-byte PCM WAV; no full-file allocation.
+bool install_loading_raw(const std::filesystem::path& source, const std::filesystem::path& target) {
+    uint32_t bytes = 0;
+    if (!loading_raw_size(source, bytes)) return false;
+    std::ifstream in(source, std::ios::binary);
+    if (!in) return false;
+    // Use exclusive creation to preserve the existing no-overwrite behavior.
+    HANDLE out = CreateFileW(target.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (out == INVALID_HANDLE_VALUE) return false;
+    auto write = [&](const void* data, DWORD size) {
+        DWORD written = 0;
+        return WriteFile(out, data, size, &written, nullptr) && written == size;
+    };
+    auto put16 = [](uint8_t* p, uint16_t v) { p[0] = uint8_t(v); p[1] = uint8_t(v >> 8); };
+    auto put32 = [](uint8_t* p, uint32_t v) {
+        for (int i = 0; i < 4; ++i) p[i] = uint8_t(v >> (i * 8));
+    };
+    uint8_t header[44]{};
+    std::memcpy(header, "RIFF", 4); put32(header + 4, bytes + 36);
+    std::memcpy(header + 8, "WAVEfmt ", 8); put32(header + 16, 16);
+    put16(header + 20, 1); put16(header + 22, 1); put32(header + 24, 24000);
+    put32(header + 28, 48000); put16(header + 32, 2); put16(header + 34, 16);
+    std::memcpy(header + 36, "data", 4); put32(header + 40, bytes);
+    bool ok = write(header, sizeof(header));
+    std::array<char, 64 * 1024> buffer{};
+    uint32_t remaining = bytes;
+    while (ok && remaining) {
+        const auto amount = static_cast<std::streamsize>(std::min<uint32_t>(remaining, static_cast<uint32_t>(buffer.size())));
+        if (!in.read(buffer.data(), amount)) { ok = false; break; }
+        ok = write(buffer.data(), static_cast<DWORD>(amount));
+        remaining -= static_cast<uint32_t>(amount);
+    }
+    if (!CloseHandle(out)) ok = false;
+    if (!ok) { std::error_code ec; std::filesystem::remove(target, ec); }
+    return ok;
+}
+
+std::filesystem::path loading_music_directory() {
+    return data_directory() / "loading_music";
+}
+
+std::string install_loading_folder(const std::filesystem::path& folder) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(folder, ec)) return T().ps2_folder_missing;
+    std::array<std::filesystem::path, 18> found_wav{}, found_raw{};
+    size_t scanned = 0;
+    for (std::filesystem::recursive_directory_iterator it(folder, std::filesystem::directory_options::skip_permission_denied, ec), end;
+         it != end && !ec && scanned < 4096; it.increment(ec), ++scanned) {
+        if (it.depth() > 4) { it.disable_recursion_pending(); continue; }
+        if (!it->is_regular_file(ec) || it->is_symlink(ec)) continue;
+        auto name = it->path().filename().wstring();
+        for (wchar_t& letter : name) letter = static_cast<wchar_t>(std::towlower(letter));  // 1.RAW, 1.WAV: as tools for the PS2 disc name them
+        for (int n = 1; n <= 18; ++n) {
+            if (name == std::to_wstring(n) + L".wav" && loading_wave_header(it->path())) found_wav[n - 1] = it->path();
+            else if (name == std::to_wstring(n) + L".raw") {
+                uint32_t bytes = 0;
+                if (loading_raw_size(it->path(), bytes)) found_raw[n - 1] = it->path();
+            }
+        }
+    }
+    const auto dest = loading_music_directory();
+    std::filesystem::create_directories(dest, ec);
+    if (ec) return T().ps2_create_folder_failed;
+    int copied = 0, existing = 0;
+    for (int n = 1; n <= 18; ++n) {
+        if (found_wav[n - 1].empty() && found_raw[n - 1].empty()) continue;
+        const auto target = dest / (std::to_wstring(n) + L".wav");
+        if (std::filesystem::exists(target, ec)) { ++existing; continue; } // Never overwrite silently.
+        if (!found_wav[n - 1].empty()) {
+            if (std::filesystem::copy_file(found_wav[n - 1], target, std::filesystem::copy_options::none, ec)) ++copied;
+        } else if (install_loading_raw(found_raw[n - 1], target)) ++copied;
+        ec.clear();
+    }
+    char result[160];
+    std::snprintf(result, sizeof(result), T().ps2_import_result, copied, existing);
+    return result;
+}
+
 // --- colours ---
 
 constexpr ImU32 kRed = IM_COL32(227, 38, 47, 255), kRedDark = IM_COL32(158, 13, 21, 255);
@@ -606,6 +835,11 @@ float ease_out(float t) {
     return 1 - (1 - t) * (1 - t) * (1 - t);
 }
 
+// Everything scales with the window, designed on 1600x900: by its height, unless the logo, the menu and the page's
+// column (1230 design px side by side) need a smaller size to fit its width. Below 0.65 text would be too small to
+// read (very small windows crop).
+float launcher_scale(float width, float height) { return std::max(0.65f, std::min(width / 1230.0f, height / 900.0f)); }
+
 // Any of keys pressed this frame (with key repeat).
 bool key_pressed(std::initializer_list<ImGuiKey> keys) {
     for (const ImGuiKey key : keys) {
@@ -629,17 +863,6 @@ bool menu_key_pressed(std::initializer_list<ImGuiKey> keys) {
 std::recursive_mutex g_ui_mutex;
 std::atomic<int> g_captured_key{0};    // the key pressed while rebinding (0: none)
 std::atomic<bool> g_capturing{false};
-
-int key_from_message(WPARAM wparam, LPARAM lparam) {
-    const UINT scan = (lparam >> 16) & 0xFF;
-    const bool extended = (lparam >> 24) & 1;
-    switch (wparam) {
-        case VK_SHIFT: return static_cast<int>(MapVirtualKeyW(scan, MAPVK_VSC_TO_VK_EX));
-        case VK_CONTROL: return extended ? VK_RCONTROL : VK_LCONTROL;
-        case VK_MENU: return extended ? VK_RMENU : VK_LMENU;
-        default: return static_cast<int>(wparam);
-    }
-}
 
 bool window_hook(HWND window, UINT message, WPARAM wparam, LPARAM lparam, LRESULT* result) {
     if (g_capturing && (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)) {
@@ -692,17 +915,13 @@ struct UpdateCheck {
     std::mutex mutex;
     int state = 0;  // 0 checking, 1 up to date, 2 newer found, 3 failed (shown as nothing)
     std::string version, url;
-    std::string setup_url, sums_url;  // the release's installer and SHA256SUMS, if it has them
-    int download = 0;                 // 0 none, 1 downloading, 2 verified (the player installs it), 3 failed
-    uint64_t received = 0, size = 0;  // of the installer, while it downloads
-    std::filesystem::path setup_file;
+    std::string setup_url;  // the release's installer, if it has one: the browser downloads it
     std::vector<std::string> points;  // what is new, from the release's notes
 };
 
 // A GET over HTTPS. WinHTTP follows redirects, which GitHub's release downloads need. The body only when the answer
 // is 200; *status is the answer, for the log.
-std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* status,
-                      const std::function<void(uint64_t, uint64_t)>& progress = nullptr) {
+std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* status) {
     std::string body;
     *status = 0;
     wchar_t host[256] = {}, path[2048] = {}, query[2048] = {};
@@ -729,15 +948,9 @@ std::string https_get(const std::wstring& url, const wchar_t* headers, DWORD* st
         WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, status, &size,
                             nullptr) &&
         *status == 200) {
-        DWORD length = 0, length_size = sizeof(length);  // 0 when the server does not say
-        WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &length,
-                            &length_size, nullptr);
         char buffer[16384];
         DWORD read = 0;
-        while (WinHttpReadData(request, buffer, sizeof(buffer), &read) && read) {
-            body.append(buffer, read);
-            if (progress) progress(body.size(), length);
-        }
+        while (WinHttpReadData(request, buffer, sizeof(buffer), &read) && read) body.append(buffer, read);
     }
     if (request) WinHttpCloseHandle(request);
     if (connection) WinHttpCloseHandle(connection);
@@ -774,75 +987,9 @@ void check_for_updates(UpdateCheck* check) {
         const std::string asset = body.substr(start, end - start);
         if (!release_link(asset, kRepository, "download/")) continue;
         if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "-setup.exe") == 0) check->setup_url = asset;
-        if (asset.size() > 10 && asset.compare(asset.size() - 10, 10, "SHA256SUMS") == 0) check->sums_url = asset;
     }
     check->points = release_points(json_text(body, "body"), 6);
     log_line("launcher: latest release %s (%s)", tag.c_str(), newer ? "newer" : "not newer");
-}
-
-std::string sha256_hex(const std::string& data) {
-    uint8_t digest[32] = {};
-    if (data.empty() || BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, reinterpret_cast<PUCHAR>(const_cast<char*>(data.data())),
-                                   static_cast<ULONG>(data.size()), digest, sizeof(digest)) != 0) {
-        return {};
-    }
-    std::string hex;
-    char byte[3];
-    for (uint8_t b : digest) {
-        std::snprintf(byte, sizeof(byte), "%02x", b);
-        hex += byte;
-    }
-    return hex;
-}
-
-// Downloads the release's installer and SHA256SUMS and checks the installer's hash; only a verified installer is
-// saved, to %TEMP%\mc3port-update. The player starts it (install_update): mc3port never runs it by itself.
-void download_update(UpdateCheck* check) {
-    std::string setup_url, sums_url;
-    {
-        std::lock_guard<std::mutex> lock(check->mutex);
-        setup_url = check->setup_url;
-        sums_url = check->sums_url;
-    }
-    wchar_t temp[MAX_PATH] = {};
-    GetTempPathW(MAX_PATH, temp);
-    const std::filesystem::path folder = std::filesystem::path(temp) / "mc3port-update";
-    const std::string name = setup_url.substr(setup_url.rfind('/') + 1);
-    const std::filesystem::path setup = folder / name;
-    DWORD setup_status = 0, sums_status = 0;
-    const std::string installer = sums_url.empty() ? std::string()
-                                                   : https_get(std::wstring(setup_url.begin(), setup_url.end()), nullptr,
-                                                               &setup_status, [check](uint64_t received, uint64_t size) {
-                                                                   std::lock_guard<std::mutex> lock(check->mutex);
-                                                                   check->received = received, check->size = size;
-                                                               });
-    const std::string list = installer.empty() ? std::string()
-                                               : https_get(std::wstring(sums_url.begin(), sums_url.end()), nullptr,
-                                                           &sums_status);
-    const std::string hash = sha256_hex(installer);
-    bool good = false;
-    for (size_t start = 0; !hash.empty() && start < list.size();) {
-        size_t end = list.find('\n', start);
-        if (end == std::string::npos) end = list.size();
-        std::string line = list.substr(start, end - start);
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.size() > 66 && line.compare(66, std::string::npos, name) == 0 && line.compare(0, 64, hash) == 0) {
-            good = true;
-        }
-        start = end + 1;
-    }
-    if (good) {
-        std::error_code ignored;
-        std::filesystem::create_directories(folder, ignored);
-        std::ofstream out(setup, std::ios::binary | std::ios::trunc);
-        out.write(installer.data(), static_cast<std::streamsize>(installer.size()));
-        good = static_cast<bool>(out.flush());
-    }
-    if (!good) log_line("launcher: update download: HTTP %lu (installer), %lu (SHA256SUMS)", setup_status, sums_status);
-    log_line("launcher: update %s %s", name.c_str(), good ? "downloaded and verified" : "could not be downloaded or verified");
-    std::lock_guard<std::mutex> lock(check->mutex);
-    check->download = good ? 2 : 3;
-    check->setup_file = setup;
 }
 
 // --- the background: the disc's artwork, crossfading with a slow zoom, graded towards the game's menus ---
@@ -864,16 +1011,22 @@ Output vs(uint id : SV_VertexID) {
     o.uv = t;
     return o;
 }
+// A point of the picture over black: the disc's artwork has cut-out shapes whose transparent texels hold any colour
+// (white blotches when drawn as they are).
+float3 at(Texture2D picture, float2 uv) {
+    const float4 s = picture.Sample(linear_clamp, uv);
+    return s.rgb * s.a;
+}
 // The artwork is small: its blocks would show on a big screen, so each point is a little of its neighbours.
 float3 soft(Texture2D picture, float2 uv) {
     float width, height;
     picture.GetDimensions(width, height);
     const float2 d = 1.25 / float2(width, height);
-    float3 c = picture.Sample(linear_clamp, uv).rgb * 0.25;
-    c += (picture.Sample(linear_clamp, uv + float2(d.x, 0)).rgb + picture.Sample(linear_clamp, uv - float2(d.x, 0)).rgb +
-          picture.Sample(linear_clamp, uv + float2(0, d.y)).rgb + picture.Sample(linear_clamp, uv - float2(0, d.y)).rgb) * 0.125;
-    c += (picture.Sample(linear_clamp, uv + d).rgb + picture.Sample(linear_clamp, uv - d).rgb +
-          picture.Sample(linear_clamp, uv + float2(d.x, -d.y)).rgb + picture.Sample(linear_clamp, uv - float2(d.x, -d.y)).rgb) * 0.0625;
+    float3 c = at(picture, uv) * 0.25;
+    c += (at(picture, uv + float2(d.x, 0)) + at(picture, uv - float2(d.x, 0)) + at(picture, uv + float2(0, d.y)) +
+          at(picture, uv - float2(0, d.y))) * 0.125;
+    c += (at(picture, uv + d) + at(picture, uv - d) + at(picture, uv + float2(d.x, -d.y)) + at(picture, uv - float2(d.x, -d.y))) *
+         0.0625;
     return c;
 }
 float3 grade(float3 c, float colour) {
@@ -911,7 +1064,7 @@ struct BackgroundConstants {
 // --- the launcher ---
 
 struct Trail {
-    float x, y, speed, length;
+    float x, y, speed, length, depth;  // depth: 0.25 far .. 1 near
     ImU32 colour;
 };
 
@@ -926,6 +1079,92 @@ struct BackgroundPicture {
 struct OwnPicture {
     std::vector<uint8_t> bgra;
     UINT width = 0, height = 0;
+};
+
+// Launcher-only preview: XAudio2 supports looping and per-voice volume, unlike PlaySoundW.
+// Only uncompressed 16-bit PCM WAVs are accepted, matching the loading music runtime.
+class LoadingMusicPreview {
+public:
+    ~LoadingMusicPreview() { stop(); }
+    int track() const { return track_; }
+    void stop() {
+        if (voice_) { voice_->Stop(); voice_->DestroyVoice(); voice_ = nullptr; }
+        if (master_) { master_->DestroyVoice(); master_ = nullptr; }
+        engine_.Reset();
+        samples_.clear();
+        track_ = 0;
+        started_at_ms_ = 0;
+    }
+    bool start(int track, const std::filesystem::path& path) {
+        stop();
+        std::ifstream in(path, std::ios::binary);
+        char riff[12]{};
+        if (!in.read(riff, 12) || std::memcmp(riff, "RIFF", 4) || std::memcmp(riff + 8, "WAVE", 4)) return false;
+        auto read32 = [](const char* p) -> uint32_t {
+            return uint32_t(uint8_t(p[0])) | (uint32_t(uint8_t(p[1])) << 8) |
+                   (uint32_t(uint8_t(p[2])) << 16) | (uint32_t(uint8_t(p[3])) << 24);
+        };
+        auto read16 = [](const char* p) -> uint16_t { return uint16_t(uint8_t(p[0])) | uint16_t(uint8_t(p[1]) << 8); };
+        WAVEFORMATEX fmt{};
+        bool have_fmt = false, have_data = false;
+        for (int i = 0; i < 128 && in && !(have_fmt && have_data); ++i) {
+            char header[8]{};
+            if (!in.read(header, 8)) break;
+            const uint32_t len = read32(header + 4);
+            if (len > 32 * 1024 * 1024) return false;
+            const auto next = in.tellg() + std::streamoff(len + (len & 1));
+            if (!std::memcmp(header, "fmt ", 4) && len >= 16 && len <= 64) {
+                char data[64]{};
+                if (!in.read(data, len)) return false;
+                fmt.wFormatTag = read16(data);
+                fmt.nChannels = read16(data + 2);
+                fmt.nSamplesPerSec = read32(data + 4);
+                fmt.nAvgBytesPerSec = read32(data + 8);
+                fmt.nBlockAlign = read16(data + 12);
+                fmt.wBitsPerSample = read16(data + 14);
+                have_fmt = true;
+            } else if (!std::memcmp(header, "data", 4) && len && !(len & 1)) {
+                samples_.resize(len);
+                if (!in.read(reinterpret_cast<char*>(samples_.data()), len)) { stop(); return false; }
+                have_data = true;
+            }
+            in.clear();
+            in.seekg(next);
+        }
+        if (!have_fmt || !have_data || fmt.wFormatTag != WAVE_FORMAT_PCM ||
+            (fmt.nChannels != 1 && fmt.nChannels != 2) || fmt.wBitsPerSample != 16 ||
+            fmt.nSamplesPerSec < 8000 || fmt.nSamplesPerSec > 192000 ||
+            fmt.nBlockAlign != fmt.nChannels * 2 || samples_.size() % fmt.nBlockAlign) { stop(); return false; }
+        if (FAILED(XAudio2Create(engine_.GetAddressOf(), 0, XAUDIO2_DEFAULT_PROCESSOR)) ||
+            FAILED(engine_->CreateMasteringVoice(&master_)) ||
+            FAILED(engine_->CreateSourceVoice(&voice_, &fmt))) { stop(); return false; }
+        XAUDIO2_BUFFER buffer{};
+        buffer.AudioBytes = static_cast<UINT32>(samples_.size());
+        buffer.pAudioData = samples_.data();
+        buffer.LoopCount = XAUDIO2_LOOP_INFINITE;
+        // Start silent: the launcher updates volume every frame with a short fade-in.
+        if (FAILED(voice_->SetVolume(0.0f)) ||
+            FAILED(voice_->SubmitSourceBuffer(&buffer)) || FAILED(voice_->Start())) { stop(); return false; }
+        started_at_ms_ = GetTickCount64();
+        track_ = track;
+        return true;
+    }
+    void volume(float master, float music) {
+        if (voice_) {
+            // Ramp in over 80 ms to avoid a click from a sudden silence-to-waveform jump.
+            const float elapsed = static_cast<float>(GetTickCount64() - started_at_ms_);
+            const float fade = std::clamp(elapsed / 80.0f, 0.0f, 1.0f);
+            voice_->SetVolume(std::clamp(master, 0.0f, 100.0f) *
+                              std::clamp(music, 0.0f, 100.0f) / 10000.0f * fade);
+        }
+    }
+private:
+    Microsoft::WRL::ComPtr<IXAudio2> engine_;
+    IXAudio2MasteringVoice* master_ = nullptr;
+    IXAudio2SourceVoice* voice_ = nullptr;
+    std::vector<uint8_t> samples_;
+    int track_ = 0;
+    ULONGLONG started_at_ms_ = 0;
 };
 
 class Launcher {
@@ -1021,8 +1260,13 @@ private:
     bool segmented(const char* id, const char* const* labels, int count, int* current, const char* const* details = nullptr,
                    float wide = 0);
     bool slider(const char* id, float* value, float minimum, float maximum, const char* format);
+    // A drop-down list on the row's right (270 px), after row().
+    bool combo(const char* id, const char* const* items, int count, int* current);
     bool compact_slider(const char* label, const char* id, float* value, float minimum, float maximum, ImVec2 at,
                         float width);
+    // ImGui::SliderFloat with its text hidden and the value drawn beside the grab, on the side with more room, so the
+    // grab never covers it.
+    bool value_slider(const char* id, float* value, float minimum, float maximum, const char* format, float font_size);
     void steps(int current, int total);
 
     void page_play();
@@ -1032,27 +1276,35 @@ private:
     void page_about();
     void update_row(bool always);
     void page_update();
-    void start_update_download();
-    void install_update();
-    bool install_requested_ = false;  // Install pressed: started between frames, outside the UI lock (see install_update)
     bool update_prompt_ = false, update_prompt_shown_ = false;  // the new version's notice, once per start
     Page update_prompt_page_ = Page::kPlay;                      // another page from the menu closes it
     void move_data_row();
     void page_move_data();
     bool update_available();
+    bool installed_copy();
     void page_wizard();
     void page_paused();
     void page_exit();
     void page_launcher();
     void page_music();
+    void page_loading_music();
+    void refresh_loading_music_cache();
     // The file dialog makes the game window its owner, which needs the window thread: never while g_ui_mutex is
     // held (that thread waits for it in window_hook). Clicks only ask for it; run() opens it between frames.
     void choose_disc() { choose_disc_requested_ = true; }
     void run_disc_dialog();
     // Your music (page_music): the playlist open (-1 the list), the pages shown, the name being typed.
-    enum class MusicDialog { kNone, kFolder, kNewPlaylist, kAddSongs };  // opened between frames, like the disc's
+    enum class MusicDialog { kNone, kFolder, kNewPlaylist, kAddSongs, kLoadingFolder };  // opened between frames, like the disc's
     static constexpr int kNotRenaming = -2, kRenamingPlaylist = -1;      // else the song renamed
     MusicDialog music_dialog_ = MusicDialog::kNone;
+    int music_section_ = 0, loading_section_ = 0;
+    LoadingMusicPreview preview_;
+    std::string loading_import_message_;
+    bool loading_cache_valid_ = false;
+    std::array<bool, 19> loading_installed_{};
+    std::array<std::string, 19> loading_titles_{};
+    int loading_track_count_ = 0;
+    int loading_weight_page_ = 0;
     size_t music_dialog_index_ = 0;  // the playlist Add songs is for
     int music_open_ = -1, music_list_page_ = 0, music_song_page_ = 0, music_renaming_ = kNotRenaming;
     char music_name_[128] = {};
@@ -1072,6 +1324,7 @@ private:
     int style() const;
     void apply_style(int style);
     void style_row();
+    void style_cards();
     void style_summary();
 
     HWND window_;
@@ -1115,7 +1368,9 @@ private:
 
     std::unique_ptr<LauncherMusic> music_;
     UpdateCheck updates_;
-    std::thread update_thread_, download_thread_;
+    std::thread update_thread_;
+    std::thread dlss_thread_;  // upscale64 --check: whether DLSS runs here
+    std::atomic<int> dlss_ready_{-1};  // -2 no helper beside the game (no rows), -1 still checking, 0 no, 1 yes
     decltype(&XInputGetState) xinput_get_state_ = nullptr;
     bool pad_connected_ = false;
     bool pad_present_[4] = {};
@@ -1143,8 +1398,19 @@ private:
     ImDrawList* list_ = nullptr;
     ImVec2 origin_;  // panel content top left
     float panel_width_ = 0, cursor_ = 0, row_extra_ = 0;
+    // The page's column runs from the top to the bottom bar; a longer page scrolls in it (the wheel, or the selection
+    // kept in sight). view_top_/view_bottom_: the part of the screen the page shows.
+    float scroll_ = 0, scroll_target_ = 0, view_top_ = 0, view_bottom_ = 0;
+    Page scroll_page_ = Page::kPlay;
+    int scroll_tab_ = 0;
+    ImGuiID scrolled_to_ = 0;  // the selection last brought into sight
+    // The page's items come in one after another: each title, row and button counts one (enter_item).
+    void enter_item();
+    int item_count_ = 0;
+    float item_shift_ = 0, page_alpha_ = 1;
     std::unordered_map<ImGuiID, float> anims_;
     std::vector<Trail> trails_;
+    float beat_ = 0;  // the music's loudness, smoothed: the trails follow it
     std::vector<ImVec4> drops_;
 };
 
@@ -1272,7 +1538,7 @@ void Launcher::stop_graphics() {
     music_.reset();  // fades out
     if (art_thread_.joinable()) art_thread_.join();
     if (update_thread_.joinable()) update_thread_.join();
-    if (download_thread_.joinable()) download_thread_.join();
+    if (dlss_thread_.joinable()) dlss_thread_.join();
     {
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
         nv2a_set_window_hook(nullptr);
@@ -1310,9 +1576,7 @@ void Launcher::resize_if_needed() {
     device_->CreateRenderTargetView(buffer.Get(), nullptr, &target_);
     width_ = width;
     height_ = height;
-    // Everything scales with the window, designed on 1600x900; below 0.65 text would be too small to read (very
-    // small windows crop).
-    scale_ = std::max(0.65f, std::min(width / 1600.0f, height / 900.0f));
+    scale_ = launcher_scale(static_cast<float>(width), static_cast<float>(height));
 }
 
 ComPtr<ID3D11ShaderResourceView> dxt_texture(ID3D11Device* device, const DxtImage& image) {
@@ -1532,11 +1796,13 @@ float Launcher::anim(ImGuiID id, bool on, float speed) {
 }
 
 void Launcher::title(const char* str) {
+    enter_item();
     text(black_, px(48), ImVec2(origin_.x, origin_.y + cursor_), kInk, str);
     cursor_ += px(56);
 }
 
 void Launcher::lead(const char* str) {
+    enter_item();
     const ImVec2 size = measure(body_, px(21), str, panel_width_);
     text(body_, px(21), ImVec2(origin_.x, origin_.y + cursor_), kDim, str, panel_width_);
     cursor_ += size.y + px(20);
@@ -1562,6 +1828,7 @@ bool Launcher::small_button(const char* label, ImVec2 at, const char* id, ImVec2
 
 bool Launcher::status(bool good, const char* heading, const char* detail, const char* button_label, const char* id,
                       bool pulse, const char* second_label, const char* second_id, bool* second_pressed) {
+    enter_item();
     const float height = px(64);
     const ImVec2 a(origin_.x, origin_.y + cursor_), b(origin_.x + panel_width_, a.y + height);
     const ImU32 accent = good ? kGreen : kAmber;
@@ -1592,6 +1859,7 @@ bool Launcher::status(bool good, const char* heading, const char* detail, const 
 }
 
 bool Launcher::big_button(const char* label, const char* id, bool pulse) {
+    enter_item();
     const ImVec2 size = measure(black_, px(40), label);
     const ImVec2 a(origin_.x, origin_.y + cursor_ + px(10)), b(a.x + size.x + px(110), a.y + px(64));
     ImGui::SetCursorScreenPos(a);
@@ -1609,12 +1877,35 @@ bool Launcher::big_button(const char* label, const char* id, bool pulse) {
         }
     }
     skewed_rect(list_, a, b, mix(kRed, IM_COL32(255, 80, 88, 255), hot * 0.6f), mix(kRedDark, kRed, hot * 0.5f));
+    if (pulse) {  // ready: a light runs round the button's edge, a lap every 2.4 s
+        const float skew = (b.y - a.y) * 0.21f;
+        const ImVec2 corners[] = {ImVec2(a.x + skew, a.y), ImVec2(b.x + skew, a.y), b, ImVec2(a.x, b.y)};  // skewed_rect's
+        float lengths[4], perimeter = 0;
+        for (int i = 0; i < 4; ++i) {
+            const float dx = corners[(i + 1) % 4].x - corners[i].x, dy = corners[(i + 1) % 4].y - corners[i].y;
+            perimeter += lengths[i] = std::sqrt(dx * dx + dy * dy);
+        }
+        const float head = std::fmod(static_cast<float>(ImGui::GetTime()) / 2.4f, 1.0f) * perimeter, tail = px(160);
+        constexpr int kSteps = 24;
+        for (int s = 0; s < kSteps; ++s) {  // the tail fades out behind the head
+            float d0 = head - tail * static_cast<float>(s) / kSteps, d1 = head - tail * static_cast<float>(s + 1) / kSteps;
+            const auto point = [&](float d) {
+                d = std::fmod(d + perimeter, perimeter);
+                int i = 0;
+                while (i < 3 && d > lengths[i]) d -= lengths[i++];
+                return ImLerp(corners[i], corners[(i + 1) % 4], d / lengths[i]);
+            };
+            const float light = 1 - static_cast<float>(s) / kSteps;
+            list_->AddLine(point(d0), point(d1), fade(mix(IM_COL32(255, 178, 30, 255), IM_COL32_WHITE, light), light), px(3));
+        }
+    }
     text(black_, px(40), ImVec2(a.x + px(55) + px(7), a.y + px(10)), IM_COL32(255, 255, 255, 255), label);
     cursor_ += px(90);
     return pressed;
 }
 
 bool Launcher::tabs(const char* const* labels, int count, int* current) {
+    enter_item();
     float x = origin_.x;
     bool changed = false;
     for (int i = 0; i < count; ++i) {
@@ -1640,14 +1931,17 @@ bool Launcher::tabs(const char* const* labels, int count, int* current) {
 }
 
 void Launcher::row(const char* heading, const char* detail, bool restart, float control) {
+    enter_item();
     text(body_bold_, px(20), ImVec2(origin_.x, origin_.y + cursor_ + px(4)), kInk, heading);
     const bool next_start = restart && in_game_;
     if (next_start) detail = T().next_start;
     if (!detail) return;
-    // Left of the control (`control` wide): a longer detail wraps, and the row grows by the extra lines.
-    const float wrap = panel_width_ - px(control + 20);
-    text(body_, px(17), ImVec2(origin_.x, origin_.y + cursor_ + px(29)), next_start ? kAmber : kDim, detail, wrap);
-    row_extra_ = std::max(0.0f, measure(body_, px(17), detail, wrap).y - px(22));
+    // Left of the control (`control` wide), or under a wide one across the whole row (squeezed beside it, it took four
+    // lines): a longer detail wraps, and the row grows by the extra lines.
+    const bool under = control >= 330;
+    const float wrap = under ? panel_width_ : panel_width_ - px(control + 20), top = px(under ? 60 : 29);
+    text(body_, px(17), ImVec2(origin_.x, origin_.y + cursor_ + top), next_start ? kAmber : kDim, detail, wrap);
+    row_extra_ = std::max(0.0f, measure(body_, px(17), detail, wrap).y - px(22) + top - px(29));
 }
 
 bool Launcher::segmented(const char* id, const char* const* labels, int count, int* current, const char* const* details,
@@ -1703,6 +1997,21 @@ bool Launcher::segmented(const char* id, const char* const* labels, int count, i
     return changed;
 }
 
+bool Launcher::value_slider(const char* id, float* value, float minimum, float maximum, const char* format,
+                            float font_size) {
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 0));
+    const bool changed = ImGui::SliderFloat(id, value, minimum, maximum, format);
+    ImGui::PopStyleColor();
+    char label[32];
+    std::snprintf(label, sizeof(label), format, *value);
+    const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax(), size = measure(body_bold_, font_size, label);
+    const float grab = ImGui::GetStyle().GrabMinSize, t = std::clamp((*value - minimum) / (maximum - minimum), 0.0f, 1.0f);
+    const float centre = a.x + 2 + grab / 2 + t * (b.x - a.x - 4 - grab);  // ImGui's grab, 2 px in from the frame
+    const float x = t < 0.5f ? centre + grab / 2 + px(8) : centre - grab / 2 - px(8) - size.x;
+    text(body_bold_, font_size, ImVec2(x, a.y + (b.y - a.y - size.y) / 2), kInk, label);
+    return changed;
+}
+
 // A slider with its label above it, at `at` and `width` wide, for two columns of values: half the rows of slider().
 // It leaves cursor_ alone; the caller lays the columns out.
 bool Launcher::compact_slider(const char* label, const char* id, float* value, float minimum, float maximum, ImVec2 at,
@@ -1713,13 +2022,31 @@ bool Launcher::compact_slider(const char* label, const char* id, float* value, f
     ImGui::PushFont(body_bold_, px(16));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(3)));
     claim_focus();
-    bool changed = ImGui::SliderFloat(id, value, minimum, maximum, "%.2f");
+    bool changed = value_slider(id, value, minimum, maximum, "%.2f", px(16));
     focus_ring();
     focus_frame(ImVec2(at.x - px(14), at.y - px(3)), ImVec2(at.x + width + px(8), at.y + px(50)));
     changed |= step_slider(value, minimum, maximum);
     ImGui::PopStyleVar();
     ImGui::PopFont();
     ImGui::PopItemWidth();
+    return changed;
+}
+
+bool Launcher::combo(const char* id, const char* const* items, int count, int* current) {
+    ImGui::SetCursorScreenPos(ImVec2(origin_.x + panel_width_ - px(270), origin_.y + cursor_ + px(8)));
+    ImGui::PushItemWidth(px(270));
+    ImGui::PushFont(body_bold_, px(18));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
+    claim_focus();
+    const bool changed = ImGui::Combo(id, current, items, count);
+    focus_ring();
+    focus_frame(ImVec2(origin_.x - px(24), origin_.y + cursor_), ImVec2(origin_.x + panel_width_ + px(14), origin_.y + cursor_ + px(52) + row_extra_));
+    ImGui::PopStyleVar();
+    ImGui::PopFont();
+    ImGui::PopItemWidth();
+    cursor_ += px(58) + row_extra_;
+    row_extra_ = 0;
+    list_->AddLine(ImVec2(origin_.x, origin_.y + cursor_ - px(6)), ImVec2(origin_.x + panel_width_, origin_.y + cursor_ - px(6)), fade(IM_COL32(255, 255, 255, 16)));
     return changed;
 }
 
@@ -1730,7 +2057,7 @@ bool Launcher::slider(const char* id, float* value, float minimum, float maximum
     ImGui::PushFont(body_bold_, px(18));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
     claim_focus();
-    bool changed = ImGui::SliderFloat(id, value, minimum, maximum, format);
+    bool changed = value_slider(id, value, minimum, maximum, format, px(18));
     focus_ring();
     changed |= step_slider(value, minimum, maximum);
     focus_frame(ImVec2(origin_.x - px(24), origin_.y + cursor_), ImVec2(origin_.x + panel_width_ + px(14), origin_.y + cursor_ + px(46) + row_extra_));
@@ -1752,6 +2079,47 @@ void Launcher::steps(int current, int total) {
     }
     cursor_ += px(26);
 }
+
+// Whether NVIDIA DLSS runs on this PC: the helper beside the exe (upscale64.exe, with NVIDIA's DLL) answers
+// --check with 0 (about 2 s: NGX starts). Its line goes to the log.
+bool dlss_available() {
+    const std::filesystem::path helper = program_directory() / L"upscale64.exe";
+    std::error_code ignored;
+    if (!std::filesystem::exists(helper, ignored)) {
+        log_line("launcher: DLSS: no upscale64.exe beside the game");
+        return false;
+    }
+    SECURITY_ATTRIBUTES inherit{sizeof(inherit), nullptr, TRUE};
+    HANDLE read = nullptr, write = nullptr;
+    if (!CreatePipe(&read, &write, &inherit, 0)) return false;
+    SetHandleInformation(read, HANDLE_FLAG_INHERIT, 0);
+    STARTUPINFOW startup{sizeof(startup)};
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdOutput = startup.hStdError = write;
+    std::wstring command = L"\"" + helper.wstring() + L"\" --check";
+    PROCESS_INFORMATION process{};
+    const bool started = CreateProcessW(helper.c_str(), command.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
+                                        nullptr, &startup, &process);
+    CloseHandle(write);
+    DWORD code = 1;
+    if (started) {
+        char line[256] = {};
+        DWORD got = 0;
+        ReadFile(read, line, sizeof(line) - 1, &got, nullptr);
+        line[got] = 0;
+        line[std::strcspn(line, "\r\n")] = 0;
+        if (WaitForSingleObject(process.hProcess, 15000) != WAIT_OBJECT_0) TerminateProcess(process.hProcess, 1);
+        GetExitCodeProcess(process.hProcess, &code);
+        CloseHandle(process.hProcess);
+        CloseHandle(process.hThread);
+        log_line("launcher: %s", line[0] ? line : "DLSS: the helper said nothing");
+    }
+    CloseHandle(read);
+    return started && code == 0;
+}
+
+// The profiles' scale, the screen's lines over the drawn ones (as DLSS's own: Quality 1.5, Balanced 1.72, Performance 2).
+constexpr float kProfileRatio[] = {1.0f, 1.5f, 1.72f, 2.0f};
 
 // --- settings ---
 
@@ -1799,6 +2167,51 @@ void Launcher::style_row() {
     if (segmented("##style", styles, 3, &current, nullptr, 330)) apply_style(current);
 }
 
+// The first-run guide's choice: the three styles side by side, each with its name and what it turns on.
+// One item, like segmented(): left and right change the style, the mouse picks a card.
+void Launcher::style_cards() {
+    const Texts& t = T();
+    enter_item();
+    int current = style();
+    const char* names[] = {t.original, t.enhanced, t.custom};
+    const char* details[] = {t.original_sub, t.enhanced_sub, t.custom_sub};
+    const float gap = px(12), card = (panel_width_ - 2 * gap) / 3, height = px(118);
+    const ImVec2 a(origin_.x, origin_.y + cursor_);
+    ImGui::PushID("##style_cards");
+    ImGui::SetCursorScreenPos(a);
+    claim_focus();
+    const bool pressed = ImGui::InvisibleButton("##value", ImVec2(panel_width_, height), kNavigable);
+    const bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride);
+    if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    const bool selected = nav_selected();  // the frame of the other rows would cross the cards: a border on the chosen one
+    const int hovered_card =
+        hovered ? std::clamp(static_cast<int>((ImGui::GetIO().MousePos.x - a.x) / (card + gap)), 0, 2) : -1;
+    int next = current;
+    if (pressed && hovered_card >= 0) next = hovered_card;
+    next = std::clamp(next + value_step(), 0, 2);
+    if (next != current) {
+        apply_style(next);
+        current = next;
+        value_moved_frame_ = ImGui::GetFrameCount();
+    }
+    for (int i = 0; i < 3; ++i) {
+        const ImVec2 c(a.x + static_cast<float>(i) * (card + gap), a.y), d(c.x + card, a.y + height);
+        ImGui::PushID(i);
+        const float hot = anim(ImGui::GetID("##hot"), hovered_card == i);
+        const float on = anim(ImGui::GetID("##on"), current == i, 16);
+        ImGui::PopID();
+        const ImU32 idle = IM_COL32(255, 255, 255, 14 + static_cast<int>(16 * hot));
+        list_->AddRectFilledMultiColor(c, d, fade(mix(idle, kRed, on)), fade(mix(idle, kRedDark, on)),
+                                       fade(mix(idle, kRedDark, on)), fade(mix(idle, kRed, on)));
+        if (selected && current == i) list_->AddRect(c, d, fade(IM_COL32(255, 255, 255, 230)), 0, 0, px(2));
+        const ImU32 ink = mix(kDim, IM_COL32(255, 255, 255, 255), std::max(on, hot));
+        text(body_bold_, px(21), ImVec2(c.x + px(18), c.y + px(16)), ink, names[i]);
+        text(body_, px(15), ImVec2(c.x + px(18), c.y + px(48)), fade(ink, 0.85f), details[i], card - px(32));
+    }
+    ImGui::PopID();
+    cursor_ += height + px(28);
+}
+
 // On the first page and the pause page: what is on, and the way to the settings.
 void Launcher::style_summary() {
     const Texts& t = T();
@@ -1806,8 +2219,8 @@ void Launcher::style_summary() {
     char summary[160];
     std::snprintf(summary, sizeof(summary), "%s: %s", t.style, current == kStyleOriginal ? t.original : current == kStyleEnhanced ? t.enhanced : t.custom);
     char detail[160];
-    std::snprintf(detail, sizeof(detail), "%s \xC2\xB7 %.0f fps%s%s", setting("widescreen") != 0 ? "16:9" : "4:3",
-                  setting("frame_rate") >= 60 ? 60.0f : 30.0f, setting("effects") != 0 ? " \xC2\xB7 " : "", setting("effects") != 0 ? t.effects : "");
+    std::snprintf(detail, sizeof(detail), "%s \xC2\xB7 %.0f fps%s%s", setting("widescreen") >= 2 ? "21:9" : setting("widescreen") != 0 ? "16:9" : "4:3",
+                  setting("frame_rate") >= 120 ? 120.0f : setting("frame_rate") >= 60 ? 60.0f : 30.0f, setting("effects") != 0 ? " \xC2\xB7 " : "", setting("effects") != 0 ? t.effects : "");
     if (status(true, summary, detail, t.edit, "##edit")) {
         page_ = Page::kSettings;
         page_since_ = static_cast<float>(ImGui::GetTime());
@@ -1875,7 +2288,7 @@ std::string pad_text(const char* text) {
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
     for (const char* key :
-         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "anisotropy", "hud_style", "sharp_2d"}) {
+         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "upscaler", "upscaler_quality", "anisotropy", "hud_style", "sharp_2d", "sharp_textures"}) {
         if (setting(key) != setting_at_start(key)) return true;
     }
     return false;
@@ -2032,7 +2445,7 @@ void Launcher::page_play() {
     }
     status(pad_connected_, pad_connected_ ? t.pad_on : t.pad_off, pad_connected_ ? t.pad_on_sub : t.pad_off_sub, nullptr, nullptr);
     style_summary();
-    ImGui::SetCursorScreenPos(ImVec2(origin_.x, origin_.y + cursor_));
+    cursor_ = std::max(cursor_, view_bottom_ - origin_.y - px(130));  // Play at the foot of the column
     if (big_button(t.play, "##play", disc_.has_value())) {
         if (disc_) {
             play_ = done_ = true;
@@ -2049,11 +2462,11 @@ void Launcher::page_settings() {
     title(t.settings);
     // LB and RB (L1 and R1), Q and E: the previous and next tab.
     if (rebinding_ < 0 && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
-        const int step = key_pressed({ImGuiKey_GamepadL1, ImGuiKey_Q, ImGuiKey_PageUp})     ? 3
+        const int step = key_pressed({ImGuiKey_GamepadL1, ImGuiKey_Q, ImGuiKey_PageUp})     ? 4
                          : key_pressed({ImGuiKey_GamepadR1, ImGuiKey_E, ImGuiKey_PageDown}) ? 1
                                                                                             : 0;
         if (step) {
-            settings_tab_ = (settings_tab_ + step) % 4;
+            settings_tab_ = (settings_tab_ + step) % 5;
             if (!menu_has_focus_) focus_panel_ = true;
         }
     }
@@ -2062,21 +2475,26 @@ void Launcher::page_settings() {
     if (to_tabs) focus_panel_ = false;
     style_row();
     if (to_tabs) focus_panel_ = true;
-    const char* tab_labels[] = {t.tab_picture, t.tab_effects, t.tab_game, t.tab_audio};
-    tabs(tab_labels, 4, &settings_tab_);
+    // Five short tabs: the screen's and the graphics' rows were one tab, longer than a 720p window.
+    const char* tab_labels[] = {t.tab_display, t.tab_graphics, t.tab_effects, t.tab_game, t.tab_audio};
+    tabs(tab_labels, 5, &settings_tab_);
     if (settings_tab_ != tab_before) tab_since_ = now;
     // The tab's content comes in like a page: fading, from a little to the right.
     const float tab_enter = ease_out((now - tab_since_) / 0.3f);
-    const float panel_alpha = g_alpha, origin_x = origin_.x;
+    const float panel_alpha = page_alpha_, origin_x = origin_.x;
+    page_alpha_ *= tab_enter;
     g_alpha *= tab_enter;
     origin_.x += px(24) * (1 - tab_enter);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_alpha);
     const char* toggle[] = {t.off, t.on};
     if (settings_tab_ == 0) {
         row(t.aspect, t.aspect_sub, true);
-        const char* aspects[] = {"4:3", "16:9"};
-        int aspect = setting("widescreen") != 0 ? 1 : 0;
-        if (segmented("##aspect", aspects, 2, &aspect)) set_setting("widescreen", static_cast<float>(aspect));
+        const char* aspects[] = {"4:3", "16:9", "21:9"};
+        int aspect = std::clamp(static_cast<int>(setting("widescreen")), 0, 2);
+        if (segmented("##aspect", aspects, 3, &aspect)) set_setting("widescreen", static_cast<float>(aspect));
+        row(t.field_of_view, t.field_of_view_sub);
+        float view = setting("field_of_view");
+        if (slider("##field_of_view", &view, 75, 130, "%.0f%%")) set_setting("field_of_view", std::round(view));
         row(t.window_mode, t.window_mode_sub);
         const char* modes[] = {t.windowed, t.fullscreen};
         int mode = setting("fullscreen") != 0 ? 1 : 0;
@@ -2084,29 +2502,50 @@ void Launcher::page_settings() {
             set_setting("fullscreen", static_cast<float>(mode));
             nv2a_set_full_screen(mode != 0);
         }
-        row(t.scale, t.scale_sub, true, 380);
-        MONITORINFO monitor{sizeof(MONITORINFO)};
-        GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTOPRIMARY), &monitor);
-        char screen_lines[16];
-        std::snprintf(screen_lines, sizeof(screen_lines), "%ldp",
-                      std::clamp<long>(monitor.rcMonitor.bottom - monitor.rcMonitor.top, 480, 2160));
-        const char* names[kResolutionCount];
-        const char* lines[kResolutionCount];
-        for (int i = 0; i < kResolutionCount; ++i) {
-            names[i] = kResolutions[i].name;
-            lines[i] = kResolutions[i].lines ? kResolutions[i].lines : screen_lines;
-        }
-        int resolution = resolution_index(setting("render_scale"));
-        if (segmented("##scale", names, kResolutionCount, &resolution, lines, 380)) {
-            set_setting("render_scale", kResolutions[resolution].scale);
-        }
         row(t.fps, t.fps_sub, true);
-        const char* rates[] = {"30", "60"};
-        int rate = setting("frame_rate") >= 60 ? 1 : 0;
-        if (segmented("##fps", rates, 2, &rate)) set_setting("frame_rate", rate ? 60.0f : 30.0f);
+        const char* rates[] = {"30", "60", "120"};
+        static const float kRates[] = {30, 60, 120};
+        int rate = setting("frame_rate") >= 120 ? 2 : setting("frame_rate") >= 60 ? 1 : 0;
+        if (segmented("##fps", rates, 3, &rate)) set_setting("frame_rate", kRates[rate]);
         row(t.vsync, t.vsync_sub, true);
         int vsync = setting("vsync") != 0 ? 1 : 0;
         if (segmented("##vsync", toggle, 2, &vsync)) set_setting("vsync", static_cast<float>(vsync));
+    } else if (settings_tab_ == 1) {
+        // Upscaling, as games have it: Off, or DLSS; with DLSS a second row for its profile, which sets the
+        // drawn resolution instead of the internal resolution row.
+        const int ready = dlss_ready_.load();
+        int upscaler = setting("upscaler") == 2 && ready == 1 ? 1 : 0;
+        if (ready != -2) {
+            row(t.upscaling, ready < 0 ? t.upscaling_checking : ready == 0 ? t.upscaling_missing : t.upscaling_sub, true);
+            const char* upscalers[] = {t.off, "DLSS"};
+            if (segmented("##upscaler", upscalers, ready == 1 ? 2 : 1, &upscaler)) set_setting("upscaler", upscaler ? 2.0f : 0.0f);
+        }
+        MONITORINFO monitor{sizeof(MONITORINFO)};
+        GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTOPRIMARY), &monitor);
+        const long screen = std::clamp<long>(monitor.rcMonitor.bottom - monitor.rcMonitor.top, 480, 2160);
+        if (upscaler == 1) {
+            int profile = std::clamp(static_cast<int>(setting("upscaler_quality")), 0, 3);
+            char drawn[96];
+            std::snprintf(drawn, sizeof(drawn), t.profile_sub, static_cast<int>(screen / kProfileRatio[profile]), static_cast<int>(screen));
+            row(t.profile, drawn, true);
+            const char* profiles[] = {t.profile_dlaa, t.profile_quality, t.profile_balanced, t.profile_performance};
+            if (combo("##profile", profiles, 4, &profile)) set_setting("upscaler_quality", static_cast<float>(profile));
+        } else {
+            row(t.scale, t.scale_sub, true);
+            char screen_lines[16];
+            std::snprintf(screen_lines, sizeof(screen_lines), "%ldp", screen);
+            char labels[kResolutionCount][32];
+            const char* names[kResolutionCount];
+            for (int i = 0; i < kResolutionCount; ++i) {
+                std::snprintf(labels[i], sizeof(labels[i]), "%s \xC2\xB7 %s", kResolutions[i].name,
+                              kResolutions[i].lines ? kResolutions[i].lines : screen_lines);
+                names[i] = labels[i];
+            }
+            int resolution = resolution_index(setting("render_scale"));
+            if (combo("##scale", names, kResolutionCount, &resolution)) {
+                set_setting("render_scale", kResolutions[resolution].scale);
+            }
+        }
         row(t.anisotropy, nullptr, true);
         const char* levels[] = {"1x", "4x", "8x", "16x"};
         static const float kLevels[] = {1, 4, 8, 16};
@@ -2118,10 +2557,13 @@ void Launcher::page_settings() {
         row(t.sharp_2d, t.sharp_2d_sub, true);
         int sharp = setting("sharp_2d") != 0 ? 1 : 0;
         if (segmented("##sharp_2d", toggle, 2, &sharp)) set_setting("sharp_2d", static_cast<float>(sharp));
+        row(t.sharp_textures, t.sharp_textures_sub, true);
+        int sharp_scene = setting("sharp_textures") != 0 ? 1 : 0;
+        if (segmented("##sharp_textures", toggle, 2, &sharp_scene)) set_setting("sharp_textures", static_cast<float>(sharp_scene));
         row(t.gpu_vertices, t.gpu_vertices_sub);
         int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
         if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));
-    } else if (settings_tab_ == 1) {
+    } else if (settings_tab_ == 2) {
         row(t.effects, t.effects_sub);
         int modern = setting("effects") != 0 ? 1 : 0;
         if (segmented("##effects", toggle, 2, &modern)) {
@@ -2144,6 +2586,7 @@ void Launcher::page_settings() {
         for (size_t i = 0; i < std::size(sliders); ++i) {
             const Slider& s = sliders[i];
             if (i > 0 && i % 2 == 0) cursor_ += px(58);
+            if (i % 2 == 0) enter_item();
             const ImVec2 at(origin_.x + static_cast<float>(i % 2) * (column + gap), origin_.y + cursor_ + px(2));
             float value = setting(s.key);
             char id[48];
@@ -2153,7 +2596,7 @@ void Launcher::page_settings() {
             }
         }
         cursor_ += px(62);
-    } else if (settings_tab_ == 2) {
+    } else if (settings_tab_ == 3) {
         row(t.game_language, t.game_language_sub, true);
         static const int kLanguages[] = {0, 1, 4, 3, 5, 6};
         const char* names[] = {t.like_windows, "English", "Fran\xC3\xA7" "ais", "Deutsch", "Espa\xC3\xB1ol", "Italiano"};
@@ -2161,19 +2604,7 @@ void Launcher::page_settings() {
         for (int i = 0; i < 6; ++i) {
             if (static_cast<int>(setting("game_language")) == kLanguages[i]) index = i;
         }
-        ImGui::SetCursorScreenPos(ImVec2(origin_.x + panel_width_ - px(270), origin_.y + cursor_ + px(8)));
-        ImGui::PushItemWidth(px(270));
-        ImGui::PushFont(body_bold_, px(18));
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(px(8), px(5)));
-        claim_focus();
-        if (ImGui::Combo("##language", &index, names, 6)) set_setting("game_language", static_cast<float>(kLanguages[index]));
-        focus_ring();
-        focus_frame(ImVec2(origin_.x - px(24), origin_.y + cursor_), ImVec2(origin_.x + panel_width_ + px(14), origin_.y + cursor_ + px(52) + row_extra_));
-        ImGui::PopStyleVar();
-        ImGui::PopFont();
-        ImGui::PopItemWidth();
-        cursor_ += px(58) + row_extra_;
-        row_extra_ = 0;
+        if (combo("##language", names, 6, &index)) set_setting("game_language", static_cast<float>(kLanguages[index]));
         row(t.hud, t.hud_sub, true);
         const char* huds[] = {t.hud_game, "mc3port"};
         int hud = setting("hud_style") != 0 ? 1 : 0;
@@ -2216,7 +2647,7 @@ void Launcher::page_settings() {
         cursor_ += px(48);
     }
     ImGui::PopStyleVar();
-    g_alpha = panel_alpha;
+    g_alpha = page_alpha_ = panel_alpha;
     origin_.x = origin_x;
 }
 
@@ -2380,90 +2811,54 @@ void Launcher::page_controls() {
 }
 
 // The update notice: on the first page only when there is a newer version, on About always. An installed copy
-// (the setup's uninstaller next to mc3.exe) downloads the installer; a portable one opens the release page.
+// (the setup's uninstaller next to mc3.exe) opens the new installer's link, which the browser downloads; a portable
+// one opens the release page. mc3port downloads and starts nothing by itself.
 void Launcher::update_row(bool always) {
     const Texts& t = T();
-    int state, download;
+    int state;
     std::string version, url, setup_url;
     {
         std::lock_guard<std::mutex> lock(updates_.mutex);
         state = updates_.state;
-        download = updates_.download;
         version = updates_.version;
         url = updates_.url;
         setup_url = updates_.setup_url;
     }
     if (setting("check_updates") == 0 || state == 3 || (!always && state != 2)) return;
-    std::error_code ignored;
-    const bool installed = update_test() || (!portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored));
-    const bool self_update = installed && !setup_url.empty() && download != 3;
+    const bool by_setup = installed_copy() && !setup_url.empty();
     char found[96];
     std::snprintf(found, sizeof(found), t.update_found, version.c_str());
-    if (download == 1) {
-        status(false, t.downloading, found, nullptr, nullptr, true);
-    } else if (download == 2) {
-        if (status(true, t.update_ready, found, t.update_install_small, "##update")) install_requested_ = true;
-    } else if (state == 2) {
-        if (status(false, download == 3 ? t.update_failed : found, self_update ? t.update_install_sub : t.update_sub,
-                   self_update ? t.update_now : t.open, "##update", download != 3)) {
-            if (self_update) {
-                start_update_download();
-            } else {
-                ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            }
+    if (state == 2) {
+        if (status(false, found, by_setup ? t.update_install_sub : t.update_sub, by_setup ? t.update_now : t.open,
+                   "##update")) {
+            ShellExecuteA(nullptr, "open", (by_setup ? setup_url : url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         }
     } else {
         status(true, state == 0 ? t.checking : t.up_to_date, "", nullptr, nullptr);
     }
 }
 
-// A newer release is known and not being installed: the first page and the guide show the notice at the top, the
-// side menu marks About.
+// A newer release is known: the first page and the guide show the notice at the top, the side menu marks About.
 bool Launcher::update_available() {
     if (setting("check_updates") == 0) return false;
     std::lock_guard<std::mutex> lock(updates_.mutex);
     return updates_.state == 2;
 }
 
-void Launcher::start_update_download() {
-    std::lock_guard<std::mutex> lock(updates_.mutex);
-    if (updates_.download == 1) return;
-    updates_.download = 1;
-    updates_.received = updates_.size = 0;
-    if (download_thread_.joinable()) download_thread_.join();
-    download_thread_ = std::thread(download_update, &updates_);
-}
-
-// The player pressed Install: the verified installer starts and the launcher closes, so that it can replace our files.
-// Should Windows refuse to start it, Explorer shows it instead. Called between frames: ShellExecute sends messages to
-// our window, whose thread waits for the UI lock a frame holds.
-void Launcher::install_update() {
-    std::filesystem::path setup;
-    {
-        std::lock_guard<std::mutex> lock(updates_.mutex);
-        setup = updates_.setup_file;
-    }
-    const HINSTANCE started = ShellExecuteW(window_, L"open", setup.c_str(), nullptr, setup.parent_path().c_str(), SW_SHOWNORMAL);
-    if (reinterpret_cast<INT_PTR>(started) <= 32) {
-        const std::wstring argument = L"/select,\"" + setup.wstring() + L"\"";
-        ShellExecuteW(nullptr, L"open", L"explorer.exe", argument.c_str(), nullptr, SW_SHOWNORMAL);
-    }
-    log_line("launcher: update: %s the installer, closing", reinterpret_cast<INT_PTR>(started) > 32 ? "started" : "showing");
-    done_ = true;
+// Installed with the setup (its uninstaller next to mc3.exe), or MC3_UPDATE_TEST.
+bool Launcher::installed_copy() {
+    std::error_code ignored;
+    return update_test() || (!portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored));
 }
 
 // The new version's notice, over the first page once per start: what is new, then Update (an installed copy: the
-// download with its progress, then Install) or the release page (a portable copy), or Later.
+// browser downloads the new installer) or the release page (a portable copy), or Later.
 void Launcher::page_update() {
     const Texts& t = T();
-    int download;
-    uint64_t received, size;
     std::string version, url, setup_url;
     std::vector<std::string> points;
     {
         std::lock_guard<std::mutex> lock(updates_.mutex);
-        download = updates_.download;
-        received = updates_.received, size = updates_.size;
         version = updates_.version, url = updates_.url, setup_url = updates_.setup_url;
         points = updates_.points;
     }
@@ -2479,30 +2874,13 @@ void Launcher::page_update() {
         cursor_ += point_size.y + px(10);
     }
     cursor_ += px(8);
-    std::error_code ignored;
-    const bool installed = update_test() || (!portable_mode() && std::filesystem::exists(program_directory() / "unins000.exe", ignored));
-    const bool self_update = installed && !setup_url.empty();
-    if (download == 1) {
-        std::snprintf(line, sizeof(line), t.update_progress, received / 1048576.0, size / 1048576.0);
-        status(false, t.downloading, size ? line : "", nullptr, nullptr, true);
-        if (size) {  // the bar under the row
-            const float y = origin_.y + cursor_ - px(14), fraction = std::min(1.0f, static_cast<float>(received) / size);
-            list_->AddRectFilled(ImVec2(origin_.x, y), ImVec2(origin_.x + panel_width_, y + px(4)), fade(IM_COL32(255, 255, 255, 30)));
-            list_->AddRectFilled(ImVec2(origin_.x, y), ImVec2(origin_.x + panel_width_ * fraction, y + px(4)), fade(kRed));
-        }
-        return;  // no Later while it downloads: the download goes on in any case
-    }
-    if (download == 2) {
-        if (big_button(t.update_install, "##update_install", true)) install_requested_ = true;
+    const bool installed = installed_copy();
+    if (installed && !setup_url.empty()) {
+        if (big_button(t.update_big, "##update_big", true)) ShellExecuteA(nullptr, "open", setup_url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         lead(t.update_install_note);
     } else {
-        if (download == 3) status(false, t.update_failed, "", nullptr, nullptr);
-        if (self_update && download != 3) {
-            if (big_button(t.update_big, "##update_big", true)) start_update_download();
-        } else {
-            if (big_button(t.update_page, "##update_page", true)) ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-            if (!installed) lead(t.update_portable_note);
-        }
+        if (big_button(t.update_page, "##update_page", true)) ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        if (!installed) lead(t.update_portable_note);
     }
     if (small_button(t.update_later, ImVec2(origin_.x, origin_.y + cursor_), "##update_later")) {
         update_prompt_ = false;
@@ -2585,11 +2963,9 @@ void Launcher::page_about() {
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
     if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
     // Never needed to play, and it buys nothing (README, "Supporting the project"): a row among the others, no reminders.
-    bool sponsors = false;
-    if (status(true, t.support, t.support_sub, "Ko-fi", "##kofi", false, "GitHub Sponsors", "##sponsors", &sponsors)) {
+    if (status(true, t.support, t.support_sub, "Ko-fi", "##kofi")) {
         ShellExecuteA(nullptr, "open", "https://ko-fi.com/sicksartori", nullptr, nullptr, SW_SHOWNORMAL);
     }
-    if (sponsors) ShellExecuteA(nullptr, "open", "https://github.com/sponsors/SickSartori", nullptr, nullptr, SW_SHOWNORMAL);
     cursor_ += px(8);
     const ImVec2 size = measure(body_, px(16), t.legal, panel_width_);
     text(body_, px(16), ImVec2(origin_.x, origin_.y + cursor_), kDim, t.legal, panel_width_);
@@ -2602,7 +2978,7 @@ void Launcher::page_wizard() {
         return;
     }
     const Texts& t = T();
-    steps(wizard_step_, 3);
+    steps(wizard_step_, 2);
     if (wizard_step_ == 0) {
         title(t.welcome);
         lead(t.welcome_lead);
@@ -2625,16 +3001,13 @@ void Launcher::page_wizard() {
     } else if (wizard_step_ == 1) {
         title(t.style_title);
         lead(t.style_lead);
-        style_row();
+        style_cards();
         if (big_button(t.next, "##next", false)) {
-            wizard_step_ = 2;
+            wizard_ = false;  // the menu next, with every page, not straight into the game
+            page_ = Page::kPlay;
             focus_panel_ = true;
             page_since_ = static_cast<float>(ImGui::GetTime());
         }
-    } else {
-        title(t.all_set);
-        lead(t.all_set_lead);
-        if (big_button(t.play, "##play", true)) play_ = done_ = true;
     }
 }
 
@@ -2645,18 +3018,21 @@ void Launcher::frame(float now, float dt) {
     const ImVec2 screen(static_cast<float>(width_), static_cast<float>(height_));
     ImDrawList* back = ImGui::GetBackgroundDrawList();
 
-    // Light trails and rain over the background.
-    if (static_cast<float>(std::rand()) / RAND_MAX < dt * 5) {
-        const float pick = static_cast<float>(std::rand()) / RAND_MAX;
+    // Light trails on three planes, and rain, over the background. Nearer trails run lower, thicker, brighter and
+    // quicker; with the music louder they come more often and faster.
+    const auto random = [] { return static_cast<float>(std::rand()) / RAND_MAX; };
+    beat_ += ((music_ ? music_->loudness() : 0.0f) - beat_) * std::min(1.0f, dt * 12);
+    if (random() < dt * (4 + 10 * beat_)) {
+        const float pick = random(), depth = 0.25f + 0.375f * static_cast<float>(std::rand() % 3);
         const ImU32 colour = pick < 0.55f ? IM_COL32(255, 64, 64, 255) : pick < 0.8f ? IM_COL32(255, 210, 122, 255) : IM_COL32(255, 255, 255, 255);
-        trails_.push_back({-px(300), screen.y * (0.55f + 0.37f * static_cast<float>(std::rand()) / RAND_MAX),
-                           px(1400 + 1600 * static_cast<float>(std::rand()) / RAND_MAX),
-                           px(200 + 320 * static_cast<float>(std::rand()) / RAND_MAX), colour});
+        trails_.push_back({-px(300), screen.y * (0.5f + 0.38f * depth + 0.05f * random()), px((900 + 2200 * depth) * (0.85f + 0.3f * random())),
+                           px(140 + 420 * depth), depth, colour});
     }
     for (Trail& trail : trails_) {
-        trail.x += trail.speed * dt;
-        back->AddRectFilledMultiColor(ImVec2(trail.x - trail.length, trail.y), ImVec2(trail.x, trail.y + px(2.5f)),
-                                      trail.colour & ~IM_COL32_A_MASK, trail.colour, trail.colour, trail.colour & ~IM_COL32_A_MASK);
+        trail.x += trail.speed * dt * (1 + 1.2f * beat_);
+        const ImU32 colour = (trail.colour & ~IM_COL32_A_MASK) | (static_cast<ImU32>(255 * (0.35f + 0.65f * trail.depth)) << IM_COL32_A_SHIFT);
+        back->AddRectFilledMultiColor(ImVec2(trail.x - trail.length, trail.y), ImVec2(trail.x, trail.y + px(1 + 2.5f * trail.depth)),
+                                      colour & ~IM_COL32_A_MASK, colour, colour, colour & ~IM_COL32_A_MASK);
     }
     trails_.erase(std::remove_if(trails_.begin(), trails_.end(), [&](const Trail& trail) { return trail.x - trail.length > screen.x; }),
                   trails_.end());
@@ -2694,6 +3070,8 @@ void Launcher::frame(float now, float dt) {
         const Page targets[] = {Page::kPlay, Page::kSettings, Page::kControls, Page::kMusic, Page::kAbout, Page::kQuit};
         side_menu(now, since, labels, targets, 6);
     }
+    if (page_ != Page::kMusic) loading_cache_valid_ = false;
+    if (page_ != Page::kMusic || music_section_ != 1) preview_.stop();
     panel(now, since);
     bottom_bar(since);
     g_alpha = 1;
@@ -2725,19 +3103,37 @@ void Launcher::header(float since) {
     }
 }
 
-// The current page in the panel on the right, sliding in.
+// The current page in a column on the right, from the top of the window to the bottom bar, sliding in; a page longer
+// than the column scrolls.
 void Launcher::panel(float now, float since) {
     const float enter = ease_out((now - page_since_) / 0.45f);
-    g_alpha = enter * ease_out((since - 0.3f) / 0.6f);
+    page_alpha_ = g_alpha = enter * ease_out((since - 0.3f) / 0.6f);
     panel_width_ = px(560);
-    const float panel_x = static_cast<float>(width_) - px(96) - panel_width_ - px(56) + px(50) * (1 - enter);
-    origin_ = ImVec2(panel_x + px(28), px(64) + px(26));
+    const float column_width = panel_width_ + px(84);
+    const float panel_x = static_cast<float>(width_) - column_width + px(50) * (1 - enter);
+    const float bar_y = static_cast<float>(height_) - px(56), top = px(72);
+    view_top_ = px(3);
+    view_bottom_ = bar_y;
+    // Another page, tab or guide step starts at its top.
+    const int tab = wizard_ ? 10 + wizard_step_
+                    : page_ == Page::kSettings ? settings_tab_ : page_ == Page::kControls ? controls_tab_
+                    : page_ == Page::kCheats ? cheats_tab_ : 0;
+    if (page_ != scroll_page_ || tab != scroll_tab_) {
+        scroll_page_ = page_;
+        scroll_tab_ = tab;
+        scroll_ = scroll_target_ = 0;
+    }
+    origin_ = ImVec2(panel_x + px(40), top - scroll_);
     cursor_ = 0;
+    item_count_ = 0;
+    item_shift_ = 0;
     list_->ChannelsSplit(2);
     row_marked_ = false;
     // A page with a big button: that one is selected first, not the small ones above it.
     status_keeps_focus_ = wizard_ ? !move_prompt_ && wizard_step_ == 0 : page_ == Page::kPlay;
     list_->ChannelsSetCurrent(1);
+    // Rows scrolled out of the column are neither drawn nor hovered.
+    ImGui::PushClipRect(ImVec2(panel_x, view_top_), ImVec2(panel_x + column_width, view_bottom_), true);
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, g_alpha);
     if (!update_prompt_shown_ && !wizard_ && !in_game_ && update_available()) {
         update_prompt_ = update_prompt_shown_ = true;
@@ -2765,17 +3161,64 @@ void Launcher::panel(float now, float since) {
         }
     }
     ImGui::PopStyleVar();
-    list_->ChannelsSetCurrent(0);
-    const ImVec2 pa(panel_x, px(64)), pb(panel_x + panel_width_ + px(56), origin_.y + cursor_ + px(16));
-    const float corner = px(24);
-    const ImVec2 shape[] = {pa, ImVec2(pb.x, pa.y), ImVec2(pb.x, pb.y - corner), ImVec2(pb.x - corner, pb.y), ImVec2(pa.x, pb.y)};
-    list_->AddConvexPolyFilled(shape, 5, fade(IM_COL32(12, 12, 14, 214)));
+    origin_.y -= item_shift_;
+    item_shift_ = 0;
+    g_alpha = page_alpha_;
+
+    // Scrolling: the wheel over the column, and a newly selected row brought into sight.
+    const float overflow = std::max(0.0f, top + cursor_ + px(24) - view_bottom_);
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    if (mouse.x >= panel_x && mouse.y < view_bottom_ && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId)) {
+        scroll_target_ -= ImGui::GetIO().MouseWheel * px(90);
+    }
+    const ImGuiID nav_id = ImGui::GetCurrentContext()->NavId;
+    if (row_marked_ && nav_id != scrolled_to_) {
+        scrolled_to_ = nav_id;
+        if (row_b_.y > view_bottom_ - px(24)) scroll_target_ = scroll_ + row_b_.y - (view_bottom_ - px(24));
+        if (row_a_.y < top) {
+            scroll_target_ = scroll_ - (top - row_a_.y);
+            if (scroll_target_ < top) scroll_target_ = 0;  // near the top: the whole top, title included
+        }
+    }
+    scroll_target_ = std::clamp(scroll_target_, 0.0f, overflow);
+    scroll_ += (scroll_target_ - scroll_) * std::min(1.0f, ImGui::GetIO().DeltaTime * 14);
+    if (std::fabs(scroll_target_ - scroll_) < 0.5f) scroll_ = scroll_target_;
+    // More above or below: the column's colour over the edge, and a thin bar for where the page is.
+    if (overflow > 0) {
+        const ImU32 shade = fade(IM_COL32(12, 12, 14, 240)), clear = fade(IM_COL32(12, 12, 14, 0));
+        const float edge = px(48), right = panel_x + column_width;
+        if (scroll_ > 1) list_->AddRectFilledMultiColor(ImVec2(panel_x, view_top_), ImVec2(right, view_top_ + edge), shade, shade, clear, clear);
+        if (scroll_ < overflow - 1) list_->AddRectFilledMultiColor(ImVec2(panel_x, view_bottom_ - edge), ImVec2(right, view_bottom_), clear, clear, shade, shade);
+        const float track_a = top, track_b = view_bottom_ - px(16), track = track_b - track_a;
+        const float thumb = track * (view_bottom_ - top) / (view_bottom_ - top + overflow);
+        const float thumb_y = track_a + (track - thumb) * (scroll_ / overflow);
+        list_->AddRectFilled(ImVec2(right - px(14), track_a), ImVec2(right - px(11), track_b), fade(IM_COL32(255, 255, 255, 20)));
+        list_->AddRectFilled(ImVec2(right - px(14), thumb_y), ImVec2(right - px(11), thumb_y + thumb), fade(kRed));
+    }
+    ImGui::PopClipRect();
+
+    list_->ChannelsSetCurrent(0);  // under the page's widgets
+    const ImVec2 pa(panel_x, 0), pb(panel_x + column_width, bar_y);
+    list_->AddRectFilled(pa, pb, fade(IM_COL32(12, 12, 14, 214)));
+    list_->AddLine(pa, ImVec2(pa.x, pb.y), fade(IM_COL32(255, 255, 255, 20)), px(1));
     list_->AddRectFilled(pa, ImVec2(pb.x, pa.y + px(3)), fade(kRed));
     if (row_marked_) {
+        list_->PushClipRect(ImVec2(panel_x, view_top_), ImVec2(pb.x, view_bottom_), true);
         list_->AddRectFilled(row_a_, row_b_, fade(IM_COL32(255, 255, 255, 28)));
         skewed_rect(list_, row_a_, ImVec2(row_a_.x + px(7), row_b_.y), fade(IM_COL32_WHITE), fade(IM_COL32_WHITE));
+        list_->PopClipRect();
     }
     list_->ChannelsMerge();
+}
+
+// One more title, row or button of the page: it fades in and rises a little, 50 ms after the one above.
+void Launcher::enter_item() {
+    const float delay = 0.05f * static_cast<float>(std::min(item_count_++, 10));
+    const float t = ease_out((static_cast<float>(ImGui::GetTime()) - page_since_ - 0.1f - delay) / 0.35f);
+    origin_.y -= item_shift_;
+    item_shift_ = px(14) * (1 - t);
+    origin_.y += item_shift_;
+    g_alpha = page_alpha_ * t;
 }
 
 // Keys acting on the whole launcher, after the frame's widgets.
@@ -2921,6 +3364,15 @@ void Launcher::side_menu(float now, float since, const char* const* labels, cons
             skewed_rect(list_, ImVec2(a.x - px(14) + shift, a.y), ImVec2(a.x - px(6) + shift, b.y),
                         fade(IM_COL32_WHITE, on * (0.25f + 0.75f * lit)), fade(IM_COL32_WHITE, on * (0.25f + 0.75f * lit)));
             if (lit > 0.01f) list_->AddRectFilled(ImVec2(a.x + shift, b.y + px(3)), ImVec2(b.x, b.y + px(6)), fade(IM_COL32_WHITE, lit));
+            // Like a car's lights: the bar trails off to the right, and a glint runs along it every 2.4 s.
+            skewed_rect(list_, ImVec2(b.x, a.y), ImVec2(b.x + px(150) * on, b.y), fade(kRed, 0.5f * on), fade(kRed, 0));
+            const float run = ease_out(std::fmod(now / 2.4f, 1.0f) / 0.6f), glint = px(70);
+            const float x = a.x + shift - glint + (b.x + px(150) - a.x - shift + glint) * run;
+            const ImU32 clear = fade(IM_COL32_WHITE, 0), light = fade(IM_COL32_WHITE, 0.4f * on * (1 - run));
+            list_->PushClipRect(ImVec2(a.x + shift, a.y), ImVec2(b.x + px(150) * on, b.y), true);
+            list_->AddRectFilledMultiColor(ImVec2(x - glint, a.y), ImVec2(x, b.y), clear, light, light, clear);
+            list_->AddRectFilledMultiColor(ImVec2(x, a.y), ImVec2(x + glint, b.y), light, clear, clear, light);
+            list_->PopClipRect();
         }
         text(black_, px(36), ImVec2(a.x + px(22) + shift, a.y + px(7)), mix(hovered ? kInk : kDim, IM_COL32_WHITE, on), labels[i]);
         if (targets[i] == Page::kAbout && update_available()) {  // a newer version: a dot after the label
@@ -2948,19 +3400,90 @@ void Launcher::bottom_bar(float since) {
         text(body_bold_, px(18), ImVec2(x, text_y), kInk, value);
         x += measure(body_bold_, px(18), value).x + px(28);
     };
+    if (!in_game_) {  // first in the bar: the launcher's music on and off; the game's own volume stays in the settings
+        const bool muted = setting("launcher_mute") != 0;
+        const ImVec2 at(x - px(10), bar_y + px(12)), end(at.x + px(40), bar_y + px(44));
+        const bool hover = ImGui::IsMouseHoveringRect(at, end);
+        if (hover) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            list_->AddRectFilled(at, end, fade(IM_COL32(255, 255, 255, 28)), px(16));
+        }
+        const ImU32 ink = fade(hover ? kInk : kDim);
+        const float cx = at.x + px(10), cy = at.y + px(16), s = px(14);
+        list_->AddRectFilled(ImVec2(cx, cy - s * 0.2f), ImVec2(cx + s * 0.3f, cy + s * 0.2f), ink);
+        const ImVec2 cone[] = {ImVec2(cx + s * 0.3f, cy - s * 0.2f), ImVec2(cx + s * 0.7f, cy - s * 0.5f),
+                               ImVec2(cx + s * 0.7f, cy + s * 0.5f), ImVec2(cx + s * 0.3f, cy + s * 0.2f)};
+        list_->AddConvexPolyFilled(cone, 4, ink);
+        if (muted) {
+            list_->AddLine(ImVec2(cx + s * 0.95f, cy - s * 0.25f), ImVec2(cx + s * 1.45f, cy + s * 0.25f), ink, px(1.8f));
+            list_->AddLine(ImVec2(cx + s * 0.95f, cy + s * 0.25f), ImVec2(cx + s * 1.45f, cy - s * 0.25f), ink, px(1.8f));
+        } else {
+            for (const float r : {0.45f, 0.8f}) {
+                list_->PathArcTo(ImVec2(cx + s * 0.7f, cy), s * r, -0.9f, 0.9f);
+                list_->PathStroke(ink, 0, px(1.6f));
+            }
+        }
+        if (hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) set_setting("launcher_mute", muted ? 0.0f : 1.0f);
+        x = end.x + px(20);
+    }
     if (!in_game_) field(t.bar_disc, disc_ ? t.bar_disc_ok : t.bar_disc_none);
     field(t.bar_pad, pad_connected_ ? t.bar_pad_on : t.bar_pad_off);
     field(t.bar_version, MC3PORT_VERSION);
     // In sight on every page, in the in-game menu too: a newer version (to About, which installs it) and the report.
-    const auto link = [&](const char* label, ImU32 colour) {
-        const ImVec2 at(x, text_y), size = measure(body_bold_, px(18), label);
-        const bool hover = ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size.x, at.y + size.y));
-        if (hover) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        text(body_bold_, px(18), at, hover ? kInk : colour, label);
-        list_->AddLine(ImVec2(at.x, at.y + size.y), ImVec2(at.x + size.x, at.y + size.y), fade(hover ? kInk : colour, 0.5f),
-                       px(1));
-        x += size.x + px(28);
-        return hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    // Over the bar, bottom left, apart from its fields: rounded buttons to the update, the report, the support, the music.
+    float button_x = px(86);
+    const float button_y = bar_y - px(52);
+    struct BarButton {
+        ImVec2 at;
+        bool hover, clicked;
+    };
+    // Pills with a soft shadow that rise a little under the mouse: glass (`fill` 0) or solid in `fill`.
+    const auto button = [&](float width, ImU32 fill) {
+        BarButton b{ImVec2(button_x, button_y), false, false};
+        b.hover = ImGui::IsMouseHoveringRect(b.at, ImVec2(button_x + width, button_y + px(36)));
+        if (b.hover) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            b.at.y -= px(2);
+        }
+        const ImVec2 end(b.at.x + width, b.at.y + px(36));
+        list_->AddRectFilled(ImVec2(b.at.x, b.at.y + px(4)), ImVec2(end.x, end.y + px(4)), fade(IM_COL32(0, 0, 0, b.hover ? 120 : 80)), px(18));
+        if (fill) {
+            list_->AddRectFilled(b.at, end, fade(b.hover ? mix(fill, IM_COL32(255, 255, 255, 255), 0.15f) : fill), px(18));
+            list_->AddRectFilled(ImVec2(b.at.x + px(10), b.at.y + px(1)), ImVec2(end.x - px(10), b.at.y + px(2)), fade(IM_COL32(255, 255, 255, 70)));
+        } else {
+            list_->AddRectFilled(b.at, end, fade(IM_COL32(18, 18, 22, 190)), px(18));
+            list_->AddRectFilled(b.at, end, fade(IM_COL32(255, 255, 255, b.hover ? 40 : 20)), px(18));
+            list_->AddRect(b.at, end, fade(IM_COL32(255, 255, 255, b.hover ? 70 : 36)), px(18), 0, px(1));
+        }
+        b.clicked = b.hover && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        button_x = end.x + px(10);
+        return b;
+    };
+    enum { kNoIcon, kFlag, kMug };
+    const auto link = [&](const char* label, ImU32 colour, int icon = kNoIcon, ImU32 fill = 0) {
+        const ImVec2 size = measure(body_bold_, px(16), label);
+        const float icon_width = icon == kNoIcon ? 0 : px(26);
+        const BarButton b = button(size.x + px(36) + icon_width, fill);
+        const ImU32 ink = fade(colour);
+        const float s = px(16), ix = b.at.x + px(16), cy = b.at.y + px(18);
+        if (icon == kFlag) {  // a flag on its pole
+            list_->AddLine(ImVec2(ix + s * 0.12f, cy - s * 0.55f), ImVec2(ix + s * 0.12f, cy + s * 0.55f), ink, px(1.8f));
+            const ImVec2 flag[] = {ImVec2(ix + s * 0.12f, cy - s * 0.55f), ImVec2(ix + s * 0.95f, cy - s * 0.45f),
+                                   ImVec2(ix + s * 0.95f, cy + s * 0.05f), ImVec2(ix + s * 0.12f, cy - s * 0.05f)};
+            list_->AddConvexPolyFilled(flag, 4, ink);
+        } else if (icon == kMug) {  // Ko-fi's cup with its heart
+            list_->AddRect(ImVec2(ix, cy - s * 0.42f), ImVec2(ix + s * 0.78f, cy + s * 0.45f), ink, s * 0.14f, 0, px(1.7f));
+            list_->PathArcTo(ImVec2(ix + s * 0.8f, cy - s * 0.02f), s * 0.24f, -1.5708f, 1.5708f);
+            list_->PathStroke(ink, 0, px(1.7f));
+            const ImU32 heart = ink;
+            const float hx = ix + s * 0.39f, hy = cy - s * 0.02f, r = s * 0.1f;
+            list_->AddCircleFilled(ImVec2(hx - r * 0.95f, hy - r * 0.35f), r, heart);
+            list_->AddCircleFilled(ImVec2(hx + r * 0.95f, hy - r * 0.35f), r, heart);
+            list_->AddTriangleFilled(ImVec2(hx - r * 1.9f, hy - r * 0.05f), ImVec2(hx + r * 1.9f, hy - r * 0.05f),
+                                     ImVec2(hx, hy + r * 1.9f), heart);
+        }
+        text(body_bold_, px(16), ImVec2(b.at.x + px(18) + icon_width, b.at.y + (px(36) - size.y) / 2), ink, label);
+        return b.clicked;
     };
     if (update_available()) {
         std::string version;
@@ -2975,7 +3498,10 @@ void Launcher::bottom_bar(float since) {
             page_since_ = static_cast<float>(ImGui::GetTime());
         }
     }
-    if (crash_report_ready() && link(t.crash_link, kAmber)) report_problem();
+    if (crash_report_ready() ? link(t.crash_link, kAmber, kFlag) : link(t.report, kInk, kFlag)) report_problem();
+    if (link(t.support, IM_COL32(255, 255, 255, 255), kMug, IM_COL32(255, 94, 91, 255))) {  // Ko-fi's colour
+        ShellExecuteA(nullptr, "open", "https://ko-fi.com/sicksartori", nullptr, nullptr, SW_SHOWNORMAL);
+    }
     float right = screen.x - px(86);
     const bool pad = pad_connected_;
     const auto hint = [&](const char* key, ImU32 colour, const char* label) {
@@ -2986,12 +3512,29 @@ void Launcher::bottom_bar(float since) {
             const float key_width = pad_icon(list_, key, ImVec2(0, 0), px(22), false);
             right -= key_width + px(8);
             pad_icon(list_, key, ImVec2(right, text_y), px(22));
-        } else {  // the key's name in a pill
-            const float key_width = std::max(px(24), measure(body_bold_, px(15), key).x + px(12));
-            right -= key_width + px(8);
-            list_->AddRectFilled(ImVec2(right, text_y), ImVec2(right + key_width, text_y + px(22)), fade(colour), px(11));
-            const ImVec2 key_size = measure(body_bold_, px(15), key);
-            text(body_bold_, px(15), ImVec2(right + (key_width - key_size.x) / 2, text_y + (px(22) - key_size.y) / 2), IM_COL32(6, 6, 7, 255), key);
+        } else {  // keycaps, one per key: "Q E" is two, the four arrows four
+            const std::string keys = key;
+            const bool arrows = keys.rfind("\xE2\x86", 0) == 0;
+            std::vector<std::string> caps;
+            for (size_t i = 0; i < keys.size();) {
+                const size_t end = arrows ? i + 3 : std::min(keys.find(' ', i), keys.size());
+                caps.push_back(keys.substr(i, end - i));
+                i = arrows ? end : end + 1;
+            }
+            const float cap_h = px(24), gap = px(4), depth = px(3);
+            float total = -gap;
+            for (const std::string& cap : caps) total += std::max(cap_h, measure(body_bold_, px(14), cap.c_str()).x + px(12)) + gap;
+            right -= total + px(8);
+            float cap_x = right;
+            const float top = text_y - px(2);
+            for (const std::string& cap : caps) {
+                const float w = std::max(cap_h, measure(body_bold_, px(14), cap.c_str()).x + px(12));
+                list_->AddRectFilled(ImVec2(cap_x, top + depth), ImVec2(cap_x + w, top + cap_h), fade(mix(colour, IM_COL32(0, 0, 0, 255), 0.5f)), px(5));
+                list_->AddRectFilled(ImVec2(cap_x, top), ImVec2(cap_x + w, top + cap_h - depth), fade(colour), px(5));
+                const ImVec2 size = measure(body_bold_, px(14), cap.c_str());
+                text(body_bold_, px(14), ImVec2(cap_x + (w - size.x) / 2, top + (cap_h - depth - size.y) / 2), IM_COL32(6, 6, 7, 255), cap.c_str());
+                cap_x += w + gap;
+            }
         }
         right -= px(24);
     };
@@ -3015,7 +3558,7 @@ void Launcher::bottom_bar(float since) {
 // would open its own pause menu, Enter or A would choose something).
 bool closing_inputs_released(decltype(&XInputGetState) get_state) {
     for (const int key : {VK_ESCAPE, VK_RETURN, VK_SPACE, VK_F1, VK_BACK, VK_LBUTTON}) {
-        if (GetAsyncKeyState(key) & 0x8000) return false;
+        if (key_down(key)) return false;
     }
     XINPUT_STATE state;
     for (DWORD i = 0; get_state && i < 4; ++i) {
@@ -3620,6 +4163,13 @@ MusicChange Launcher::music_playlist(const MusicPlaylist& playlist, size_t index
 void Launcher::page_music() {
     const Texts& t = T();
     title(t.menu_music);
+    const char* music_tabs[] = {t.custom_radio, t.ps2_loading_music};
+    ImGui::PushID("music_main_tabs");
+    tabs(music_tabs, 2, &music_section_);
+    ImGui::PopID();
+    if (music_section_ == 1) { page_loading_music(); return; }
+    loading_cache_valid_ = false;
+    preview_.stop();
     std::unique_lock<std::mutex> lock(g_music.mutex);
     if (!g_music.loaded && !g_music.running) {
         g_music.playlists = load_music(music_folder());
@@ -3650,6 +4200,182 @@ void Launcher::page_music() {
     }
     lock.unlock();
     if (change) change_music(std::move(change));
+}
+
+// Titles can be edited without changing the numbered WAV filenames expected by the runtime.
+// User titles are local text files, never included with the distributed source.
+static std::string loading_track_title(int number) {
+    const auto folder = loading_music_directory();
+    const auto custom = folder / (std::to_wstring(number) + L".title");
+    {
+        std::ifstream input(custom, std::ios::binary);
+        if (input) {
+            std::string name;
+            std::getline(input, name);
+            if (!name.empty() && name.size() < 160) return name;
+        }
+    }
+    // RIFF INFO/INAM is optional; most extracted PS2 WAVs have no title metadata.
+    const auto wav = folder / (std::to_wstring(number) + L".wav");
+    std::ifstream in(wav, std::ios::binary);
+    char riff[12]{};
+    if (in.read(riff, 12) && !std::memcmp(riff, "RIFF", 4) && !std::memcmp(riff + 8, "WAVE", 4)) {
+        auto u32 = [](const char* p) -> uint32_t {
+            return uint32_t(uint8_t(p[0])) | (uint32_t(uint8_t(p[1])) << 8) |
+                   (uint32_t(uint8_t(p[2])) << 16) | (uint32_t(uint8_t(p[3])) << 24);
+        };
+        // Bound the metadata scan; never parse arbitrary-sized chunks into memory.
+        for (int chunk = 0; chunk < 100 && in; ++chunk) {
+            char hdr[8]{};
+            if (!in.read(hdr, 8)) break;
+            const uint32_t length = u32(hdr + 4);
+            const auto next = in.tellg() + std::streamoff(length + (length & 1));
+            if (!std::memcmp(hdr, "LIST", 4) && length >= 4 && length < 65536) {
+                std::vector<char> data(length);
+                if (in.read(data.data(), length) && !std::memcmp(data.data(), "INFO", 4)) {
+                    size_t pos = 4;
+                    while (pos + 8 <= data.size()) {
+                        const uint32_t size = u32(data.data() + pos + 4);
+                        if (size > data.size() - pos - 8) break;
+                        if (!std::memcmp(data.data() + pos, "INAM", 4) && size > 0 && size < 160) {
+                            std::string title(data.data() + pos + 8, size);
+                            while (!title.empty() && (title.back() == '\0' || title.back() == '\r' || title.back() == '\n')) title.pop_back();
+                            if (!title.empty()) return title;
+                        }
+                        pos += 8 + size + (size & 1);
+                    }
+                }
+            }
+            in.clear();
+            in.seekg(next);
+        }
+    }
+    return std::to_string(number) + ".wav";
+}
+
+// Two-level navigation: Music -> PS2 Loading Music -> Settings / Track Preferences.
+// Both pages fit the fixed-size launcher panel; no scroll area is introduced.
+void Launcher::refresh_loading_music_cache() {
+    loading_installed_.fill(false);
+    loading_track_count_ = 0;
+    const auto music_dir = loading_music_directory();
+    for (int n = 1; n <= 18; ++n) {
+        const auto wav = music_dir / (std::to_wstring(n) + L".wav");
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(wav, ec) && loading_wave_header(wav)) {
+            loading_installed_[n] = true;
+            loading_titles_[n] = loading_track_title(n);
+            ++loading_track_count_;
+        } else {
+            loading_titles_[n] = std::to_string(n) + ".wav";
+        }
+    }
+    loading_cache_valid_ = true;
+}
+
+void Launcher::page_loading_music() {
+    const Texts& t = T();
+    // Scan only on entry or after importing, never during normal frame rendering.
+    if (!loading_cache_valid_) refresh_loading_music_cache();
+    const auto music_dir = loading_music_directory();
+    const bool has_music = loading_track_count_ > 0;
+    const bool weighted = std::clamp(int(setting("loading_music_mode")), 0, 2) == 2;
+    if (!has_music || !weighted) loading_section_ = 0;
+    if (preview_.track()) preview_.volume(setting("volume"), setting("loading_music_volume"));
+    const char* sections[] = {t.ps2_settings, t.ps2_track_preferences};
+    ImGui::PushID("ps2_loading_subtabs");
+    tabs(sections, has_music && weighted ? 2 : 1, &loading_section_);
+    ImGui::PopID();
+
+    if (loading_section_ == 1) {
+        if (preview_.track() < 0) preview_.stop();
+        const char* pages[] = {"1-6", "7-12", "13-18"};
+        segmented("##ps2_weights_page", pages, 3, &loading_weight_page_);
+        for (int n = loading_weight_page_ * 6 + 1; n <= loading_weight_page_ * 6 + 6; ++n) {
+            const float top = origin_.y + cursor_;
+            char key[48], id[48], preview_id[48];
+            std::snprintf(key, sizeof(key), "loading_music_weight_%d", n);
+            std::snprintf(id, sizeof(id), "##ps2_weight_%d", n);
+            std::snprintf(preview_id, sizeof(preview_id), "##ps2_preview_%d", n);
+            const auto wav = music_dir / (std::to_wstring(n) + L".wav");
+            const bool installed = loading_installed_[n];
+            const std::string& name = loading_titles_[n];
+            const std::string shown = name.size() > 23 ? name.substr(0, 20) + "..." : name;
+            text(body_bold_, px(18), ImVec2(origin_.x, top + px(2)), installed ? kInk : kDim, shown.c_str());
+            if (!installed) {
+                text(body_, px(14), ImVec2(origin_.x, top + px(24)), kDim, t.ps2_not_installed);
+            } else if (name != std::to_string(n) + ".wav") {
+                char filename[32];
+                std::snprintf(filename, sizeof(filename), "%d.wav", n);
+                text(body_, px(14), ImVec2(origin_.x, top + px(24)), kDim, filename);
+            }
+            if (installed) {
+                const char* caption = preview_.track() == n ? t.ps2_stop : t.ps2_play;
+                if (small_button(caption, ImVec2(origin_.x + px(156), top + px(2)), preview_id)) {
+                    if (preview_.track() == n) preview_.stop();
+                    else if (!preview_.start(n, wav)) loading_import_message_ = t.ps2_preview_failed;
+                    preview_.volume(setting("volume"), setting("loading_music_volume"));
+                }
+                float weight = setting(key);
+                if (slider(id, &weight, 0, 300, "%.0f%%")) set_setting(key, std::round(weight));
+            } else {
+                // Keep the same row height as installed tracks without an interactive slider.
+                cursor_ += px(52);
+                list_->AddLine(ImVec2(origin_.x, origin_.y + cursor_ - px(6)),
+                               ImVec2(origin_.x + panel_width_, origin_.y + cursor_ - px(6)),
+                               fade(IM_COL32(255, 255, 255, 16)));
+            }
+        }
+        return;
+    }
+
+    if (preview_.track() > 0 && loading_section_ == 0) preview_.stop();
+    row(t.ps2_loading_label, t.ps2_loading_sub);
+    const char* toggle[] = {t.off, t.on};
+    int enabled = setting("loading_music") != 0 ? 1 : 0;
+    if (segmented("##ps2_enabled", toggle, 2, &enabled)) set_setting("loading_music", float(enabled));
+
+    if (!has_music) {
+        lead(t.ps2_no_tracks);
+    } else {
+        char count_label[80];
+        std::snprintf(count_label, sizeof(count_label), t.ps2_tracks_found, loading_track_count_);
+        lead(count_label);
+        row(t.ps2_volume, t.ps2_volume_sub);
+        float volume = setting("loading_music_volume");
+        if (slider("##ps2_volume", &volume, 0, 100, "%.0f")) {
+            set_setting("loading_music_volume", std::round(volume));
+            preview_.volume(setting("volume"), setting("loading_music_volume"));
+        }
+        // A negative track ID identifies the Settings-page volume test (loops until stopped).
+        const float test_y = origin_.y + cursor_;
+        if (small_button(preview_.track() < 0 ? t.ps2_stop_test : t.ps2_test,
+                         ImVec2(origin_.x, test_y), "##ps2_test_audio")) {
+            if (preview_.track() < 0) preview_.stop();
+            else {
+                for (int n = 1; n <= 18; ++n) if (loading_installed_[n]) {
+                    if (!preview_.start(-n, music_dir / (std::to_wstring(n) + L".wav")))
+                        loading_import_message_ = t.ps2_test_failed;
+                    preview_.volume(setting("volume"), setting("loading_music_volume"));
+                    break;
+                }
+            }
+        }
+        cursor_ += px(44);
+        row(t.ps2_fade, t.ps2_fade_sub);
+        float fade = setting("loading_music_fade_seconds");
+        if (slider("##ps2_fade", &fade, 0, 5, "%.2f s")) set_setting("loading_music_fade_seconds", std::round(fade * 20) / 20);
+        row(t.ps2_playback_order, t.ps2_playback_sub);
+        const char* modes[] = {t.ps2_in_order, t.ps2_random, t.ps2_weighted};
+        int mode = std::clamp(int(setting("loading_music_mode")), 0, 2);
+        if (segmented("##ps2_mode", modes, 3, &mode)) set_setting("loading_music_mode", float(mode));
+    }
+    // Import actions remain accessible before and after music has been installed.
+    const float y = origin_.y + cursor_ + px(8);
+    ImVec2 button_size;
+    if (small_button(t.ps2_import_folder, ImVec2(origin_.x, y), "##ps2_folder", &button_size)) music_dialog_ = MusicDialog::kLoadingFolder;
+    cursor_ += button_size.y + px(22);
+    if (!loading_import_message_.empty()) lead(loading_import_message_.c_str());
 }
 
 // In the game menu: the launcher again, as at the start (back_to_launcher).
@@ -3817,7 +4543,7 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
 
     width_ = width;
     height_ = height;
-    scale_ = std::max(0.65f, std::min(width / 1600.0f, height / 900.0f));
+    scale_ = launcher_scale(static_cast<float>(width), static_cast<float>(height));
     upload_art();
     {
         std::lock_guard<std::recursive_mutex> lock(g_ui_mutex);
@@ -3854,6 +4580,12 @@ std::optional<GameDisc> Launcher::run() {
     focus_panel_ = wizard_;  // the guide's button already selected: one press of A
     if (disc_) start_art_loader(disc_->path);
     if (setting("check_updates") != 0) update_thread_ = std::thread(check_for_updates, &updates_);
+    std::error_code no_helper;
+    if (std::filesystem::exists(program_directory() / L"upscale64.exe", no_helper)) {
+        dlss_thread_ = std::thread([this] { dlss_ready_ = dlss_available() ? 1 : 0; });
+    } else {
+        dlss_ready_ = -2;  // experimental: the rows only where upscale64.exe is (not in the release packages yet)
+    }
     char page[16] = {};  // MC3_LAUNCHER_PAGE=settings|controls|cheats|codes|about: test screenshots
     if (GetEnvironmentVariableA("MC3_LAUNCHER_PAGE", page, sizeof(page)) && !wizard_) {
         cheats_tab_ = !std::strcmp(page, "codes") ? 1 : 0;
@@ -3877,7 +4609,7 @@ std::optional<GameDisc> Launcher::run() {
             Sleep(30);
             continue;
         }
-        music_->update(dt, 1);
+        music_->update(dt, setting("launcher_mute") != 0 ? 0.0f : 1.0f);
         resize_if_needed();
         upload_art();
         {
@@ -3894,16 +4626,20 @@ std::optional<GameDisc> Launcher::run() {
         draw_background(time);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         swap_chain_->Present(1, 0);
-        if (install_requested_) {  // outside the lock, like the dialogs
-            install_requested_ = false;
-            install_update();
-        }
         if (choose_disc_requested_) {  // outside the lock: see choose_disc
             choose_disc_requested_ = false;
             run_disc_dialog();
         }
         if (music_dialog_ != MusicDialog::kNone) {
             const MusicDialog dialog = std::exchange(music_dialog_, MusicDialog::kNone);
+            if (dialog == MusicDialog::kLoadingFolder) {
+                const auto chosen = ask_for_music(window_, true);
+                if (!chosen.empty()) {
+                    loading_import_message_ = install_loading_folder(chosen[0]);
+                    loading_cache_valid_ = false;
+                }
+                continue;
+            }
             const std::vector<std::filesystem::path> chosen = ask_for_music(window_, dialog == MusicDialog::kFolder);
             if (!chosen.empty()) {
                 change_music(dialog == MusicDialog::kFolder

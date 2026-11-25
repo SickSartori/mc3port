@@ -11,14 +11,17 @@ if ($end -lt 0) { $end = $lines.Count }
 # GitHub keeps line breaks in release notes: wrapped list items (continuation lines indented) become one line.
 $section = ($lines[($start + 1)..($end - 1)] -join "`n") -replace "`n  +", " "
 
-$notes = $section.Trim() + @"
+# "Which file?" last: on the release page the files come right under it. Not first: launchers read the
+# notes' first list items as what is new.
+$download = @"
+### Which file?
 
-
-### Download
-
-- **Installer**: ``mc3port-$Version-windows-x86-setup.zip`` (extract it and run the setup; it installs for your user, and the launcher downloads its updates). The same installer is also attached as ``-setup.exe``, which some browsers block because it is not signed yet.
-- **Portable**: ``mc3port-$Version-windows-x86.zip`` (extract anywhere and start ``mc3.exe``).
-- Check a download against ``SHA256SUMS``. You need your own disc image of the European or USA Xbox release: see the README.
+- **Windows**: ``mc3port-$Version-windows-setup.exe``. Run it: it installs for your user, and the launcher tells you about updates. The browser or Windows may warn because it is not signed yet ("Keep", then "More info" and "Run anyway").
+- **Windows, without installing**: ``mc3port-$Version-windows-portable.zip``. Extract it anywhere and start ``mc3.exe``.
+- **Linux**: ``mc3port-$Version-linux.tar.gz`` (Wine; see the README).
+- Or install it from [RecompLauncher](https://recomplauncher.com/game/mc3port), which updates it for you.
+- You need your own disc image of the European or USA Xbox release: see the README. ``SHA256SUMS`` is for checking a download; the two ``Source code`` files are only the code.
 - [Code signing policy](https://github.com/SickSartori/mc3port#code-signing-policy) and [Privacy](https://github.com/SickSartori/mc3port#privacy).
 "@
+$notes = $section.Trim() + "`n`n" + $download.Trim()
 Set-Content -Path $Out -Value $notes -Encoding utf8NoBOM
