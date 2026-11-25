@@ -7,7 +7,7 @@
 **An unofficial native PC port of Midnight Club 3: DUB Edition Remix for the original Xbox.**<br>
 16:9 widescreen, 60 fps, up to 5K internal resolution and optional modern effects, running from your own disc image.
 
-<a href="https://recomplauncher.com/game/mc3port"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+<a href="https://recomplauncher.com/game/mc3port"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></a>
 
 <a href="https://ko-fi.com/sicksartori"><img alt="Support me on Ko-fi" src="https://ko-fi.com/img/githubbutton_sm.svg" height="36"></a>
 
