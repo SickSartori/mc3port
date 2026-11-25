@@ -70,10 +70,11 @@
     {
       "id": "frame_rate",
       "label": "Frame rate",
-      "help": "30 is the Xbox's own; 60 is smoother and needs a PC that handles twice the work.",
+      "help": "30 is the Xbox's own; 60 is smoother and needs a PC that handles twice the work; 120 needs a fast processor and a screen of 120 Hz or more.",
       "choices": [
         { "label": "30 fps", "set": { "frame_rate": "30" } },
-        { "label": "60 fps", "set": { "frame_rate": "60" } }
+        { "label": "60 fps", "set": { "frame_rate": "60" } },
+        { "label": "120 fps", "set": { "frame_rate": "120" } }
       ],
       "defaults": { "frame_rate": "60" }
     },
@@ -95,12 +96,68 @@
     {
       "id": "picture",
       "label": "Picture",
-      "help": "The game's own widescreen mode (wider view, no black bars), or 4:3 like a classic TV.",
+      "help": "The game's own widescreen mode (wider view, no black bars); 21:9 takes the shape of a screen wider than 16:9 (films and loading screens stay 16:9); or 4:3 like a classic TV.",
       "choices": [
         { "label": "16:9", "set": { "widescreen": "1" } },
+        { "label": "21:9", "set": { "widescreen": "2" } },
         { "label": "4:3", "set": { "widescreen": "0" } }
       ],
       "defaults": { "widescreen": "1" }
+    },
+    {
+      "id": "field_of_view",
+      "label": "Field of view",
+      "help": "How wide the camera sees: 100% is the game's own.",
+      "choices": [
+        { "label": "75%", "set": { "field_of_view": "75" } },
+        { "label": "90%", "set": { "field_of_view": "90" } },
+        { "label": "100%", "set": { "field_of_view": "100" } },
+        { "label": "115%", "set": { "field_of_view": "115" } },
+        { "label": "130%", "set": { "field_of_view": "130" } }
+      ],
+      "defaults": { "field_of_view": "100" }
+    },
+    {
+      "id": "texture_filter",
+      "label": "Texture filter",
+      "help": "Anisotropic filtering: roads and walls stay sharp at a slant. 16x costs little on any graphics card.",
+      "choices": [
+        { "label": "Off", "set": { "anisotropy": "1" } },
+        { "label": "4x", "set": { "anisotropy": "4" } },
+        { "label": "8x", "set": { "anisotropy": "8" } },
+        { "label": "16x", "set": { "anisotropy": "16" } }
+      ],
+      "defaults": { "anisotropy": "16" }
+    },
+    {
+      "id": "sharp_textures",
+      "label": "Sharp textures",
+      "help": "The textures of roads, buildings and cars enlarged with their edges kept, for when you see them from close. They take more graphics memory and sharpen a few seconds after a place loads.",
+      "choices": [
+        { "label": "Off", "set": { "sharp_textures": "0" } },
+        { "label": "On", "set": { "sharp_textures": "1" } }
+      ],
+      "defaults": { "sharp_textures": "0" }
+    },
+    {
+      "id": "modern_effects",
+      "label": "Modern effects",
+      "help": "Glow, sharpening, colour, vignette and ambient occlusion; F10 switches them while playing.",
+      "choices": [
+        { "label": "On", "set": { "effects": "1" } },
+        { "label": "Off", "set": { "effects": "0" } }
+      ],
+      "defaults": { "effects": "1" }
+    },
+    {
+      "id": "frame_counter",
+      "label": "Frame counter",
+      "help": "Frames per second in a corner while playing.",
+      "choices": [
+        { "label": "Off", "set": { "fps_counter": "0" } },
+        { "label": "On", "set": { "fps_counter": "1" } }
+      ],
+      "defaults": { "fps_counter": "0" }
     },
     {
       "id": "hud",

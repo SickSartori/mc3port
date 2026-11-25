@@ -196,7 +196,7 @@ fallisce.
 `recomplauncher.json` nella radice del repo finisce accanto a `mc3.exe`, nella zip e nel setup (`tools/package.ps1`,
 `installer/mc3port.iss`): il launcher controlla il
 disco del giocatore, lo passa come primo argomento, scrive `mc3port.ini` dove mc3port lo cerca (`Documenti\mc3port`,
-o la cartella del gioco se è portatile: la lista `file` rispecchia `paths.cpp`) e mostra undici impostazioni sulla
+o la cartella del gioco se è portatile: la lista `file` rispecchia `paths.cpp`) e mostra diciotto impostazioni sulla
 pagina del gioco. Avviato dal launcher (`RECOMPLAUNCHER=1`), mc3port non cerca aggiornamenti; con
 `RECOMPLAUNCHER_MODE=bigpicture` parte a schermo intero. Il disco dato dal launcher è l'unico provato (né quello
 dell'ini né uno vicino all'exe, né la finestra di scelta): se è rifiutato, il motivo va nel log (e in un messaggio,

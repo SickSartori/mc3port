@@ -4,6 +4,8 @@
 
 ### Improved
 
+- **More settings on RecompLauncher's page**: 120 frames per second, 21:9, the field of view, the texture filter,
+  sharp textures, the modern effects and the frame counter, which the launcher and the in-game menu already had.
 - **Replacement pictures with the game's colours**: a PNG with a palette in `textures_replace`, for a picture of the
   game that has one (the speedometer, the rev counter), is coloured from the game's palette. A redrawn dial keeps the
   HUD colour chosen in the garage.
