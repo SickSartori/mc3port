@@ -900,8 +900,11 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
         // Setting hud_style: the game's dials are read here and left out (hud.cpp).
         if (flat && count == 4 && hud_reading()) {
             const ShownPicture picture = renderer_shown_picture();
-            if (left >= (picture.surface_width + 2 * picture.surface_left) / 2) {
+            // The dials are in the right half; of the left half the new HUD wants the special ability's arc.
+            const bool left_half = left < (picture.surface_width + 2 * picture.surface_left) / 2;
+            if (!left_half || hud_enabled()) {
                 HudQuad quad{};
+                quad.left_half = left_half;
                 quad.program = !fixed_function;
                 quad.texture = (g_k.texture_control0[0] & 0x40000000)
                                    ? dma_address(g_k.texture_format[0] & 3, g_k.texture_offset[0])

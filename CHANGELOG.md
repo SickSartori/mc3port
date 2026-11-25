@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1
+
+### Fixed
+
+- **mc3port's HUD, the special ability**: the arc over the radar that charges Zone, Agro or Roar is now drawn by the
+  new HUD too, sharp at any resolution and in the HUD's colour; it stayed the game's thin one. The arc beside the
+  speedometer that was described as the special ability is the slipstream turbo (it fills behind an opponent and is
+  used with the nitrous button): it is named so now. The marks of the charges you have stored stay the game's.
+
 ## 0.4.0 (2026-11-25)
 
 ### New

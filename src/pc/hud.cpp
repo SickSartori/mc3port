@@ -32,7 +32,7 @@ struct Dial {
 struct Player {
     Dial speed, rpm;
     int gear = 0;  // 1-6; 0 none seen, -1 reverse, -2 neutral, -3 a cell not known yet
-    float special = -1;  // the special ability's charge, 0 to 1; -1 none seen
+    float slipstream = -1;  // the slipstream turbo's charge, 0 to 1; -1 none seen
     float nitro = -1;    // what is left of the nitrous, 0 to 1; -1 none seen (a car without it)
     float nitro_colour[3] = {};
 };
@@ -112,6 +112,19 @@ float g_nitro_full = 0;          // the tallest seen since the dials last showed
 float g_hud_colour[3] = {1.0f, 0.54f, 0.0f};
 uint32_t g_nitro_texture = 0;    // its texture: for the log, other pieces on it
 
+// The special ability (Zone, Agro or Roar): a tall track over the radar (43 x 221 at 58,131 of 720 x 480, alpha 0.3)
+// and then its fill on the same columns, in the HUD's colour, rising from the track's foot as the ability charges
+// (height 0 when empty). Both are on the texture of the slipstream's track. Read apart from the dials: they are in the
+// left half. A full arc empties into a short mark beside its foot, a stored charge: those stay the game's.
+// shortcut: one player only; in split screen the game's own arcs stay. Read them per player when that is wanted.
+struct Special {
+    float left = 0, top = 0, right = 0, bottom = 0;  // the track, surface pixels
+    float charge = 0;                                 // 0 to 1
+    int presents_since = 1000;                        // since the track was last drawn
+};
+Special g_special;
+uint32_t g_gauge_texture = 0;  // the tracks' texture, known from the slipstream's
+
 // One frame's reading, complete: its players replace the last ones (a reading without a speedometer and its needle,
 // a frame cut short, changes nothing).
 void publish(Reading& r) {
@@ -147,7 +160,7 @@ void publish(Reading& r) {
     for (const Reading::Arc& arc : r.arcs) {
         if (Player* p = nearest((arc.left + arc.right) / 2, arc.bottom)) {
             const float span = std::max(1.0f, arc.fill_bottom - arc.top);
-            p->special = arc.filled ? std::clamp((arc.fill_bottom - arc.fill_top) / span, 0.0f, 1.0f) : 0;
+            p->slipstream = arc.filled ? std::clamp((arc.fill_bottom - arc.fill_top) / span, 0.0f, 1.0f) : 0;
         }
     }
     for (const Reading::Nitro& nitro : r.nitros) {
@@ -245,10 +258,31 @@ bool hud_take_quad(const HudQuad& q) {
     const bool aligned = axis_aligned(q);
     Reading& r = g_reading;
 
+    if (q.left_half) {
+        if (!hide || !q.program || !aligned || !g_gauge_texture || q.texture != g_gauge_texture || width < 20 ||
+            g_players.size() != 1) {
+            return false;
+        }
+        if (q.colour[3] < 0.6f && height > 3 * width) {
+            // The charge is the fill's alone (always drawn, with a height of 0 when empty): the track comes more
+            // than once in a frame.
+            g_special.left = left, g_special.top = top, g_special.right = right, g_special.bottom = bottom;
+            g_special.presents_since = 0;
+            return true;
+        }
+        if (g_special.presents_since == 0 && std::fabs(left - g_special.left) < 1 &&
+            std::fabs(right - g_special.right) < 1) {
+            g_special.charge = std::clamp(height / (g_special.bottom - g_special.top), 0.0f, 1.0f);
+            std::copy(q.colour, q.colour + 3, g_hud_colour);
+            return true;
+        }
+        return false;
+    }
     if (q.program && aligned) {
-        // The special ability: a tall track, then its fill on the same texture and columns (height 0 when empty).
+        // The slipstream turbo (charged behind an opponent, used with the nitrous button): a tall track right of the
+        // dials, then its fill on the same texture and columns (height 0 when empty).
         // The fill comes first here: once the charge passes a third it is tall too, and was read as a new track
-        // starting the next frame, so a charged ability showed as empty.
+        // starting the next frame, so a charged slipstream showed as empty.
         if (!r.arcs.empty()) {
             Reading::Arc& arc = r.arcs.back();
             if (arc.texture == q.texture && std::fabs(arc.left - left) < 1 && std::fabs(arc.right - right) < 1 &&
@@ -270,6 +304,7 @@ bool hud_take_quad(const HudQuad& q) {
         }
         if (height > 3 * width && width >= 20) {
             r.arcs.push_back({q.texture, left, right, top, bottom, bottom, bottom, false});
+            g_gauge_texture = q.texture;
             g_presents_without = 0;
             return hide;
         }
@@ -365,11 +400,13 @@ bool hud_take_quad(const HudQuad& q) {
 }
 
 void hud_frame_shown() {
+    if (g_special.presents_since < 1000) ++g_special.presents_since;
     // A menu or a loading screen: no dials for a while.
     if (hud_reading() && ++g_presents_without > 30 && !g_players.empty()) {
         g_players.clear();
         g_boxes.clear();
         g_nitro_full = 0;  // perhaps another car
+        g_special = Special{};
         log_line("hud: no dials for 30 presents, the HUD is hidden");
     }
 }
@@ -458,6 +495,30 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     const auto channel = [](float c) { return static_cast<int>(std::clamp(c, 0.0f, 1.0f) * 255); };
     const int red = channel(g_hud_colour[0]), green = channel(g_hud_colour[1]), blue = channel(g_hud_colour[2]);
     const ImU32 accent = colour(red, green, blue);
+    if (g_special.presents_since < 30) {
+        // The special ability: the game's curve over the radar, drawn again where it was. In 16:9 it is narrowed
+        // towards the left edge as the radar is (renderer_game.cpp), which the game's own was not.
+        const float s = g_players.front().speed.size() * scale_y / 162 * 0.85f;
+        const float box_width = g_special.right - g_special.left, box_height = g_special.bottom - g_special.top;
+        // A curve through the track's top right, its leftmost point seven tenths down, and its foot at the radar.
+        const ImVec2 from(0.78f, 0), control(-0.31f, 0.55f), to(0.12f, 1);
+        constexpr int kSteps = 48;
+        ImVec2 points[kSteps + 1];
+        int charged_from = kSteps + 1;
+        for (int i = 0; i <= kSteps; ++i) {
+            const float t = static_cast<float>(i) / kSteps, u = 1 - t;
+            const float x = u * u * from.x + 2 * u * t * control.x + t * t * to.x;
+            const float y = u * u * from.y + 2 * u * t * control.y + t * t * to.y;
+            if (charged_from > kSteps && y >= 1 - g_special.charge) charged_from = i;
+            const float surface_x = (g_special.left + x * box_width) * narrow;
+            points[i] = ImVec2(pic.window_left + (surface_x - pic.surface_left) * scale_x,
+                               pic.window_top + (g_special.top + y * box_height - pic.surface_top) * scale_y);
+        }
+        list->AddPolyline(points, kSteps + 1, colour(255, 255, 255, 0.30f), ImDrawFlags_None, 4 * s);
+        if (g_special.charge > 0 && charged_from < kSteps) {
+            list->AddPolyline(points + charged_from, kSteps + 1 - charged_from, accent, ImDrawFlags_None, 4 * s);
+        }
+    }
     for (const Player& p : g_players) {
         // Style A's layout (1280 x 720), around the speedometer: s = 1 when the game's face is 108 lines of 480.
         const float s = p.speed.size() * scale_y / 162 * 0.85f;  // 0.85: style A at full size covered too much
@@ -500,12 +561,12 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         }
         // The game's red bar under the speedometer is not redrawn: it lights only at the rev limiter, which the rev
         // counter's red zone already shows.
-        if (p.special > 0) {  // the special ability: an arc outside the speedometer, lower right, filling upwards;
-                              // none while it is empty (a car without an ability never charges it)
+        if (p.slipstream > 0) {  // the slipstream turbo: an arc outside the speedometer, lower right, filling upwards;
+                                 // none while it is empty
             const float r = 127 * s;
             arc(list, speed_centre, r, 60, 140, colour(255, 255, 255, 0.16f), 5 * s);
-            arc(list, speed_centre, r, 140 - 80 * p.special, 140, accent, 5 * s);
-            if (p.special > 0.98f) {  // full, ready to use: a glow that pulses twice a second, as the game's own
+            arc(list, speed_centre, r, 140 - 80 * p.slipstream, 140, accent, 5 * s);
+            if (p.slipstream > 0.98f) {  // full, ready to use: a glow that pulses twice a second, as the game's own
                 const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 4 * kPi);
                 arc(list, speed_centre, r, 60, 140, colour(red, green, blue, 0.15f + 0.30f * pulse), (9 + 6 * pulse) * s);
                 arc(list, speed_centre, r, 60, 140,

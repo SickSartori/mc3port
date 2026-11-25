@@ -77,7 +77,7 @@ And around the game:
 
 - **A launcher** that checks your disc, sets everything up on the first start and holds every setting.
 - **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
-- **A HUD of its own**, optional: speedometer, rev counter, gear and special ability drawn sharp at any resolution.
+- **A HUD of its own**, optional: speedometer, rev counter, gear, nitrous, slipstream and special ability drawn sharp at any resolution.
 - **Sharp 2D pictures**: the radar's map, icons, letters and the cars' stickers enlarged with clean edges.
 - **Your own music** on the game's radio: playlists made in the launcher's Music page from MP3, FLAC, WAV, WMA or M4A
   files, chosen in the game in Pause > Options > Audio Options.
@@ -246,7 +246,7 @@ The quickest choice is the **style**, above the tabs:
 | Modern effects | glow, sharpening, colour, vignette and ambient occlusion, on or off (F10 while playing); under them every value by itself, speed blur and light streaks too |
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
-| HUD | the game's, or mc3port's: speedometer, rev counter, gear, nitrous and special ability drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |
+| HUD | the game's, or mc3port's: speedometer, rev counter, gear, nitrous, slipstream and special ability drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |
 | Sharp pictures | the radar's map, the icons, the letters and the cars' stickers enlarged with clean edges; on by default |
 | Sharp textures | the textures of roads, buildings and cars enlarged two times with clean edges, for when you see them from close: nothing is added that the game does not have, and from afar the picture is the game's own. They sharpen a few seconds after a place loads and take more graphics memory; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
