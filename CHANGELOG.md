@@ -2,6 +2,12 @@
 
 ## 0.4.1
 
+### Improved
+
+- **Replacement pictures with the game's colours**: a PNG with a palette in `textures_replace`, for a picture of the
+  game that has one (the speedometer, the rev counter), is coloured from the game's palette. A redrawn dial keeps the
+  HUD colour chosen in the garage.
+
 ### Fixed
 
 - **mc3port's HUD, the special ability**: the arc over the radar that charges Zone, Agro or Roar is now drawn by the
