@@ -243,7 +243,7 @@ int g_presents_without = 0;  // presents since the last dial was read
 }  // namespace
 
 bool hud_enabled() {
-    static const bool enabled = setting_at_start("hud_style") != 0;
+    static const bool enabled = setting_at_start("hud_style") == 1;
     return enabled;
 }
 

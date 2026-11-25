@@ -100,7 +100,7 @@ struct Texts {
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
     const char *light_streaks;
     const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
-    const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub, *sharp_textures, *sharp_textures_sub;
+    const char *hud, *hud_sub, *hud_game, *hud_redrawn, *speed_unit, *sharp_2d, *sharp_2d_sub, *sharp_textures, *sharp_textures_sub;
     const char *cheats, *cheats_lead, *cheat_money, *cheat_money_sub, *add_money, *game_codes, *game_codes_lead;
     const char *loading_screens, *loading_screens_sub;
     const char *crash_heading, *crash_sub, *crash_button, *crash_link;
@@ -165,7 +165,7 @@ const Texts kEnglish = {
     "Light streaks",
     "Skip the opening films", "The Rockstar logos and the intro, straight to the title screen",
     "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
-    "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
+    "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Original, redrawn", "Speed unit",
     "Sharp pictures", "The radar's map, icons, letters and car stickers enlarged with clean edges",
     "Sharp textures", "Roads, buildings and cars from close: enlarged with clean edges (more graphics memory)",
     "CHEATS", "mc3port's own, with a career loaded, from the menu during the game; and the game's codes, to look up.",
@@ -274,7 +274,7 @@ const Texts kItalian = {
     "Scie delle luci",
     "Salta i video iniziali", "I loghi Rockstar e l'introduzione, dritto alla schermata del titolo",
     "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
-    "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
+    "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Originale ridisegnato", "Unit\xC3\xA0 di velocit\xC3\xA0",
     "Immagini nitide", "Mappa del radar, icone, lettere e adesivi delle auto ingranditi con bordi puliti",
     "Texture nitide", "Strade, edifici e auto da vicino: ingranditi con bordi puliti (pi\xC3\xB9 memoria grafica)",
     "CHEAT", "Quelli di mc3port, con una carriera caricata, dal menu durante il gioco; e i codici del gioco, da consultare.",
@@ -380,7 +380,7 @@ const Texts kPortuguese = {
     "Rastros das luzes",
     "Pular os vídeos iniciais", "Os logos da Rockstar e a introdução, direto para a tela de título",
     "Reinício necessário", "Para as mudanças que valem no início; o progresso não salvo é perdido", "Reiniciar agora",
-    "HUD", "O do mc3port: mostradores redesenhados, nítidos em qualquer resolução", "O do jogo", "Unidade de velocidade",
+    "HUD", "O do mc3port: mostradores redesenhados, nítidos em qualquer resolução", "O do jogo", "Original redesenhado", "Unidade de velocidade",
     "Imagens nítidas", "Mapa do radar, ícones, letras e adesivos dos carros ampliados com bordas limpas",
     "Texturas nítidas", "Ruas, prédios e carros de perto: ampliados com bordas limpas (mais memória gráfica)",
     "TRAPAÇAS", "As do mc3port, com uma carreira carregada, pelo menu durante o jogo; e os códigos do jogo, para consultar.",
@@ -485,7 +485,7 @@ const Texts kSpanish = {
     "Estelas de las luces",
     "Saltar los vídeos iniciales", "Los logotipos de Rockstar y la introducción, directo a la pantalla de título",
     "Hace falta reiniciar", "Para los cambios que se aplican al empezar; se pierde el progreso no guardado", "Reiniciar ahora",
-    "HUD", "El de mc3port: indicadores redibujados, nítidos a cualquier resolución", "El del juego", "Unidad de velocidad",
+    "HUD", "El de mc3port: indicadores redibujados, nítidos a cualquier resolución", "El del juego", "Original redibujado", "Unidad de velocidad",
     "Imágenes nítidas", "El mapa del radar, iconos, letras y pegatinas de los coches ampliados con bordes limpios",
     "Texturas nítidas", "Calles, edificios y coches de cerca: ampliados con bordes limpios (más memoria gráfica)",
     "TRUCOS", "Los de mc3port, con una carrera cargada, desde el menú durante el juego; y los códigos del juego, para consultar.",
@@ -2627,10 +2627,12 @@ void Launcher::page_settings() {
         }
         if (combo("##language", names, 6, &index)) set_setting("game_language", static_cast<float>(kLanguages[index]));
         row(t.hud, t.hud_sub, true);
-        const char* huds[] = {t.hud_game, "mc3port"};
-        int hud = setting("hud_style") != 0 ? 1 : 0;
-        if (segmented("##hud", huds, 2, &hud)) set_setting("hud_style", static_cast<float>(hud));
-        if (hud) {
+        // Shown in this order; the setting: 0 the game's, 2 the game's with its pictures redrawn, 1 mc3port's.
+        const char* huds[] = {t.hud_game, t.hud_redrawn, "mc3port"};
+        static const int kHudStyles[] = {0, 2, 1};
+        int hud = setting("hud_style") == 1 ? 2 : setting("hud_style") == 2 ? 1 : 0;
+        if (segmented("##hud", huds, 3, &hud)) set_setting("hud_style", static_cast<float>(kHudStyles[hud]));
+        if (hud == 2) {
             row(t.speed_unit, nullptr);
             const char* units[] = {"mph", "km/h"};
             int unit = setting("hud_units") != 0 ? 1 : 0;
