@@ -63,6 +63,7 @@ const Setting kSettings[] = {
     {"loading_music_fade_seconds", 0.75f, "Fade out PS2 loading music over this many seconds near the end of playback."},
     {"loading_screen_seconds", 0, "The game's loading screens stay at least this many seconds, any number; never less than 2 (0 = the shortest)."},
     {"skip_intro", 1, "Skip the films at start (Rockstar logos and the game's intro): 1 = yes, 0 = show them."},
+    {"rumble", 100, "How strongly the controllers rumble, in percent of what the game asks: 100 = like the Xbox, 0 = never."},
     {"pause_in_background", 1, "Pause the game (in-game menu) when its window goes to the background: 1 = yes, 0 = no."},
     {"check_updates", 1, "Look for a newer mc3port release on GitHub when the launcher opens: 1 = yes, 0 = no."},
     {"render_thread", 1, "Drawing on a thread of its own, beside the one that reads the game's drawing commands: 1 = yes (faster, most of all in split screen; needs four processor threads or more), 0 = as before, if the picture or the game misbehaves."},

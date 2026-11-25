@@ -122,6 +122,7 @@ void load_xinput() {
     }
     g_xinput_get_state = gamepad_get_state;
     g_xinput_set_state = gamepad_set_state;
+    gamepad_set_rumble_scale(setting("rumble") / 100.0f);
 }
 
 void load_script() {

@@ -118,6 +118,7 @@ struct Texts {
     const char *custom_radio, *ps2_loading_music, *ps2_settings, *ps2_track_preferences, *ps2_not_installed, *ps2_preview_failed, *ps2_loading_label, *ps2_loading_sub, *ps2_no_tracks, *ps2_tracks_found, *ps2_volume, *ps2_volume_sub, *ps2_stop_test, *ps2_test, *ps2_test_failed, *ps2_fade, *ps2_fade_sub, *ps2_playback_order, *ps2_playback_sub, *ps2_in_order, *ps2_random, *ps2_weighted, *ps2_import_folder, *ps2_play, *ps2_stop, *ps2_folder_missing, *ps2_create_folder_failed, *ps2_import_result;
     const char *upscaling, *upscaling_sub, *upscaling_checking, *upscaling_missing, *profile, *profile_sub, *profile_dlaa,
         *profile_quality, *profile_balanced, *profile_performance;
+    const char *rumble, *rumble_sub;
 };
 
 const Texts kEnglish = {
@@ -219,6 +220,7 @@ const Texts kEnglish = {
     "Upscaling", "NVIDIA DLSS: the game drawn smaller and made sharp at your screen's size", "Checking whether this graphics card has DLSS...",
     "DLSS needs an NVIDIA RTX graphics card and its driver", "Profile", "Drawn at %dp, brought to %dp", "Native (DLAA)", "Quality",
     "Balanced", "Performance",
+    "Controller rumble", "How strongly the controllers rumble: 100% is the game's own, 0 turns it off",
 };
 
 const Texts kItalian = {
@@ -326,6 +328,7 @@ const Texts kItalian = {
     "Upscaling", "NVIDIA DLSS: il gioco disegnato pi\xC3\xB9 piccolo e reso nitido alla grandezza dello schermo",
     "Controllo se questa scheda video ha DLSS...", "DLSS richiede una scheda video NVIDIA RTX e il suo driver", "Profilo",
     "Disegnato a %dp, portato a %dp", "Nativo (DLAA)", "Qualit\xC3\xA0", "Bilanciato", "Prestazioni",
+    "Vibrazione del controller", "Quanto vibrano i controller: 100% \xC3\xA8 quella del gioco, 0 la spegne",
 };
 
 // Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
@@ -429,6 +432,7 @@ const Texts kPortuguese = {
     "Upscaling", "NVIDIA DLSS: o jogo desenhado menor e deixado nítido no tamanho da sua tela",
     "Verificando se esta placa de vídeo tem DLSS...", "O DLSS precisa de uma placa de vídeo NVIDIA RTX e do seu driver", "Perfil",
     "Desenhado em %dp, levado a %dp", "Nativo (DLAA)", "Qualidade", "Equilibrado", "Desempenho",
+    "Vibração do controle", "O quanto os controles vibram: 100% é a do próprio jogo, 0 desliga",
 };
 
 const Texts kSpanish = {
@@ -531,6 +535,7 @@ const Texts kSpanish = {
     "Escalado", "NVIDIA DLSS: el juego dibujado más pequeño y nítido al tamaño de tu pantalla",
     "Comprobando si esta tarjeta gráfica tiene DLSS...", "DLSS necesita una tarjeta gráfica NVIDIA RTX y su controlador", "Perfil",
     "Dibujado a %dp, llevado a %dp", "Nativo (DLAA)", "Calidad", "Equilibrado", "Rendimiento",
+    "Vibración del mando", "Cuánto vibran los mandos: 100% es la del propio juego, 0 la apaga",
 };
 
 // The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
@@ -2631,6 +2636,12 @@ void Launcher::page_settings() {
         row(t.background_pause, t.background_pause_sub);
         int pause = setting("pause_in_background") != 0 ? 1 : 0;
         if (segmented("##background_pause", toggle, 2, &pause)) set_setting("pause_in_background", static_cast<float>(pause));
+        row(t.rumble, t.rumble_sub);
+        float rumble = setting("rumble");
+        if (slider("##rumble", &rumble, 0, 100, "%.0f%%")) {
+            set_setting("rumble", std::round(rumble));
+            gamepad_set_rumble_scale(setting("rumble") / 100.0f);  // in the game, from its next request
+        }
     } else {
         row(t.volume, nullptr);
         float volume = setting("volume");

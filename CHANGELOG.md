@@ -2,6 +2,11 @@
 
 ## 0.4.1
 
+### New
+
+- **Controller rumble** in the settings (Game), also in the in-game menu: how strongly the controllers rumble, from 0
+  (off) to 100% of what the game asks, the default. It changes at the game's next rumble.
+
 ### Improved
 
 - **More settings on RecompLauncher's page**: 120 frames per second, 21:9, the field of view, the texture filter,
