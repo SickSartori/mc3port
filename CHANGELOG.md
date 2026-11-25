@@ -6,6 +6,9 @@
 
 - **Controller rumble** in the settings (Game), also in the in-game menu: how strongly the controllers rumble, from 0
   (off) to 100% of what the game asks, the default. It changes at the game's next rumble.
+- **Gamma and brightness** in the settings (Effects), also in the in-game menu, for a screen that shows the game too
+  dark or too light: they change the 3D scene only, at once, with the modern effects on or off; the HUD, the menus and
+  the films stay as they are. No style changes them.
 
 ### Improved
 

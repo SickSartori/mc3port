@@ -14,7 +14,8 @@ struct StyleValue {
 };
 
 // Enhanced is the defaults of settings.cpp (the test checks it). A style leaves alone what is a matter of the player
-// or of the PC, not of the look: language, volumes, window or full screen, speed unit, frame counter, keys.
+// or of the PC, not of the look: language, volumes, window or full screen, speed unit, frame counter, keys, rumble,
+// gamma and brightness.
 inline constexpr StyleValue kStyleValues[] = {
     {"frame_rate", 30, 60},
     {"widescreen", 0, 1},

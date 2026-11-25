@@ -244,6 +244,7 @@ The quickest choice is the **style**, above the tabs:
 | Internal resolution | Auto (as many lines as your screen; at most 1080 on integrated graphics), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p, 4K 2160p or 5K 2880p |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
 | Modern effects | glow, sharpening, colour, vignette and ambient occlusion, on or off (F10 while playing); under them every value by itself, speed blur and light streaks too |
+| Gamma and brightness | the 3D scene's, with the modern effects on or off (the HUD, menus and films stay as they are): gamma 0.8 to 1.4 (1, the default, is the game's), brightness 80 to 120% (more lifts the dark parts) |
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
 | HUD | the game's, or mc3port's: speedometer, rev counter, gear, nitrous, slipstream, special ability and damage drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |

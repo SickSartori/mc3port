@@ -119,6 +119,7 @@ struct Texts {
     const char *upscaling, *upscaling_sub, *upscaling_checking, *upscaling_missing, *profile, *profile_sub, *profile_dlaa,
         *profile_quality, *profile_balanced, *profile_performance;
     const char *rumble, *rumble_sub;
+    const char *gamma, *gamma_sub, *brightness, *brightness_sub;
 };
 
 const Texts kEnglish = {
@@ -221,6 +222,8 @@ const Texts kEnglish = {
     "DLSS needs an NVIDIA RTX graphics card and its driver", "Profile", "Drawn at %dp, brought to %dp", "Native (DLAA)", "Quality",
     "Balanced", "Performance",
     "Controller rumble", "How strongly the controllers rumble: 100% is the game's own, 0 turns it off",
+    "Gamma", "The 3D scene only, with the modern effects on or off: more is lighter", "Brightness",
+    "The 3D scene only: more lifts the dark parts, less darkens it",
 };
 
 const Texts kItalian = {
@@ -329,6 +332,8 @@ const Texts kItalian = {
     "Controllo se questa scheda video ha DLSS...", "DLSS richiede una scheda video NVIDIA RTX e il suo driver", "Profilo",
     "Disegnato a %dp, portato a %dp", "Nativo (DLAA)", "Qualit\xC3\xA0", "Bilanciato", "Prestazioni",
     "Vibrazione del controller", "Quanto vibrano i controller: 100% \xC3\xA8 quella del gioco, 0 la spegne",
+    "Gamma", "Solo la scena 3D, con gli effetti moderni accesi o spenti: di pi\xC3\xB9 \xC3\xA8 pi\xC3\xB9 chiaro", "Luminosit\xC3\xA0",
+    "Solo la scena 3D: di pi\xC3\xB9 schiarisce le parti scure, di meno scurisce",
 };
 
 // Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
@@ -433,6 +438,8 @@ const Texts kPortuguese = {
     "Verificando se esta placa de vídeo tem DLSS...", "O DLSS precisa de uma placa de vídeo NVIDIA RTX e do seu driver", "Perfil",
     "Desenhado em %dp, levado a %dp", "Nativo (DLAA)", "Qualidade", "Equilibrado", "Desempenho",
     "Vibração do controle", "O quanto os controles vibram: 100% é a do próprio jogo, 0 desliga",
+    "Gama", "Só a cena 3D, com os efeitos modernos ligados ou desligados: mais é mais claro", "Brilho",
+    "Só a cena 3D: mais clareia as partes escuras, menos escurece",
 };
 
 const Texts kSpanish = {
@@ -536,6 +543,8 @@ const Texts kSpanish = {
     "Comprobando si esta tarjeta gráfica tiene DLSS...", "DLSS necesita una tarjeta gráfica NVIDIA RTX y su controlador", "Perfil",
     "Dibujado a %dp, llevado a %dp", "Nativo (DLAA)", "Calidad", "Equilibrado", "Rendimiento",
     "Vibración del mando", "Cuánto vibran los mandos: 100% es la del propio juego, 0 la apaga",
+    "Gamma", "Solo la escena 3D, con los efectos modernos activados o no: más es más claro", "Brillo",
+    "Solo la escena 3D: más aclara las partes oscuras, menos oscurece",
 };
 
 // The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
@@ -2569,6 +2578,13 @@ void Launcher::page_settings() {
         int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
         if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));
     } else if (settings_tab_ == 2) {
+        // The player's screen, apart from the effects: no style sets them (launcher_style.h).
+        row(t.gamma, t.gamma_sub);
+        float gamma = setting("gamma");
+        if (slider("##gamma", &gamma, 0.8f, 1.4f, "%.2f")) set_setting("gamma", std::round(gamma * 100) / 100);
+        row(t.brightness, t.brightness_sub);
+        float brightness = setting("brightness");
+        if (slider("##brightness", &brightness, 80, 120, "%.0f%%")) set_setting("brightness", std::round(brightness));
         row(t.effects, t.effects_sub);
         int modern = setting("effects") != 0 ? 1 : 0;
         if (segmented("##effects", toggle, 2, &modern)) {
