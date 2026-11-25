@@ -46,6 +46,11 @@ ChangesAssociations=yes
 RestartApplications=no
 OutputDir={#OutputDir}
 OutputBaseFilename=mc3port-{#AppVersion}-windows-setup
+; With /DSign (tools/package.ps1 -Sign): the installer and the uninstaller inside it are code signed.
+#ifdef Sign
+SignTool=sign
+SignedUninstaller=yes
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 
