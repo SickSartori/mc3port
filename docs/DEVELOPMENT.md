@@ -49,7 +49,18 @@ artifact: una build rotta si vede subito.
 
 Pubblicare una versione: su `develop` aggiornare `project(... VERSION x.y.z)` in `CMakeLists.txt` e aggiungere la
 sezione `## x.y.z` in `CHANGELOG.md`; unire `develop` in `main` e inviare il tag `vx.y.z`. Il workflow compila e
-pubblica la release con le note prese dal CHANGELOG (`tools/release_notes.ps1`).
+crea la release in bozza con le note prese dal CHANGELOG (`tools/release_notes.ps1`).
+
+Firma: il workflow non può firmare (la chiave del certificato Certum si raggiunge solo da SimplySign Desktop, con
+un codice usa e getta). Con la sessione di SimplySign aperta, scaricare dalla bozza lo zip portable e firmare gli
+stessi file compilati dal workflow, poi sostituire gli asset della bozza:
+
+```
+pwsh tools/package.ps1 -From <zip portable della bozza> -Sign
+gh release upload vx.y.z (Get-ChildItem dist -File).FullName --clobber
+```
+
+Poi VirusTotal sullo zip firmato e pubblicazione della bozza a mano.
 
 ## Struttura del repository
 

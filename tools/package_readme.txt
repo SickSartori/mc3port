@@ -42,8 +42,10 @@ FIRST START
 1. Portable zip: extract it where you like; it contains this "mc3port"
    folder. Installer: run it; it installs for your user only, without
    administrator rights.
-2. Start mc3.exe. The files are not code signed, so Windows SmartScreen
-   may ask once: "More info", then "Run anyway". To check a download,
+2. Start mc3.exe. The files are code signed (publisher: Open Source
+   Developer Gabriel Sartori); the certificate is new, so Windows
+   SmartScreen may still ask once: "More info", then "Run anyway". To
+   check a download,
    compare its SHA-256 with the SHA256SUMS file of the release.
 3. The launcher asks for your disc image: choose the .iso (or .cci) file. mc3port
    checks it and remembers where it is; if you move the file later,

@@ -126,9 +126,9 @@ be switched off, see [Privacy](#privacy)). Without an audio device the game simp
 | **Linux (Wine)** | Download `mc3port-<version>-linux.tar.gz`: see [Linux](#linux-experimental). | Run `install.sh` again |
 
 Every package contains `README.txt`, a short guide, and `CHANGELOG.md`. To check a download, compare its SHA-256 with
-the release's `SHA256SUMS`. The files are not code signed yet (see [Code signing policy](#code-signing-policy)), so
-browsers may warn about the download ("Keep") and Windows SmartScreen may ask once whether you trust them ("More
-info", then "Run anyway").
+the release's `SHA256SUMS`. From 0.4.0 the files are code signed (see [Code signing policy](#code-signing-policy));
+the certificate is new, so browsers may still warn about the download ("Keep") and Windows SmartScreen may still ask
+once whether you trust them ("More info", then "Run anyway").
 
 ### First start
 
@@ -310,7 +310,8 @@ No. mc3port works only with the Xbox Remix, European or USA release.
 
 **Is it safe? My antivirus flagged it.**
 The files are built by GitHub from this repository, and each release lists their SHA-256 in `SHA256SUMS`. Some
-antivirus engines flag new, unsigned programs that load code at runtime; Microsoft reviewed `mc3runtime.dll` 0.3.4
+antivirus engines flag new programs that load code at runtime, and from 0.4.0 the files are
+[code signed](#code-signing-policy); Microsoft reviewed `mc3runtime.dll` 0.3.4
 and confirmed it is not malware. Check your download against `SHA256SUMS`, and report a flag in
 [#9](https://github.com/SickSartori/mc3port/issues/9).
 
@@ -379,9 +380,13 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 
 ## Code signing policy
 
-The releases are not code signed yet. Every Windows file is built from this repository and
+From 0.4.0 the Windows files (`mc3.exe`, `mc3runtime.dll`, the installer and its uninstaller) are code signed with a
+Certum Open Source Code Signing certificate issued to the author: Windows shows the publisher
+**Open Source Developer Gabriel Sartori**. Every file is built from this repository and
 [xport](https://github.com/SickSartori/xport) by GitHub Actions ([release workflow](.github/workflows/release.yml));
-each release lists their SHA-256 in `SHA256SUMS`.
+the author then signs those same files on their own PC (`tools/package.ps1 -From <the workflow's zip> -Sign`: the
+key cannot leave Certum's service, so the workflow cannot sign) and uploads them to the release, which lists their
+SHA-256 in `SHA256SUMS`. Earlier releases are not signed.
 
 ## Privacy
 

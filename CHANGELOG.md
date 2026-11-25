@@ -83,6 +83,9 @@
   process suspended and then resumes it, which is how malware hides its code in another process: the game process
   starts as usual and joins `mc3.exe`'s job at once. `mc3.exe` and `mc3runtime.dll` also carry the checksum in
   their header, which was left empty.
+- **Code signed files**: `mc3.exe`, `mc3runtime.dll`, the installer and its uninstaller are signed (Windows shows the
+  publisher "Open Source Developer Gabriel Sartori"), which Windows and antivirus programs trust more than
+  unsigned files. The certificate is new, so SmartScreen may still ask once until it has seen enough downloads.
 
 ### Changed
 
