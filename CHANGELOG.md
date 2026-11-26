@@ -15,7 +15,7 @@
   dark or too light: they change the 3D scene only, at once, with the modern effects on or off; the HUD, the menus and
   the films stay as they are. No style changes them.
 
-- **A third HUD, the game's own redrawn**: in the settings (Game) the HUD is now the game's, the game's redrawn or
+- **A third HUD, HD: the game's own redrawn**: in the settings (Game) the HUD is now the game's, HD or
   mc3port's. The redrawn one is the game's HUD with its pictures drawn again sharp, from the folder `hud_redrawn` in
   the data folder; mc3port ships none of them.
   Its side arcs (the special ability's over the radar, the slipstream's and the nitrous's beside the dials) are

@@ -163,10 +163,10 @@
     {
       "id": "hud",
       "label": "HUD",
-      "help": "The game's own, or mc3port's with the speedometer, rev counter and gear redrawn sharp at any resolution.",
+      "help": "The game's own; HD, the game's own with its pictures redrawn sharp (from the folder hud_redrawn); or mc3port's, a new HUD sharp at any resolution.",
       "choices": [
         { "label": "The game's", "set": { "hud_style": "0" } },
-        { "label": "Original, redrawn", "set": { "hud_style": "2" } },
+        { "label": "HD", "set": { "hud_style": "2" } },
         { "label": "mc3port's", "set": { "hud_style": "1" } }
       ],
       "defaults": { "hud_style": "1" }
