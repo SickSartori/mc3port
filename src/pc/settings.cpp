@@ -24,7 +24,7 @@ struct Setting {
 };
 
 const Setting kSettings[] = {
-    {"game_language", 0, "Game language: 0 = like Windows, 1 = English, 3 = German, 4 = French, 5 = Spanish, 6 = Italian."},
+    {"game_language", 0, "Game language: 0 = like Windows, 1 = English, 3 = German, 4 = French, 5 = Spanish, 6 = Italian, 7 = Português (Brasil) (João13 e cia's translation, over English)."},
     {"frame_rate", 60, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work), 120 for a fast processor and a 120 Hz screen."},
     {"vsync", 0, "Wait for the screen before showing a frame: 1 = the picture never tears (on a slow PC the game may drop to 30 fps), 0 = more frames per second."},
     {"widescreen", 1, "Picture shape: 1 = 16:9, the game's own widescreen mode (wider view, no black bars); 0 = 4:3 like a classic TV; 2 = your screen's shape when it is wider than 16:9 (21:9, 32:9: the view widens to the sides, films and loading screens stay 16:9)."},
@@ -32,9 +32,9 @@ const Setting kSettings[] = {
     {"hud_aspect", 1, "In 16:9, keep the HUD's round shapes round (radar, dials): 1 = yes, 0 = stretched as on the Xbox."},
     {"sharp_2d", 1, "The HUD's pictures (radar map, icons, letters) and the cars' stickers enlarged with their edges kept: 1 = sharper at high resolutions, 0 = as the game's."},
     {"sharp_textures", 0, "The textures of the 3D scene (roads, buildings, cars) enlarged two times with their edges kept, as sharp_2d does for the HUD: 1 = sharper from close, 0 = as the game's. Needs more graphics memory; they sharpen a few seconds after a place loads."},
-    {"hud_style", 1, "HUD: 0 = the game's, 1 = mc3port's (speedometer, rev counter and gear redrawn, sharp at any resolution)."},
+    {"hud_style", 1, "HUD: 0 = the game's, 1 = mc3port's (a new HUD, sharp at any resolution), 2 = the game's with its pictures redrawn sharp (the folder hud_redrawn)."},
     {"hud_units", 0, "Speed in mc3port's HUD: 0 = mph, 1 = km/h."},
-    {"fullscreen", 0, "Start in full screen: 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},
+    {"fullscreen", 0, "Start in full screen, without a border (Alt+Tab is instant): 1 = yes, 0 = in a window (Alt+Enter or F11 switches while playing)."},
     {"volume", 100, "Overall volume, 0 to 100."},
     {"launcher_music", 70, "Volume of the launcher's background music, 0 to 100 (0 = off)."},
     {"launcher_mute", 0, "1 = the launcher's background music is off (the speaker button in its bottom bar)."},
@@ -63,6 +63,7 @@ const Setting kSettings[] = {
     {"loading_music_fade_seconds", 0.75f, "Fade out PS2 loading music over this many seconds near the end of playback."},
     {"loading_screen_seconds", 0, "The game's loading screens stay at least this many seconds, any number; never less than 2 (0 = the shortest)."},
     {"skip_intro", 1, "Skip the films at start (Rockstar logos and the game's intro): 1 = yes, 0 = show them."},
+    {"rumble", 100, "How strongly the controllers rumble, in percent of what the game asks: 100 = like the Xbox, 0 = never."},
     {"pause_in_background", 1, "Pause the game (in-game menu) when its window goes to the background: 1 = yes, 0 = no."},
     {"check_updates", 1, "Look for a newer mc3port release on GitHub when the launcher opens: 1 = yes, 0 = no."},
     {"render_thread", 1, "Drawing on a thread of its own, beside the one that reads the game's drawing commands: 1 = yes (faster, most of all in split screen; needs four processor threads or more), 0 = as before, if the picture or the game misbehaves."},
@@ -71,6 +72,8 @@ const Setting kSettings[] = {
     {"upscaler", 0, "Upscaling, experimental (only with upscale64.exe beside the game, not in the releases yet): 0 = off (the internal resolution above), 2 = NVIDIA DLSS on an RTX graphics card: the game is drawn at the lines its profile sets (upscaler_quality) and DLSS brings it to the screen's."},
     {"upscaler_quality", 1, "Upscaling profile: 0 = native (DLAA: the screen's lines, the best edges), 1 = Quality, 2 = Balanced, 3 = Performance (the fewest lines, the most frames)."},
     {"anisotropy", 16, "Anisotropic texture filtering: 1 = off, up to 16."},
+    {"gamma", 1, "Gamma of the 3D scene (not the HUD, the menus or the films), with the modern effects on or off: 1 = as the game's, more = lighter middle tones (0.8 to 1.4 in the launcher)."},
+    {"brightness", 100, "Brightness of the 3D scene, in percent, with the modern effects on or off: 100 = as the game's, more lifts the dark parts, less darkens it (80 to 120 in the launcher)."},
     {"effects", 1, "Modern effects: 1 = on, 0 = original picture (F10 toggles them while playing)."},
     {"sharpen", 0.5f, "Adaptive sharpening: 0 = off, 1 = strongest."},
     {"bloom", 0.35f, "Glow around lights (headlights, signs, street lamps): 0 = off, 1 = strong."},

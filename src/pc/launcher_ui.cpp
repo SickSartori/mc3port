@@ -89,7 +89,7 @@ struct Texts {
     const char *tab_keys, *controls_lead, *press_key, *reset_keys, *system_keys, *full_screen_key, *effects_key, *launcher_keys, *pads_note;
     const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *report, *report_sub, *update_to,
         *legal,
-        *credits;
+        *credits, *translation_credit, *credits_tab;
     const char *update_now, *update_install_sub;
     const char *update_title, *update_lead, *update_big, *update_install_note, *update_page, *update_portable_note,
         *update_later;
@@ -100,7 +100,7 @@ struct Texts {
     const char *pad_keys, *pad_menu_keys, *motion_blur, *pages_hint, *move_hint, *dpad, *enter_hint;
     const char *light_streaks;
     const char *skip_intro, *skip_intro_sub, *restart_needed, *restart_lead, *restart_now;
-    const char *hud, *hud_sub, *hud_game, *speed_unit, *sharp_2d, *sharp_2d_sub, *sharp_textures, *sharp_textures_sub;
+    const char *hud, *hud_sub, *hud_game, *hud_redrawn, *speed_unit, *sharp_2d, *sharp_2d_sub, *sharp_textures, *sharp_textures_sub;
     const char *cheats, *cheats_lead, *cheat_money, *cheat_money_sub, *add_money, *game_codes, *game_codes_lead;
     const char *loading_screens, *loading_screens_sub;
     const char *crash_heading, *crash_sub, *crash_button, *crash_link;
@@ -118,6 +118,8 @@ struct Texts {
     const char *custom_radio, *ps2_loading_music, *ps2_settings, *ps2_track_preferences, *ps2_not_installed, *ps2_preview_failed, *ps2_loading_label, *ps2_loading_sub, *ps2_no_tracks, *ps2_tracks_found, *ps2_volume, *ps2_volume_sub, *ps2_stop_test, *ps2_test, *ps2_test_failed, *ps2_fade, *ps2_fade_sub, *ps2_playback_order, *ps2_playback_sub, *ps2_in_order, *ps2_random, *ps2_weighted, *ps2_import_folder, *ps2_play, *ps2_stop, *ps2_folder_missing, *ps2_create_folder_failed, *ps2_import_result;
     const char *upscaling, *upscaling_sub, *upscaling_checking, *upscaling_missing, *profile, *profile_sub, *profile_dlaa,
         *profile_quality, *profile_balanced, *profile_performance;
+    const char *rumble, *rumble_sub;
+    const char *gamma, *gamma_sub, *brightness, *brightness_sub;
 };
 
 const Texts kEnglish = {
@@ -129,7 +131,7 @@ const Texts kEnglish = {
     "Game language", "The game's text and speech", "Like Windows", "Frames per second", "60 is smoother; 30 like the Xbox; 120 for a fast processor",
     "Game volume", "Launcher music", "This screen's background music; 0 turns it off",
     "Aspect ratio", "16:9 is the game's own widescreen mode; 21:9 fills a wider screen",
-    "Field of view", "How wide the camera sees: 100% is the game's own", "Window mode", "Alt+Enter or F11 while playing",
+    "Field of view", "How wide the camera sees: 100% is the game's own", "Window mode", "Full screen has no border, so Alt+Tab is instant; Alt+Enter or F11 while playing",
     "Window", "Full screen",
     "Style", "As on the Xbox: 30 fps, 4:3, 480p, no modern effects", "60 fps, 16:9, your screen's resolution, modern effects", "Your own choices",
     "Original", "Enhanced", "Custom",
@@ -147,6 +149,8 @@ const Texts kEnglish = {
     "The form on GitHub, already filled in, and the log to attach", "Update to %s",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "Licences, credits and how to contribute: on GitHub",
+    "Translated by Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), added at the suggestion of NAKADANI's video",
+    "Credits",
     "Update", "Your browser downloads the installer; open it to update",
     "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE",
     "Your browser downloads the installer: open it and it replaces this version. Your saves and settings stay.",
@@ -163,7 +167,7 @@ const Texts kEnglish = {
     "Light streaks",
     "Skip the opening films", "The Rockstar logos and the intro, straight to the title screen",
     "Restart needed", "For the changes that apply at start; unsaved progress is lost", "Restart now",
-    "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "Speed unit",
+    "HUD", "mc3port's: the dials drawn again, sharp at any resolution", "The game's", "HD", "Speed unit",
     "Sharp pictures", "The radar's map, icons, letters and car stickers enlarged with clean edges",
     "Sharp textures", "Roads, buildings and cars from close: enlarged with clean edges (more graphics memory)",
     "CHEATS", "mc3port's own, with a career loaded, from the menu during the game; and the game's codes, to look up.",
@@ -219,6 +223,9 @@ const Texts kEnglish = {
     "Upscaling", "NVIDIA DLSS: the game drawn smaller and made sharp at your screen's size", "Checking whether this graphics card has DLSS...",
     "DLSS needs an NVIDIA RTX graphics card and its driver", "Profile", "Drawn at %dp, brought to %dp", "Native (DLAA)", "Quality",
     "Balanced", "Performance",
+    "Controller rumble", "How strongly the controllers rumble: 100% is the game's own, 0 turns it off",
+    "Gamma", "The 3D scene only, with the modern effects on or off: more is lighter", "Brightness",
+    "The 3D scene only: more lifts the dark parts, less darkens it",
 };
 
 const Texts kItalian = {
@@ -232,7 +239,7 @@ const Texts kItalian = {
     "La musica di sottofondo di questa schermata; 0 la spegne",
     "Formato", "16:9 \xC3\xA8 la modalit\xC3\xA0 panoramica del gioco; 21:9 riempie uno schermo pi\xC3\xB9 largo",
     "Campo visivo", "Quanto vede la telecamera: 100% \xC3\xA8 quello del gioco", "Modalit\xC3\xA0 finestra",
-    "Alt+Invio o F11 durante il gioco", "Finestra", "Schermo intero",
+    "Lo schermo intero \xC3\xA8 senza bordi, Alt+Tab \xC3\xA8 immediato; Alt+Invio o F11 durante il gioco", "Finestra", "Schermo intero",
     "Stile", "Come sull'Xbox: 30 fps, 4:3, 480p, senza effetti moderni", "60 fps, 16:9, risoluzione dello schermo, effetti moderni", "Le tue scelte",
     "Originale", "Migliorata", "Personalizzata", "Risoluzione interna", "Bordi pi\xC3\xB9 lisci, pi\xC3\xB9 lavoro per la scheda video",
     "Filtro delle texture", "Vertici sulla scheda video", "Pi\xC3\xB9 veloce; da spegnere solo in caso di problemi",
@@ -250,6 +257,8 @@ const Texts kItalian = {
     "Il modulo su GitHub, gi\xC3\xA0 compilato, e il log da allegare", "Aggiorna alla %s",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenze, crediti e come contribuire: su GitHub",
+    "Tradotto da Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), aggiunto su idea del video di NAKADANI",
+    "Crediti",
     "Aggiorna", "Il browser scarica l'installer: aprilo per aggiornare",
     "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA",
     "Il browser scarica l'installer: aprilo e sostituisce questa versione. Salvataggi e impostazioni restano.",
@@ -269,7 +278,7 @@ const Texts kItalian = {
     "Scie delle luci",
     "Salta i video iniziali", "I loghi Rockstar e l'introduzione, dritto alla schermata del titolo",
     "Riavvio necessario", "Per le modifiche che valgono all'avvio; i progressi non salvati si perdono", "Riavvia ora",
-    "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "Unit\xC3\xA0 di velocit\xC3\xA0",
+    "HUD", "Quello di mc3port: quadranti ridisegnati, nitidi a ogni risoluzione", "Del gioco", "HD", "Unit\xC3\xA0 di velocit\xC3\xA0",
     "Immagini nitide", "Mappa del radar, icone, lettere e adesivi delle auto ingranditi con bordi puliti",
     "Texture nitide", "Strade, edifici e auto da vicino: ingranditi con bordi puliti (pi\xC3\xB9 memoria grafica)",
     "CHEAT", "Quelli di mc3port, con una carriera caricata, dal menu durante il gioco; e i codici del gioco, da consultare.",
@@ -326,6 +335,9 @@ const Texts kItalian = {
     "Upscaling", "NVIDIA DLSS: il gioco disegnato pi\xC3\xB9 piccolo e reso nitido alla grandezza dello schermo",
     "Controllo se questa scheda video ha DLSS...", "DLSS richiede una scheda video NVIDIA RTX e il suo driver", "Profilo",
     "Disegnato a %dp, portato a %dp", "Nativo (DLAA)", "Qualit\xC3\xA0", "Bilanciato", "Prestazioni",
+    "Vibrazione del controller", "Quanto vibrano i controller: 100% \xC3\xA8 quella del gioco, 0 la spegne",
+    "Gamma", "Solo la scena 3D, con gli effetti moderni accesi o spenti: di pi\xC3\xB9 \xC3\xA8 pi\xC3\xB9 chiaro", "Luminosit\xC3\xA0",
+    "Solo la scena 3D: di pi\xC3\xB9 schiarisce le parti scure, di meno scurisce",
 };
 
 // Portuguese (Brazil). The game itself has no Portuguese: its own menus stay in English, and are named so here.
@@ -338,7 +350,7 @@ const Texts kPortuguese = {
     "Idioma do jogo", "Textos e vozes do jogo (não há português)", "Como o Windows", "Quadros por segundo", "60 é mais fluido; 30 como no Xbox; 120 para um processador rápido",
     "Volume do jogo", "Música do launcher", "A música de fundo desta tela; 0 desliga",
     "Proporção", "16:9 é o modo widescreen do próprio jogo; 21:9 preenche uma tela mais larga",
-    "Campo de visão", "O quanto a câmera vê: 100% é o do próprio jogo", "Modo de janela", "Alt+Enter ou F11 durante o jogo",
+    "Campo de visão", "O quanto a câmera vê: 100% é o do próprio jogo", "Modo de janela", "A tela cheia é sem bordas, o Alt+Tab é imediato; Alt+Enter ou F11 durante o jogo",
     "Janela", "Tela cheia",
     "Estilo", "Como no Xbox: 30 fps, 4:3, 480p, sem efeitos modernos", "60 fps, 16:9, a resolução da sua tela, efeitos modernos", "As suas escolhas",
     "Original", "Melhorado", "Personalizado",
@@ -356,6 +368,8 @@ const Texts kPortuguese = {
     "O formulário no GitHub, já preenchido, e o log para anexar", "Atualizar para %s",
     "Midnight Club é uma marca da Take-Two Interactive / Rockstar Games. Este projeto não tem ligação com elas.",
     "Licenças, créditos e como contribuir: no GitHub",
+    "Tradução de João13 e cia (CC BY-NC 4.0), adicionada por ideia do vídeo de NAKADANI",
+    "Créditos",
     "Atualizar", "O navegador baixa o instalador: abra-o para atualizar",
     "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR",
     "O navegador baixa o instalador: abra-o e ele substitui esta versão. Seus saves e configurações ficam.",
@@ -372,7 +386,7 @@ const Texts kPortuguese = {
     "Rastros das luzes",
     "Pular os vídeos iniciais", "Os logos da Rockstar e a introdução, direto para a tela de título",
     "Reinício necessário", "Para as mudanças que valem no início; o progresso não salvo é perdido", "Reiniciar agora",
-    "HUD", "O do mc3port: mostradores redesenhados, nítidos em qualquer resolução", "O do jogo", "Unidade de velocidade",
+    "HUD", "O do mc3port: mostradores redesenhados, nítidos em qualquer resolução", "O do jogo", "HD", "Unidade de velocidade",
     "Imagens nítidas", "Mapa do radar, ícones, letras e adesivos dos carros ampliados com bordas limpas",
     "Texturas nítidas", "Ruas, prédios e carros de perto: ampliados com bordas limpas (mais memória gráfica)",
     "TRAPAÇAS", "As do mc3port, com uma carreira carregada, pelo menu durante o jogo; e os códigos do jogo, para consultar.",
@@ -429,6 +443,9 @@ const Texts kPortuguese = {
     "Upscaling", "NVIDIA DLSS: o jogo desenhado menor e deixado nítido no tamanho da sua tela",
     "Verificando se esta placa de vídeo tem DLSS...", "O DLSS precisa de uma placa de vídeo NVIDIA RTX e do seu driver", "Perfil",
     "Desenhado em %dp, levado a %dp", "Nativo (DLAA)", "Qualidade", "Equilibrado", "Desempenho",
+    "Vibração do controle", "O quanto os controles vibram: 100% é a do próprio jogo, 0 desliga",
+    "Gama", "Só a cena 3D, com os efeitos modernos ligados ou desligados: mais é mais claro", "Brilho",
+    "Só a cena 3D: mais clareia as partes escuras, menos escurece",
 };
 
 const Texts kSpanish = {
@@ -440,7 +457,7 @@ const Texts kSpanish = {
     "Idioma del juego", "Textos y voces del juego", "Como Windows", "Fotogramas por segundo", "60 es más fluido; 30 como en Xbox; 120 para un procesador rápido",
     "Volumen del juego", "Música del launcher", "La música de fondo de esta pantalla; 0 la apaga",
     "Relación de aspecto", "16:9 es el modo panorámico del propio juego; 21:9 llena una pantalla más ancha",
-    "Campo de visión", "Cuánto ve la cámara: 100% es el del propio juego", "Modo de ventana", "Alt+Intro o F11 mientras juegas",
+    "Campo de visión", "Cuánto ve la cámara: 100% es el del propio juego", "Modo de ventana", "La pantalla completa es sin bordes, Alt+Tab es inmediato; Alt+Intro o F11 mientras juegas",
     "Ventana", "Pantalla completa",
     "Estilo", "Como en Xbox: 30 fps, 4:3, 480p, sin efectos modernos", "60 fps, 16:9, la resolución de tu pantalla, efectos modernos", "Tus elecciones",
     "Original", "Mejorado", "Personalizado",
@@ -458,6 +475,8 @@ const Texts kSpanish = {
     "El formulario en GitHub, ya rellenado, y el registro para adjuntar", "Actualizar a %s",
     "Midnight Club es una marca de Take-Two Interactive / Rockstar Games. Este proyecto no está afiliado a ellas.",
     "Licencias, créditos y cómo contribuir: en GitHub",
+    "Traducido por João13 e cia (CC BY-NC 4.0), añadido por idea del vídeo de NAKADANI",
+    "Créditos",
     "Actualizar", "El navegador descarga el instalador: ábrelo para actualizar",
     "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR",
     "El navegador descarga el instalador: ábrelo y sustituye esta versión. Tus partidas y ajustes se quedan.",
@@ -474,7 +493,7 @@ const Texts kSpanish = {
     "Estelas de las luces",
     "Saltar los vídeos iniciales", "Los logotipos de Rockstar y la introducción, directo a la pantalla de título",
     "Hace falta reiniciar", "Para los cambios que se aplican al empezar; se pierde el progreso no guardado", "Reiniciar ahora",
-    "HUD", "El de mc3port: indicadores redibujados, nítidos a cualquier resolución", "El del juego", "Unidad de velocidad",
+    "HUD", "El de mc3port: indicadores redibujados, nítidos a cualquier resolución", "El del juego", "HD", "Unidad de velocidad",
     "Imágenes nítidas", "El mapa del radar, iconos, letras y pegatinas de los coches ampliados con bordes limpios",
     "Texturas nítidas", "Calles, edificios y coches de cerca: ampliados con bordes limpios (más memoria gráfica)",
     "TRUCOS", "Los de mc3port, con una carrera cargada, desde el menú durante el juego; y los códigos del juego, para consultar.",
@@ -531,6 +550,9 @@ const Texts kSpanish = {
     "Escalado", "NVIDIA DLSS: el juego dibujado más pequeño y nítido al tamaño de tu pantalla",
     "Comprobando si esta tarjeta gráfica tiene DLSS...", "DLSS necesita una tarjeta gráfica NVIDIA RTX y su controlador", "Perfil",
     "Dibujado a %dp, llevado a %dp", "Nativo (DLAA)", "Calidad", "Equilibrado", "Rendimiento",
+    "Vibración del mando", "Cuánto vibran los mandos: 100% es la del propio juego, 0 la apaga",
+    "Gamma", "Solo la escena 3D, con los efectos modernos activados o no: más es más claro", "Brillo",
+    "Solo la escena 3D: más aclara las partes oscuras, menos oscurece",
 };
 
 // The launcher's language: Windows', or MC3_LAUNCHER_LANGUAGE=en|it|pt|es for test screenshots.
@@ -1381,7 +1403,7 @@ private:
 
     Page page_ = Page::kPlay;
     float page_since_ = 0;
-    int settings_tab_ = 0, controls_tab_ = 0, cheats_tab_ = 0, entered_page_frame_ = -1;
+    int settings_tab_ = 0, controls_tab_ = 0, cheats_tab_ = 0, about_tab_ = 0, entered_page_frame_ = -1;
     float tab_since_ = 0;                 // the settings tab's content fades in from here
     int hover_item_ = -1;                 // side menu: the item the mouse rests on, selected after a short dwell
     float hover_since_ = 0;
@@ -1852,7 +1874,7 @@ bool Launcher::status(bool good, const char* heading, const char* detail, const 
         *second_pressed = true;
     }
     const bool pressed = button_label && small_button(button_label, ImVec2(button_x, a.y + px(14)), id);
-    if (button_label) focus_frame(ImVec2(a.x - px(24), a.y), ImVec2(b.x + px(14), b.y));
+    if (button_label) focus_frame(a, b);  // on the row's own box: wider, it stood out of it on both sides
     if (keep_focus_request) focus_panel_ = true;
     cursor_ += height + px(10);
     return pressed;
@@ -2497,7 +2519,7 @@ void Launcher::page_settings() {
         if (slider("##field_of_view", &view, 75, 130, "%.0f%%")) set_setting("field_of_view", std::round(view));
         row(t.window_mode, t.window_mode_sub);
         const char* modes[] = {t.windowed, t.fullscreen};
-        int mode = setting("fullscreen") != 0 ? 1 : 0;
+        int mode = nv2a_full_screen() ? 1 : 0;  // the window's own state: Alt+Enter and F11 change it too
         if (segmented("##mode", modes, 2, &mode)) {
             set_setting("fullscreen", static_cast<float>(mode));
             nv2a_set_full_screen(mode != 0);
@@ -2564,6 +2586,13 @@ void Launcher::page_settings() {
         int gpu = setting("gpu_vertices") != 0 ? 1 : 0;
         if (segmented("##gpu", toggle, 2, &gpu)) set_setting("gpu_vertices", static_cast<float>(gpu));
     } else if (settings_tab_ == 2) {
+        // The player's screen, apart from the effects: no style sets them (launcher_style.h).
+        row(t.gamma, t.gamma_sub);
+        float gamma = setting("gamma");
+        if (slider("##gamma", &gamma, 0.8f, 1.4f, "%.2f")) set_setting("gamma", std::round(gamma * 100) / 100);
+        row(t.brightness, t.brightness_sub);
+        float brightness = setting("brightness");
+        if (slider("##brightness", &brightness, 80, 120, "%.0f%%")) set_setting("brightness", std::round(brightness));
         row(t.effects, t.effects_sub);
         int modern = setting("effects") != 0 ? 1 : 0;
         if (segmented("##effects", toggle, 2, &modern)) {
@@ -2598,18 +2627,22 @@ void Launcher::page_settings() {
         cursor_ += px(62);
     } else if (settings_tab_ == 3) {
         row(t.game_language, t.game_language_sub, true);
-        static const int kLanguages[] = {0, 1, 4, 3, 5, 6};
-        const char* names[] = {t.like_windows, "English", "Fran\xC3\xA7" "ais", "Deutsch", "Espa\xC3\xB1ol", "Italiano"};
+        // 7: Português (Brasil), a translation over the game's English (translation.cpp).
+        static const int kLanguages[] = {0, 1, 4, 3, 5, 6, 7};
+        const char* names[] = {t.like_windows, "English", "Fran\xC3\xA7" "ais", "Deutsch", "Espa\xC3\xB1ol", "Italiano",
+                               "Portugu\xC3\xAAs (Brasil)"};
         int index = 0;
-        for (int i = 0; i < 6; ++i) {
+        for (int i = 0; i < 7; ++i) {
             if (static_cast<int>(setting("game_language")) == kLanguages[i]) index = i;
         }
-        if (combo("##language", names, 6, &index)) set_setting("game_language", static_cast<float>(kLanguages[index]));
+        if (combo("##language", names, 7, &index)) set_setting("game_language", static_cast<float>(kLanguages[index]));
         row(t.hud, t.hud_sub, true);
-        const char* huds[] = {t.hud_game, "mc3port"};
-        int hud = setting("hud_style") != 0 ? 1 : 0;
-        if (segmented("##hud", huds, 2, &hud)) set_setting("hud_style", static_cast<float>(hud));
-        if (hud) {
+        // Shown in this order; the setting: 0 the game's, 2 the game's with its pictures redrawn, 1 mc3port's.
+        const char* huds[] = {t.hud_game, t.hud_redrawn, "mc3port"};
+        static const int kHudStyles[] = {0, 2, 1};
+        int hud = setting("hud_style") == 1 ? 2 : setting("hud_style") == 2 ? 1 : 0;
+        if (segmented("##hud", huds, 3, &hud)) set_setting("hud_style", static_cast<float>(kHudStyles[hud]));
+        if (hud == 2) {
             row(t.speed_unit, nullptr);
             const char* units[] = {"mph", "km/h"};
             int unit = setting("hud_units") != 0 ? 1 : 0;
@@ -2631,6 +2664,12 @@ void Launcher::page_settings() {
         row(t.background_pause, t.background_pause_sub);
         int pause = setting("pause_in_background") != 0 ? 1 : 0;
         if (segmented("##background_pause", toggle, 2, &pause)) set_setting("pause_in_background", static_cast<float>(pause));
+        row(t.rumble, t.rumble_sub);
+        float rumble = setting("rumble");
+        if (slider("##rumble", &rumble, 0, 100, "%.0f%%")) {
+            set_setting("rumble", std::round(rumble));
+            gamepad_set_rumble_scale(setting("rumble") / 100.0f);  // in the game, from its next request
+        }
     } else {
         row(t.volume, nullptr);
         float volume = setting("volume");
@@ -2953,12 +2992,30 @@ void Launcher::page_about() {
     const Texts& t = T();
     title(t.about);
     lead(t.about_lead);
+    // Two tabs: mc3port (its author's GitHub, the tools) and the credits of what others made.
+    if (!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+        key_pressed({ImGuiKey_GamepadL1, ImGuiKey_GamepadR1, ImGuiKey_Q, ImGuiKey_E, ImGuiKey_PageUp, ImGuiKey_PageDown})) {
+        about_tab_ = 1 - about_tab_;
+        if (!menu_has_focus_) focus_panel_ = true;
+    }
+    const char* tab_labels[] = {"mc3port", t.credits_tab};
+    tabs(tab_labels, 2, &about_tab_);
+    const auto open_url = [](const char* url) { ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL); };
+    if (about_tab_ == 1) {
+        if (status(true, "Portugu\xC3\xAAs (Brasil)", t.translation_credit, "joao13traducoes.com", "##translation")) {
+            open_url("https://joao13traducoes.com");
+        }
+        if (status(true, "NAKADANI", "YouTube", "YouTube", "##nakadani")) open_url("https://youtu.be/i5IWJ2krkeo");
+        if (status(true, "Dear ImGui", "Omar Cornut \xC2\xB7 MIT", "GitHub", "##imgui")) open_url("https://github.com/ocornut/imgui");
+        if (status(true, "SDL", "Sam Lantinga \xC2\xB7 zlib", "GitHub", "##sdl")) open_url("https://github.com/libsdl-org/SDL");
+        if (status(true, "Barlow", "Jeremy Tribby \xC2\xB7 SIL Open Font License", "GitHub", "##barlow")) open_url("https://github.com/jpt/barlow");
+        status(true, "ElevenLabs Music", "CC BY 4.0", nullptr, nullptr);  // the launcher's music
+        return;
+    }
     update_row(true);
     char heading[64];
     std::snprintf(heading, sizeof(heading), "mc3port %s", MC3PORT_VERSION);
-    if (status(true, heading, t.credits, "GitHub", "##github")) {
-        ShellExecuteA(nullptr, "open", (std::string("https://github.com/") + kRepository).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    }
+    if (status(true, heading, t.credits, "GitHub", "##github")) open_url((std::string("https://github.com/") + kRepository).c_str());
     if (status(true, t.saves, t.saves_sub, t.open, "##saves")) show_saves();
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
     if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
@@ -3117,7 +3174,7 @@ void Launcher::panel(float now, float since) {
     // Another page, tab or guide step starts at its top.
     const int tab = wizard_ ? 10 + wizard_step_
                     : page_ == Page::kSettings ? settings_tab_ : page_ == Page::kControls ? controls_tab_
-                    : page_ == Page::kCheats ? cheats_tab_ : 0;
+                    : page_ == Page::kCheats ? cheats_tab_ : page_ == Page::kAbout ? about_tab_ : 0;
     if (page_ != scroll_page_ || tab != scroll_tab_) {
         scroll_page_ = page_;
         scroll_tab_ = tab;
@@ -3460,10 +3517,18 @@ void Launcher::bottom_bar(float since) {
         return b;
     };
     enum { kNoIcon, kFlag, kMug };
-    const auto link = [&](const char* label, ImU32 colour, int icon = kNoIcon, ImU32 fill = 0) {
+    const auto link = [&](const char* label, ImU32 colour, int icon = kNoIcon, ImU32 fill = 0, bool pulse = false) {
         const ImVec2 size = measure(body_bold_, px(16), label);
         const float icon_width = icon == kNoIcon ? 0 : px(26);
         const BarButton b = button(size.x + px(36) + icon_width, fill);
+        if (pulse) {  // a crash to report: an amber border and a ring that widens and fades, every 1.6 s
+            const float width = size.x + px(36) + icon_width, p = std::fmod(static_cast<float>(ImGui::GetTime()), 1.6f) / 1.6f;
+            const ImVec2 end(b.at.x + width, b.at.y + px(36));
+            list_->AddRect(b.at, end, fade(colour), px(18), 0, px(1.5f));
+            const float grow = px(10) * p;
+            const ImU32 ring = (colour & 0x00FFFFFFu) | (static_cast<ImU32>(200 * (1 - p)) << 24);
+            list_->AddRect(ImVec2(b.at.x - grow, b.at.y - grow), ImVec2(end.x + grow, end.y + grow), fade(ring), px(18) + grow, 0, px(2));
+        }
         const ImU32 ink = fade(colour);
         const float s = px(16), ix = b.at.x + px(16), cy = b.at.y + px(18);
         if (icon == kFlag) {  // a flag on its pole
@@ -3498,7 +3563,7 @@ void Launcher::bottom_bar(float since) {
             page_since_ = static_cast<float>(ImGui::GetTime());
         }
     }
-    if (crash_report_ready() ? link(t.crash_link, kAmber, kFlag) : link(t.report, kInk, kFlag)) report_problem();
+    if (crash_report_ready() ? link(t.crash_link, kAmber, kFlag, 0, true) : link(t.report, kInk, kFlag)) report_problem();
     if (link(t.support, IM_COL32(255, 255, 255, 255), kMug, IM_COL32(255, 94, 91, 255))) {  // Ko-fi's colour
         ShellExecuteA(nullptr, "open", "https://ko-fi.com/sicksartori", nullptr, nullptr, SW_SHOWNORMAL);
     }

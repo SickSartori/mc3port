@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.4.1 (2026-11-26)
+
+### New
+
+- **Português (Brasil)** as the game's language (settings, Game; also RecompLauncher): João13 e cia's translation
+  of the Xbox game, with their credits in the About page and in `translations/README.md` (CC BY-NC 4.0), added at
+  the suggestion of NAKADANI's video. The first time it is chosen, mc3port makes the translated files from your disc
+  (about 1.1 GB in `translations\pt-br` in the data folder, some seconds); the European and the USA discs both work.
+  The redrawn HUD has its start word too.
+- **Controller rumble** in the settings (Game), also in the in-game menu: how strongly the controllers rumble, from 0
+  (off) to 100% of what the game asks, the default. It changes at the game's next rumble.
+- **Gamma and brightness** in the settings (Effects), also in the in-game menu, for a screen that shows the game too
+  dark or too light: they change the 3D scene only, at once, with the modern effects on or off; the HUD, the menus and
+  the films stay as they are. No style changes them.
+
+- **A third HUD, HD: the game's own redrawn**: in the settings (Game) the HUD is now the game's, HD or
+  mc3port's. HD is the game's HUD with its pictures drawn again sharp, in the folder `hud_redrawn` beside mc3port:
+  the dials of the Jetta and the McLaren, the radar, the arrows, the digits, the countdown, the side arcs and the
+  start's word in each language. The other dials and the fonts stay the game's for now.
+  Its side arcs (the special ability's over the radar, the slipstream's and the nitrous's beside the dials) are
+  smaller, so they end above the radar and the dials instead of running under them.
+
+### Improved
+
+- **Report the crash stands out**: after a crash, the button over the bar has an amber border and a ring that
+  widens and fades every second and a half, so the report is not missed.
+- **A setup step on RecompLauncher**: after your disc image is checked, the launcher makes sure Direct3D 11 starts
+  on this PC (a few seconds, no window), so a graphics card or a Wine without it is named at setup instead of
+  with a black window at the first start. The game's page also lists the disc image the newer way (named inputs),
+  which RecompLauncher 1.0 will need.
+- **mc3port's HUD, the radar**: its ring is drawn again in the dials' style, a dark band with a line in the HUD's
+  colour, and the N in a disc like the gear's, turning with the map as the game's tab does. The map and its icons
+  stay the game's.
+- **More settings on RecompLauncher's page**: 120 frames per second, 21:9, the field of view, the texture filter,
+  sharp textures, the modern effects and the frame counter, which the launcher and the in-game menu already had.
+- **Replacement pictures with the game's colours**: a PNG with a palette in `textures_replace`, for a picture of the
+  game that has one (the speedometer, the rev counter), is coloured from the game's palette. A redrawn dial keeps the
+  HUD colour chosen in the garage.
+
+### Fixed
+
+- **The window mode in the settings after F11 or Alt+Enter**: the row showed the mode in `mc3port.ini`, not the
+  window's own, so after F11 the in-game menu could say "Window" in full screen. It now shows the window as it is.
+  The settings also say that full screen has no border, which it always had: Alt+Tab is instant.
+- **mc3port's HUD, the special ability**: the arc over the radar that charges Zone, Agro or Roar is now drawn by the
+  new HUD too, sharp at any resolution and in the HUD's colour; it stayed the game's thin one. The arc beside the
+  speedometer that was described as the special ability is the slipstream turbo (it fills behind an opponent and is
+  used with the nitrous button): it is named so now. The marks of the charges you have stored stay the game's.
+- **mc3port's HUD, the damage meter**: the red pieces that light one by one around the speedometer as the car takes
+  heavy hits were left out, taken for a rev limiter light. The new HUD draws them again, at the lower left of its
+  speedometer.
+
 ## 0.4.0 (2026-11-25)
 
 ### New

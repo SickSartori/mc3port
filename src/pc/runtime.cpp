@@ -39,11 +39,13 @@
 #include "pc/keyboard_bindings.h"
 #include "pc/launcher_ui.h"
 #include "pc/log.h"
+#include "pc/mmio.h"
 #include "pc/nv2a.h"
 #include "pc/paths.h"
 #include "pc/physical_memory.h"
 #include "pc/privileged.h"
 #include "pc/profile.h"
+#include "pc/translation.h"
 #include "pc/settings.h"
 #include "pc/xbox_thread.h"
 
@@ -381,6 +383,51 @@ void map_kernel_image_header() {
     std::memcpy(section->Name, ".data", 5);
 }
 
+// MC3_TRACE_NIC=<n> (diagnosis for System Link): the network controller's registers trap instead of being plain
+// memory. They behave the same (a read gives the last value written there, zero at first), and the first n accesses
+// (5000 when n is 1) go to the log with the offset, the size, the value and the game code's address: what the game's
+// network stack does with the adapter at start and in Networking > System Link.
+constexpr uint32_t kNicBase = 0xFEF00000, kNicSize = 0x1000;
+uint8_t g_nic_registers[kNicSize];
+bool g_nic_traced = false;     // the registers trap (the variable is set and they could be reserved)
+long g_nic_trace_left = 0;     // accesses still to log
+thread_local DWORD g_nic_eip;  // the faulting instruction, for the log line
+
+void log_nic_access(const char* kind, uint32_t address, uint32_t size, uint32_t value) {
+    if (InterlockedDecrement(&g_nic_trace_left) < 0) return;
+    log_line("nic: %s %u at +%03X = %08X (code %08lX)", kind, size, address - kNicBase, value, g_nic_eip);
+}
+
+uint32_t nic_read(uint32_t address, uint32_t size) {
+    uint32_t value = 0;
+    std::memcpy(&value, g_nic_registers + (address - kNicBase), size);
+    log_nic_access("read", address, size, value);
+    return value;
+}
+
+void nic_write(uint32_t address, uint32_t size, uint32_t value) {
+    std::memcpy(g_nic_registers + (address - kNicBase), &value, size);
+    log_nic_access("write", address, size, value);
+}
+
+const MmioDevice kNicDevice{nic_read, nic_write};
+
+bool nic_handle_access_violation(CONTEXT* context, uint32_t address) {
+    if (!g_nic_traced || address < kNicBase || address >= kNicBase + kNicSize) return false;
+    g_nic_eip = context->Eip;
+    const uint32_t offset = address - kNicBase;
+    if (offset + 4 <= kNicSize && emulate_mmio_access(context, address, kNicDevice)) return true;
+    // An instruction the decoder does not know (a string copy, say): plain memory again, holding what was written.
+    const auto* code = reinterpret_cast<const uint8_t*>(static_cast<uintptr_t>(context->Eip));
+    log_line("nic: cannot emulate the access at %08lX (address %08X, code %02X %02X %02X %02X): plain memory from now",
+             context->Eip, address, code[0], code[1], code[2], code[3]);
+    void* base = reinterpret_cast<void*>(static_cast<uintptr_t>(kNicBase));
+    if (!VirtualAlloc(base, kNicSize, MEM_COMMIT, PAGE_READWRITE)) return false;
+    std::memcpy(base, g_nic_registers, kNicSize);
+    g_nic_traced = false;
+    return true;
+}
+
 // MCPX devices the port does not emulate. DirectSound is replaced (dsound_hle.cpp), but its hardware stays
 // mapped as plain memory for any leftover access; the network stack sees an adapter without a link.
 void map_audio_placeholder() {
@@ -393,7 +440,16 @@ void map_audio_placeholder() {
         {0xFEC00000, 0x1000},   // AC97
         {0xFEF00000, 0x1000},   // network controller: the port is offline, the network stack only initialises
     };
+    wchar_t trace[16] = {};
+    if (GetEnvironmentVariableW(L"MC3_TRACE_NIC", trace, 16)) {
+        const long count = _wtol(trace);
+        g_nic_trace_left = count > 1 ? count : 5000;
+        g_nic_traced = VirtualAlloc(reinterpret_cast<void*>(static_cast<uintptr_t>(kNicBase)), kNicSize, MEM_RESERVE,
+                                    PAGE_NOACCESS) != nullptr;
+        log_line("nic: %s", g_nic_traced ? "registers traced (MC3_TRACE_NIC)" : "cannot reserve the registers, not traced");
+    }
     for (const Region& region : kRegions) {
+        if (region.base == kNicBase && g_nic_traced) continue;
         if (!VirtualAlloc(reinterpret_cast<void*>(static_cast<uintptr_t>(region.base)), region.size,
                           MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE)) {
             fatal("cannot map the audio placeholder at %08X (error %lu)", region.base, GetLastError());
@@ -442,6 +498,11 @@ LONG WINAPI on_first_chance_exception(EXCEPTION_POINTERS* info) {
     if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2 &&
         nv2a_handle_access_violation(info->ContextRecord,
                                      static_cast<uint32_t>(info->ExceptionRecord->ExceptionInformation[1]))) {
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    if (code == EXCEPTION_ACCESS_VIOLATION && info->ExceptionRecord->NumberParameters >= 2 &&
+        nic_handle_access_violation(info->ContextRecord,
+                                    static_cast<uint32_t>(info->ExceptionRecord->ExceptionInformation[1]))) {
         return EXCEPTION_CONTINUE_EXECUTION;
     }
     constexpr ULONG_PTR kWriteFault = 1;  // 0 is a read, 8 an execution
@@ -712,6 +773,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
              kernel.unimplemented);
 
     set_kernel_xbe(&*g_xbe);
+    translation_prepare(*g_disc);  // before the game reads a file
     const std::filesystem::path hdd_directory = data_directory() / "xbox_hdd";
     configure_file_system(g_disc.get(), hdd_directory.c_str());
     log_line("hard disk partitions: %s", reinterpret_cast<const char*>(hdd_directory.u8string().c_str()));

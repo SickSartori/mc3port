@@ -2,18 +2,27 @@
   "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
   "format": 1,
   "name": "mc3port",
-  "game": {
-    "kind": "iso",
-    "label": "Your disc image (.iso) of Midnight Club 3: DUB Edition Remix, European (PAL) or USA release.",
-    "check": { "xdvdfs": "default.xbe" },
-    "dumps": [
-      { "name": "Midnight Club 3 - DUB Edition Remix (Europe) (En,Fr,De,Es,It)", "size": 7825162240, "crc32": "e0cad5e2" },
-      { "name": "Midnight Club 3 - DUB Edition Remix (USA)", "size": 7825162240, "crc32": "a4337b2a" }
-    ]
-  },
+  "inputs": [
+    {
+      "id": "game",
+      "role": "game",
+      "label": "Your disc image (.iso) of Midnight Club 3: DUB Edition Remix, European (PAL) or USA release.",
+      "formats": [{ "type": "file", "extensions": ["iso"] }],
+      "check": { "xdvdfs": "default.xbe" },
+      "dumps": [
+        { "name": "Midnight Club 3 - DUB Edition Remix (Europe) (En,Fr,De,Es,It)", "size": 7825162240, "crc32": "e0cad5e2" },
+        { "name": "Midnight Club 3 - DUB Edition Remix (USA)", "size": 7825162240, "crc32": "a4337b2a" }
+      ]
+    }
+  ],
   "start": {
     "program": ["mc3.exe"],
-    "args": ["{game}"]
+    "args": ["{input:game}"]
+  },
+  "prepare": {
+    "program": ["mc3.exe"],
+    "args": ["--check-graphics"],
+    "label": "Checking that Direct3D 11 starts on this PC (a few seconds)"
   },
   "saves": ["{install}/xbox_hdd", "{documents}/mc3port/xbox_hdd", "{local}/mc3port/xbox_hdd"],
   "config": [
@@ -36,7 +45,7 @@
     {
       "id": "window",
       "label": "Window",
-      "help": "Full screen or a window. Big Picture mode always starts full screen.",
+      "help": "Full screen (without a border, so Alt+Tab is instant) or a window. Big Picture mode always starts full screen.",
       "choices": [
         { "label": "Windowed", "set": { "fullscreen": "0" } },
         { "label": "Fullscreen", "set": { "fullscreen": "1" } }
@@ -63,17 +72,19 @@
         { "label": "Deutsch", "set": { "game_language": "3" } },
         { "label": "Français", "set": { "game_language": "4" } },
         { "label": "Español", "set": { "game_language": "5" } },
-        { "label": "Italiano", "set": { "game_language": "6" } }
+        { "label": "Italiano", "set": { "game_language": "6" } },
+        { "label": "Português (Brasil)", "set": { "game_language": "7" } }
       ],
       "defaults": { "game_language": "0" }
     },
     {
       "id": "frame_rate",
       "label": "Frame rate",
-      "help": "30 is the Xbox's own; 60 is smoother and needs a PC that handles twice the work.",
+      "help": "30 is the Xbox's own; 60 is smoother and needs a PC that handles twice the work; 120 needs a fast processor and a screen of 120 Hz or more.",
       "choices": [
         { "label": "30 fps", "set": { "frame_rate": "30" } },
-        { "label": "60 fps", "set": { "frame_rate": "60" } }
+        { "label": "60 fps", "set": { "frame_rate": "60" } },
+        { "label": "120 fps", "set": { "frame_rate": "120" } }
       ],
       "defaults": { "frame_rate": "60" }
     },
@@ -95,19 +106,76 @@
     {
       "id": "picture",
       "label": "Picture",
-      "help": "The game's own widescreen mode (wider view, no black bars), or 4:3 like a classic TV.",
+      "help": "The game's own widescreen mode (wider view, no black bars); 21:9 takes the shape of a screen wider than 16:9 (films and loading screens stay 16:9); or 4:3 like a classic TV.",
       "choices": [
         { "label": "16:9", "set": { "widescreen": "1" } },
+        { "label": "21:9", "set": { "widescreen": "2" } },
         { "label": "4:3", "set": { "widescreen": "0" } }
       ],
       "defaults": { "widescreen": "1" }
     },
     {
+      "id": "field_of_view",
+      "label": "Field of view",
+      "help": "How wide the camera sees: 100% is the game's own.",
+      "choices": [
+        { "label": "75%", "set": { "field_of_view": "75" } },
+        { "label": "90%", "set": { "field_of_view": "90" } },
+        { "label": "100%", "set": { "field_of_view": "100" } },
+        { "label": "115%", "set": { "field_of_view": "115" } },
+        { "label": "130%", "set": { "field_of_view": "130" } }
+      ],
+      "defaults": { "field_of_view": "100" }
+    },
+    {
+      "id": "texture_filter",
+      "label": "Texture filter",
+      "help": "Anisotropic filtering: roads and walls stay sharp at a slant. 16x costs little on any graphics card.",
+      "choices": [
+        { "label": "Off", "set": { "anisotropy": "1" } },
+        { "label": "4x", "set": { "anisotropy": "4" } },
+        { "label": "8x", "set": { "anisotropy": "8" } },
+        { "label": "16x", "set": { "anisotropy": "16" } }
+      ],
+      "defaults": { "anisotropy": "16" }
+    },
+    {
+      "id": "sharp_textures",
+      "label": "Sharp textures",
+      "help": "The textures of roads, buildings and cars enlarged with their edges kept, for when you see them from close. They take more graphics memory and sharpen a few seconds after a place loads.",
+      "choices": [
+        { "label": "Off", "set": { "sharp_textures": "0" } },
+        { "label": "On", "set": { "sharp_textures": "1" } }
+      ],
+      "defaults": { "sharp_textures": "0" }
+    },
+    {
+      "id": "modern_effects",
+      "label": "Modern effects",
+      "help": "Glow, sharpening, colour, vignette and ambient occlusion; F10 switches them while playing.",
+      "choices": [
+        { "label": "On", "set": { "effects": "1" } },
+        { "label": "Off", "set": { "effects": "0" } }
+      ],
+      "defaults": { "effects": "1" }
+    },
+    {
+      "id": "frame_counter",
+      "label": "Frame counter",
+      "help": "Frames per second in a corner while playing.",
+      "choices": [
+        { "label": "Off", "set": { "fps_counter": "0" } },
+        { "label": "On", "set": { "fps_counter": "1" } }
+      ],
+      "defaults": { "fps_counter": "0" }
+    },
+    {
       "id": "hud",
       "label": "HUD",
-      "help": "The game's own, or mc3port's with the speedometer, rev counter and gear redrawn sharp at any resolution.",
+      "help": "The game's own; HD, the game's own with its pictures redrawn sharp (from the folder hud_redrawn); or mc3port's, a new HUD sharp at any resolution.",
       "choices": [
         { "label": "The game's", "set": { "hud_style": "0" } },
+        { "label": "HD", "set": { "hud_style": "2" } },
         { "label": "mc3port's", "set": { "hud_style": "1" } }
       ],
       "defaults": { "hud_style": "1" }

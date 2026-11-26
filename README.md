@@ -77,7 +77,7 @@ And around the game:
 
 - **A launcher** that checks your disc, sets everything up on the first start and holds every setting.
 - **An in-game menu** (F1, or Back+Start on a controller) with the same settings and controls; it pauses the game.
-- **A HUD of its own**, optional: speedometer, rev counter, gear and special ability drawn sharp at any resolution.
+- **A HUD of its own**, optional: speedometer, rev counter, gear, nitrous, slipstream, special ability and damage drawn sharp at any resolution.
 - **Sharp 2D pictures**: the radar's map, icons, letters and the cars' stickers enlarged with clean edges.
 - **Your own music** on the game's radio: playlists made in the launcher's Music page from MP3, FLAC, WAV, WMA or M4A
   files, chosen in the game in Pause > Options > Audio Options.
@@ -200,7 +200,7 @@ changed in the launcher's **Controls** page.
 | PC key | Action |
 |---|---|
 | F1 (controller: Back+Start) | in-game menu: settings, controls, resume, exit; the game pauses meanwhile |
-| F11 or Alt+Enter | full screen on and off |
+| F11 or Alt+Enter | full screen (without a border, so Alt+Tab is instant) on and off |
 | F10 | modern effects on and off |
 
 <details>
@@ -235,7 +235,7 @@ The quickest choice is the **style**, above the tabs:
 
 | Setting | What it does |
 |---|---|
-| Game language | English, French, German, Spanish or Italian; by default like Windows |
+| Game language | English, French, German, Spanish, Italian or Português (Brasil); by default like Windows. Português (Brasil) is João13 e cia's translation: the first time, mc3port makes its files from your disc (about 1.1 GB in `translations\pt-br` in the data folder, some seconds) |
 | Frames per second | 60, or 30 like the Xbox |
 | VSync | off by default: more frames per second, but the picture can tear (a horizontal line where two frames meet). On: it never tears, but a PC that cannot keep up may drop to 30 fps |
 | Aspect ratio | 16:9 (the game's widescreen mode), 4:3, or 21:9: your screen's own shape when it is wider than 16:9 (21:9, 32:9), with the view widened to the sides; films and loading screens stay 16:9, with bars at the sides |
@@ -244,12 +244,14 @@ The quickest choice is the **style**, above the tabs:
 | Internal resolution | Auto (as many lines as your screen; at most 1080 on integrated graphics), SD 480p (like the Xbox), HD 720p, Full HD 1080p, 2K 1440p, 4K 2160p or 5K 2880p |
 | Vertices on the graphics card | on by default; switch it off only to troubleshoot |
 | Modern effects | glow, sharpening, colour, vignette and ambient occlusion, on or off (F10 while playing); under them every value by itself, speed blur and light streaks too |
+| Gamma and brightness | the 3D scene's, with the modern effects on or off (the HUD, menus and films stay as they are): gamma 0.8 to 1.4 (1, the default, is the game's), brightness 80 to 120% (more lifts the dark parts) |
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
-| HUD | the game's, or mc3port's: speedometer, rev counter, gear, nitrous and special ability drawn again, sharp at any resolution, in mph or km/h (the radar stays the game's) |
+| HUD | the game's; HD, the game's redrawn (its pictures drawn again sharp, in the folder `hud_redrawn` beside mc3port; some dials and the fonts stay the game's); or mc3port's: speedometer, rev counter, gear, nitrous, slipstream, special ability, damage and the radar's ring drawn again, sharp at any resolution, in mph or km/h (the radar's map stays the game's) |
 | Sharp pictures | the radar's map, the icons, the letters and the cars' stickers enlarged with clean edges; on by default |
 | Sharp textures | the textures of roads, buildings and cars enlarged two times with clean edges, for when you see them from close: nothing is added that the game does not have, and from afar the picture is the game's own. They sharpen a few seconds after a place loads and take more graphics memory; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
+| Controller rumble | how strongly the controllers rumble, 0 to 100% of what the game asks (100%, the default); 0 turns it off |
 | Skip the opening films | the Rockstar logos and the game's intro, straight to the title screen; on by default |
 | Loading screens | how long the game waits before loading, with the screen animating: 2 seconds (off, the default), or 4, 8 or 12; any other number in `mc3port.ini` (`loading_screen_seconds`), never less than 2 |
 | `hud_aspect` (ini only) | in 16:9, the HUD keeps its shape (1, the default) or is stretched as on a widescreen TV (0) |
@@ -264,7 +266,9 @@ picture's hash (16 hex digits, for example `83E5DF1E4AC28289.png`), is drawn ins
 size: the HUD's pictures and the textures of roads, buildings and cars alike. Starting the game with the environment
 variable `MC3_DUMP_TEXTURE=all` saves every texture it draws with as `textures_dump\<hash>.png` next to `mc3port.ini`:
 enlarge or redraw them with a tool of your own (most of the game's are 128 x 128 pixels) and put them in
-`textures_replace` under the same name. `MC3_DUMP_2D=1` saves only the HUD's (see `docs/DEVELOPMENT.md`). Pictures in a
+`textures_replace` under the same name. `MC3_DUMP_2D=1` saves only the HUD's (see `docs/DEVELOPMENT.md`). For a picture
+with a palette (the dials) a PNG with a palette of its own keeps the game's colours: its pixels are taken as the
+same palette's entries, so the HUD colour you chose still applies. Pictures in a
 folder `launcher_backgrounds` (PNG, JPG and the other formats Windows reads) become the launcher's backgrounds
 instead of the disc's artwork; the left part goes under the menu.
 
@@ -374,6 +378,14 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 - [Barlow](https://github.com/jpt/barlow) by Jeremy Tribby, SIL Open Font License: the launcher's font.
 - The launcher's background music was generated for mc3port with ElevenLabs Music (through Magnific), and is under
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- The Português (Brasil) translation is by **João13 e cia** ([joao13traducoes.com](https://joao13traducoes.com)):
+  João13 (administration, texts, review), OAleex, Krisp, Godoy and HeitorSpectre (romhack), niccbilac and João13
+  (graphics), with tools by Delutto, HeitorSpectre, Aluigi and OAleex. Licence
+  [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); mc3port ships it as differences from the disc's
+  files, unchanged (`translations/README.md`). Added at the suggestion of
+  [NAKADANI's video](https://youtu.be/i5IWJ2krkeo).
+- The HD HUD's dials have their numbers and words in Republika by Apostrophic Laboratories (freeware); the font file is
+  not in mc3port, only the pictures drawn with it (`hud_redrawn/README.md`).
 - The program icon and logo are mc3port's own (`tools/make_icon.py`), in the spirit of the game's logo.
 - The launcher's logo and pictures are the game's own, read from your disc while it runs; they are not part of
   mc3port.

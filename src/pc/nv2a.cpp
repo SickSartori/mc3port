@@ -775,6 +775,7 @@ void gpu_thread() {
     profile_name_thread(false, "gpu");
     // GET follows the drawing: a plain store (the default one locks the bus, at every command).
     renderer_set_progress([](uint32_t get) { g_push.get.store(get, std::memory_order_release); });
+    if (setting_at_start("hud_style") == 2) renderer_replacement_folder("hud_redrawn");  // the original HUD redrawn
     g_renderer_ready = renderer_start(g_window);
     if (!g_renderer_ready && !GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0)) no_direct3d();
     bool started = false;
@@ -806,10 +807,11 @@ void gpu_thread() {
 // --- display ---
 
 // Full screen without a border on the window's monitor, and back to the window as it was (Alt+Enter or F11).
-bool g_full_screen = false;
+// Read by the menus' thread (nv2a_full_screen), changed only by the window thread.
+std::atomic<bool> g_full_screen{false};
 
 void toggle_full_screen(HWND window) {
-    bool& full_screen = g_full_screen;
+    const bool full_screen = g_full_screen;
     static WINDOWPLACEMENT placement{sizeof(WINDOWPLACEMENT)};
     if (!full_screen) {
         MONITORINFO monitor{sizeof(MONITORINFO)};
@@ -827,7 +829,7 @@ void toggle_full_screen(HWND window) {
         SetWindowPos(window, nullptr, 0, 0, 0, 0,
                      SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
     }
-    full_screen = !full_screen;
+    g_full_screen = !full_screen;
 }
 
 std::atomic<WindowHook> g_window_hook{nullptr};  // nv2a_set_window_hook
@@ -1127,6 +1129,8 @@ int nv2a_vblank_hz() {
 void nv2a_set_full_screen(bool full_screen) {
     if (g_window) PostMessageW(g_window, kSetFullScreenMessage, full_screen, 0);
 }
+
+bool nv2a_full_screen() { return g_window ? g_full_screen.load() : setting("fullscreen") != 0; }
 
 void nv2a_load_icons() {
     // Each size picked from the .ico (res/mc3.rc, resource 1), not shrunk from a large one.

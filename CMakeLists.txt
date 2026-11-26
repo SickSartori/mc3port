@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(mc3port VERSION 0.4.0 LANGUAGES C CXX)
+project(mc3port VERSION 0.4.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -76,6 +76,8 @@ if(WIN32)
         src/pc/runtime.cpp
         src/pc/settings.cpp
         src/pc/soundtracks.cpp
+        src/pc/translation.cpp
+        src/pc/vcdiff.cpp
         res/launcher.rc
     )
     target_link_libraries(mc3runtime PRIVATE xportcore shell32 user32 gdi32 version winmm ole32 xaudio2 d3d11 dxgi d3dcompiler dbghelp dwmapi bcrypt comdlg32 winhttp windowscodecs imgui mf mfplat mfreadwrite mfuuid shlwapi SDL3::SDL3-static)
@@ -123,6 +125,7 @@ if(WIN32)
         mc3_test(test_soundtracks src/pc/soundtracks.cpp)
         target_link_libraries(test_soundtracks PRIVATE mf mfplat mfreadwrite mfuuid ole32 shell32)
         mc3_test(test_audio_gains)
+        mc3_test(test_vcdiff src/pc/vcdiff.cpp)
         mc3_test(test_launcher_style src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp ${XPORT_DIR}/src/pc/paths.cpp)
         mc3_test(test_settings src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp ${XPORT_DIR}/src/pc/paths.cpp)
         xport_identity(test_launcher_style mc3port MC3PORT MC3_)
