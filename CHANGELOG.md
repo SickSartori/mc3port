@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.2
+
+### New
+
+- **Mods inside the game's archives**: a file in the folder `mods` with the path it has inside `assets_x.dat` to
+  `assets_x.dat_5` (the game's tuning, texts, cars, cities) is read instead of the archive's, as the disc's files
+  already were: `mods\tune\vehicle\vehicle.lst`, `mods\resources\vehicle\vp_350z_04\vp_350z_04.xbck`. A mod replaces
+  a file, it cannot add one; `mc3port.log` names each one.
+- **Mods folder** in the launcher's About page: opens the folder, made empty the first time.
+
 ## 0.4.1 (2026-11-26)
 
 ### New
