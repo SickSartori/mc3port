@@ -247,7 +247,7 @@ The quickest choice is the **style**, above the tabs:
 | Gamma and brightness | the 3D scene's, with the modern effects on or off (the HUD, menus and films stay as they are): gamma 0.8 to 1.4 (1, the default, is the game's), brightness 80 to 120% (more lifts the dark parts) |
 | Volume | the game's sound, 0 to 100; even at 100 there is room for many sounds at once without distortion |
 | Frame counter | frames per second in a corner while playing; off by default |
-| HUD | the game's; HD, the game's redrawn (its pictures drawn again sharp, from the folder `hud_redrawn`: mc3port ships none); or mc3port's: speedometer, rev counter, gear, nitrous, slipstream, special ability, damage and the radar's ring drawn again, sharp at any resolution, in mph or km/h (the radar's map stays the game's) |
+| HUD | the game's; HD, the game's redrawn (its pictures drawn again sharp, in the folder `hud_redrawn` beside mc3port; some dials and the fonts stay the game's); or mc3port's: speedometer, rev counter, gear, nitrous, slipstream, special ability, damage and the radar's ring drawn again, sharp at any resolution, in mph or km/h (the radar's map stays the game's) |
 | Sharp pictures | the radar's map, the icons, the letters and the cars' stickers enlarged with clean edges; on by default |
 | Sharp textures | the textures of roads, buildings and cars enlarged two times with clean edges, for when you see them from close: nothing is added that the game does not have, and from afar the picture is the game's own. They sharpen a few seconds after a place loads and take more graphics memory; off by default |
 | Pause in the background | opens the in-game menu (and pauses) when you switch to another window; on by default |
@@ -384,6 +384,8 @@ xemu and other open-source Xbox projects were studied as references only; no cod
   [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); mc3port ships it as differences from the disc's
   files, unchanged (`translations/README.md`). Added at the suggestion of
   [NAKADANI's video](https://youtu.be/i5IWJ2krkeo).
+- The HD HUD's dials have their numbers and words in Republika by Apostrophic Laboratories (freeware); the font file is
+  not in mc3port, only the pictures drawn with it (`hud_redrawn/README.md`).
 - The program icon and logo are mc3port's own (`tools/make_icon.py`), in the spirit of the game's logo.
 - The launcher's logo and pictures are the game's own, read from your disc while it runs; they are not part of
   mc3port.

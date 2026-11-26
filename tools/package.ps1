@@ -67,6 +67,9 @@ if ($From) {
     # Português (Brasil): differences from the disc's files, and their credits and licence (translations/README.md)
     New-Item -ItemType Directory -Force "$stage\translations" | Out-Null
     Copy-Item translations/pt-br.mc3patch, translations/README.md "$stage\translations"
+    # The HD HUD's pictures (hud_redrawn/README.md)
+    New-Item -ItemType Directory -Force "$stage\hud_redrawn" | Out-Null
+    Copy-Item hud_redrawn/*.png, hud_redrawn/README.md "$stage\hud_redrawn"
     Copy-Item README.md, CHANGELOG.md, LICENSE, THIRD_PARTY.md "$stage\docs"
     # The PS2 loading music's guide, where the README's link (loading_music/README.md) finds it
     New-Item -ItemType Directory -Force "$stage\docs\loading_music" | Out-Null

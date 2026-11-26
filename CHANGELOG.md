@@ -16,8 +16,9 @@
   the films stay as they are. No style changes them.
 
 - **A third HUD, HD: the game's own redrawn**: in the settings (Game) the HUD is now the game's, HD or
-  mc3port's. The redrawn one is the game's HUD with its pictures drawn again sharp, from the folder `hud_redrawn` in
-  the data folder; mc3port ships none of them.
+  mc3port's. HD is the game's HUD with its pictures drawn again sharp, in the folder `hud_redrawn` beside mc3port:
+  the dials of the Jetta and the McLaren, the radar, the arrows, the digits, the countdown, the side arcs and the
+  start's word in each language. The other dials and the fonts stay the game's for now.
   Its side arcs (the special ability's over the radar, the slipstream's and the nitrous's beside the dials) are
   smaller, so they end above the radar and the dials instead of running under them.
 
