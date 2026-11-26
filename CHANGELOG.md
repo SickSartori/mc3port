@@ -13,6 +13,8 @@
 - **A third HUD, the game's own redrawn**: in the settings (Game) the HUD is now the game's, the game's redrawn or
   mc3port's. The redrawn one is the game's HUD with its pictures drawn again sharp, from the folder `hud_redrawn` in
   the data folder; mc3port ships none of them.
+  Its side arcs (the special ability's over the radar, the slipstream's and the nitrous's beside the dials) are
+  smaller, so they end above the radar and the dials instead of running under them.
 
 ### Improved
 

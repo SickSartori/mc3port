@@ -66,12 +66,9 @@ std::unordered_set<uint32_t> g_light_surfaces;  // counted with the signed blend
 // The headlights' light, a little brighter than the Xbox's: at most 15% added instead of 12.5% (asked for, 17 Nov 2026).
 constexpr float kHeadlightGain = 1.2f;
 
-}  // namespace
-
-// The narrowing for something from `left` to `right` and `top` to `bottom` (pixels) on `surface`; none when it is
-// not HUD.
-RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float left, float right, float top, float bottom,
-                                          uint32_t texture) {
+// Setting hud_aspect: the narrowing for a draw from `left` to `right` and `top` to `bottom`; none when it is not HUD.
+RendererNarrowing aspect_narrowing(const SurfaceState& surface, float left, float right, float top, float bottom,
+                                   uint32_t texture) {
     RendererNarrowing n;
     const ShownPicture picture = renderer_shown_picture();
     if (!hud_aspect() || left > right || !picture.width || !picture.height) return n;
@@ -135,6 +132,50 @@ RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float lef
                  surface.clip_height, texture, over_shown_scene ? "" : "not over a shown scene ", radar ? "radar " : "",
                  dial ? "dial " : "", song_title ? "title " : "", n.factor, n.anchor);
     }
+    return n;
+}
+
+// Setting hud_style 2: the side arcs (the special ability's over the radar, the slipstream's and the nitrous's beside
+// the dials) smaller, so they end above the radar and the dials instead of under them (asked for, 26 Nov 2026). Each is
+// a tall track and pieces on its texture around it (its fill rising from its foot, the stored charges beside it): all
+// scale alike towards the track's top, so the fill still meets the track.
+// shortcut: one track a side; in split screen the arcs keep their size. Track each player's when that is wanted.
+struct SideArc {
+    float left = 0, right = 0, top = 0, bottom = 0;
+    uint32_t texture = 0;
+    ULONGLONG seen = 0;
+};
+SideArc g_side_arcs[2];
+constexpr float kSideArcScale = 0.7f;
+
+}  // namespace
+
+// The narrowing for something from `left` to `right` and `top` to `bottom` (pixels) on `surface`; none when it is
+// not HUD.
+RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float left, float right, float top, float bottom,
+                                          uint32_t texture) {
+    static const bool small_arcs = setting_at_start("hud_style") == 2;
+    const ShownPicture picture = renderer_shown_picture();
+    if (!small_arcs || !texture || left > right || !picture.width || !picture.height ||
+        !renderer_over_shown_scene(surface)) {
+        return aspect_narrowing(surface, left, right, top, bottom, texture);
+    }
+    const float width = static_cast<float>(picture.width), height = static_cast<float>(picture.height);
+    const ULONGLONG now = GetTickCount64();
+    SideArc& side = g_side_arcs[left < width / 2 ? 0 : 1];
+    if (right - left < 0.09f * width && bottom - top > 0.4f * height && (right < 0.2f * width || left > 0.8f * width)) {
+        side = {left, right, top, bottom, texture, now};
+    }
+    const bool piece = now - side.seen < 1000 && texture == side.texture && left >= side.left - 40 &&
+                       right <= side.right + 40 && top >= side.top - 2 && bottom <= side.bottom + 2;
+    if (!piece) return aspect_narrowing(surface, left, right, top, bottom, texture);
+    // The pieces are narrowed as their track is (a short fill inside the radar's box was narrowed apart from it), after
+    // the scaling: anchor a and factor f, then anchor A and factor k, make one anchor c with the factor f k.
+    RendererNarrowing n = aspect_narrowing(surface, side.left, side.right, side.top, side.bottom, texture);
+    const float f = kSideArcScale, k = n.factor, a = (side.left + side.right) / 2, A = n.anchor;
+    n.anchor = (A * (1 - k) + a * k * (1 - f)) / (1 - f * k);
+    n.factor = f * k;
+    n.factor_y = f, n.anchor_y = side.top;
     return n;
 }
 
