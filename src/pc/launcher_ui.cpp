@@ -89,7 +89,7 @@ struct Texts {
     const char *tab_keys, *controls_lead, *press_key, *reset_keys, *system_keys, *full_screen_key, *effects_key, *launcher_keys, *pads_note;
     const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *report, *report_sub, *update_to,
         *legal,
-        *credits, *translation_credit;
+        *credits, *translation_credit, *credits_tab;
     const char *update_now, *update_install_sub;
     const char *update_title, *update_lead, *update_big, *update_install_note, *update_page, *update_portable_note,
         *update_later;
@@ -150,6 +150,7 @@ const Texts kEnglish = {
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "Licences, credits and how to contribute: on GitHub",
     "Translated by Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), added at the suggestion of NAKADANI's video",
+    "Credits",
     "Update", "Your browser downloads the installer; open it to update",
     "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE",
     "Your browser downloads the installer: open it and it replaces this version. Your saves and settings stay.",
@@ -257,6 +258,7 @@ const Texts kItalian = {
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenze, crediti e come contribuire: su GitHub",
     "Tradotto da Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), aggiunto su idea del video di NAKADANI",
+    "Crediti",
     "Aggiorna", "Il browser scarica l'installer: aprilo per aggiornare",
     "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA",
     "Il browser scarica l'installer: aprilo e sostituisce questa versione. Salvataggi e impostazioni restano.",
@@ -367,6 +369,7 @@ const Texts kPortuguese = {
     "Midnight Club é uma marca da Take-Two Interactive / Rockstar Games. Este projeto não tem ligação com elas.",
     "Licenças, créditos e como contribuir: no GitHub",
     "Tradução de João13 e cia (CC BY-NC 4.0), adicionada por ideia do vídeo de NAKADANI",
+    "Créditos",
     "Atualizar", "O navegador baixa o instalador: abra-o para atualizar",
     "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR",
     "O navegador baixa o instalador: abra-o e ele substitui esta versão. Seus saves e configurações ficam.",
@@ -473,6 +476,7 @@ const Texts kSpanish = {
     "Midnight Club es una marca de Take-Two Interactive / Rockstar Games. Este proyecto no está afiliado a ellas.",
     "Licencias, créditos y cómo contribuir: en GitHub",
     "Traducido por João13 e cia (CC BY-NC 4.0), añadido por idea del vídeo de NAKADANI",
+    "Créditos",
     "Actualizar", "El navegador descarga el instalador: ábrelo para actualizar",
     "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR",
     "El navegador descarga el instalador: ábrelo y sustituye esta versión. Tus partidas y ajustes se quedan.",
@@ -1399,7 +1403,7 @@ private:
 
     Page page_ = Page::kPlay;
     float page_since_ = 0;
-    int settings_tab_ = 0, controls_tab_ = 0, cheats_tab_ = 0, entered_page_frame_ = -1;
+    int settings_tab_ = 0, controls_tab_ = 0, cheats_tab_ = 0, about_tab_ = 0, entered_page_frame_ = -1;
     float tab_since_ = 0;                 // the settings tab's content fades in from here
     int hover_item_ = -1;                 // side menu: the item the mouse rests on, selected after a short dwell
     float hover_since_ = 0;
@@ -2988,14 +2992,33 @@ void Launcher::page_about() {
     const Texts& t = T();
     title(t.about);
     lead(t.about_lead);
+    // Two tabs: mc3port (its author, GitHub, the other ports, the tools) and the credits of what others made.
+    if (!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+        key_pressed({ImGuiKey_GamepadL1, ImGuiKey_GamepadR1, ImGuiKey_Q, ImGuiKey_E, ImGuiKey_PageUp, ImGuiKey_PageDown})) {
+        about_tab_ = 1 - about_tab_;
+        if (!menu_has_focus_) focus_panel_ = true;
+    }
+    const char* tab_labels[] = {"mc3port", t.credits_tab};
+    tabs(tab_labels, 2, &about_tab_);
+    const auto open_url = [](const char* url) { ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL); };
+    if (about_tab_ == 1) {
+        if (status(true, "Portugu\xC3\xAAs (Brasil)", t.translation_credit, "joao13traducoes.com", "##translation")) {
+            open_url("https://joao13traducoes.com");
+        }
+        if (status(true, "NAKADANI", "YouTube", "YouTube", "##nakadani")) open_url("https://youtu.be/i5IWJ2krkeo");
+        if (status(true, "Dear ImGui", "Omar Cornut \xC2\xB7 MIT", "GitHub", "##imgui")) open_url("https://github.com/ocornut/imgui");
+        if (status(true, "SDL", "Sam Lantinga \xC2\xB7 zlib", "GitHub", "##sdl")) open_url("https://github.com/libsdl-org/SDL");
+        if (status(true, "Barlow", "Jeremy Tribby \xC2\xB7 SIL Open Font License", "GitHub", "##barlow")) open_url("https://github.com/jpt/barlow");
+        status(true, "ElevenLabs Music", "CC BY 4.0", nullptr, nullptr);  // the launcher's music
+        return;
+    }
     update_row(true);
     char heading[64];
     std::snprintf(heading, sizeof(heading), "mc3port %s", MC3PORT_VERSION);
-    if (status(true, heading, t.credits, "GitHub", "##github")) {
-        ShellExecuteA(nullptr, "open", (std::string("https://github.com/") + kRepository).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    }
-    if (status(true, "Portugu\xC3\xAAs (Brasil)", t.translation_credit, "joao13traducoes.com", "##translation")) {
-        ShellExecuteA(nullptr, "open", "https://joao13traducoes.com", nullptr, nullptr, SW_SHOWNORMAL);
+    if (status(true, heading, t.credits, "GitHub", "##github")) open_url((std::string("https://github.com/") + kRepository).c_str());
+    if (status(true, "Spider-Man 2", "sm2port \xC2\xB7 Xbox", "GitHub", "##sm2port")) open_url("https://github.com/SickSartori/sm2port");
+    if (status(true, "Uncharted: Golden Abyss", "abyssport \xC2\xB7 PS Vita", "GitHub", "##abyssport")) {
+        open_url("https://github.com/SickSartori/abyssport");
     }
     if (status(true, t.saves, t.saves_sub, t.open, "##saves")) show_saves();
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
@@ -3155,7 +3178,7 @@ void Launcher::panel(float now, float since) {
     // Another page, tab or guide step starts at its top.
     const int tab = wizard_ ? 10 + wizard_step_
                     : page_ == Page::kSettings ? settings_tab_ : page_ == Page::kControls ? controls_tab_
-                    : page_ == Page::kCheats ? cheats_tab_ : 0;
+                    : page_ == Page::kCheats ? cheats_tab_ : page_ == Page::kAbout ? about_tab_ : 0;
     if (page_ != scroll_page_ || tab != scroll_tab_) {
         scroll_page_ = page_;
         scroll_tab_ = tab;
