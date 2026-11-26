@@ -152,8 +152,9 @@ constexpr float kSideArcScale = 0.7f;
 
 // The narrowing for something from `left` to `right` and `top` to `bottom` (pixels) on `surface`; none when it is
 // not HUD.
-RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float left, float right, float top, float bottom,
-                                          uint32_t texture) {
+RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, const DrawState& state) {
+    const float left = state.screen_left, right = state.screen_right, top = state.screen_top, bottom = state.screen_bottom;
+    const uint32_t texture = state.textures[0].enabled ? state.textures[0].descriptor.address : 0;
     static const bool small_arcs = setting_at_start("hud_style") == 2;
     const ShownPicture picture = renderer_shown_picture();
     if (!small_arcs || !texture || left > right || !picture.width || !picture.height ||
