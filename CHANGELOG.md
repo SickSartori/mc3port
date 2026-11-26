@@ -24,6 +24,8 @@
 
 ### Improved
 
+- **Report the crash stands out**: after a crash, the button over the bar has an amber border and a ring that
+  widens and fades every second and a half, so the report is not missed.
 - **A setup step on RecompLauncher**: after your disc image is checked, the launcher makes sure Direct3D 11 starts
   on this PC (a few seconds, no window), so a graphics card or a Wine without it is named at setup instead of
   with a black window at the first start. The game's page also lists the disc image the newer way (named inputs),

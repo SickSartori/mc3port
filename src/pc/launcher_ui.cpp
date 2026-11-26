@@ -3517,10 +3517,18 @@ void Launcher::bottom_bar(float since) {
         return b;
     };
     enum { kNoIcon, kFlag, kMug };
-    const auto link = [&](const char* label, ImU32 colour, int icon = kNoIcon, ImU32 fill = 0) {
+    const auto link = [&](const char* label, ImU32 colour, int icon = kNoIcon, ImU32 fill = 0, bool pulse = false) {
         const ImVec2 size = measure(body_bold_, px(16), label);
         const float icon_width = icon == kNoIcon ? 0 : px(26);
         const BarButton b = button(size.x + px(36) + icon_width, fill);
+        if (pulse) {  // a crash to report: an amber border and a ring that widens and fades, every 1.6 s
+            const float width = size.x + px(36) + icon_width, p = std::fmod(static_cast<float>(ImGui::GetTime()), 1.6f) / 1.6f;
+            const ImVec2 end(b.at.x + width, b.at.y + px(36));
+            list_->AddRect(b.at, end, fade(colour), px(18), 0, px(1.5f));
+            const float grow = px(10) * p;
+            const ImU32 ring = (colour & 0x00FFFFFFu) | (static_cast<ImU32>(200 * (1 - p)) << 24);
+            list_->AddRect(ImVec2(b.at.x - grow, b.at.y - grow), ImVec2(end.x + grow, end.y + grow), fade(ring), px(18) + grow, 0, px(2));
+        }
         const ImU32 ink = fade(colour);
         const float s = px(16), ix = b.at.x + px(16), cy = b.at.y + px(18);
         if (icon == kFlag) {  // a flag on its pole
@@ -3555,7 +3563,7 @@ void Launcher::bottom_bar(float since) {
             page_since_ = static_cast<float>(ImGui::GetTime());
         }
     }
-    if (crash_report_ready() ? link(t.crash_link, kAmber, kFlag) : link(t.report, kInk, kFlag)) report_problem();
+    if (crash_report_ready() ? link(t.crash_link, kAmber, kFlag, 0, true) : link(t.report, kInk, kFlag)) report_problem();
     if (link(t.support, IM_COL32(255, 255, 255, 255), kMug, IM_COL32(255, 94, 91, 255))) {  // Ko-fi's colour
         ShellExecuteA(nullptr, "open", "https://ko-fi.com/sicksartori", nullptr, nullptr, SW_SHOWNORMAL);
     }
