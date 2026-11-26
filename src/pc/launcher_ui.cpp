@@ -1874,7 +1874,7 @@ bool Launcher::status(bool good, const char* heading, const char* detail, const 
         *second_pressed = true;
     }
     const bool pressed = button_label && small_button(button_label, ImVec2(button_x, a.y + px(14)), id);
-    if (button_label) focus_frame(ImVec2(a.x - px(24), a.y), ImVec2(b.x + px(14), b.y));
+    if (button_label) focus_frame(a, b);  // on the row's own box: wider, it stood out of it on both sides
     if (keep_focus_request) focus_panel_ = true;
     cursor_ += height + px(10);
     return pressed;
