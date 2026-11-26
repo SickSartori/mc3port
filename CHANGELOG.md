@@ -24,6 +24,10 @@
 
 ### Improved
 
+- **A setup step on RecompLauncher**: after your disc image is checked, the launcher makes sure Direct3D 11 starts
+  on this PC (a few seconds, no window), so a graphics card or a Wine without it is named at setup instead of
+  with a black window at the first start. The game's page also lists the disc image the newer way (named inputs),
+  which RecompLauncher 1.0 will need.
 - **mc3port's HUD, the radar**: its ring is drawn again in the dials' style, a dark band with a line in the HUD's
   colour, and the N in a disc like the gear's, turning with the map as the game's tab does. The map and its icons
   stay the game's.
