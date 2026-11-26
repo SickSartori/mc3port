@@ -35,6 +35,7 @@
 #include "pc/paths.h"
 #include "pc/physical_memory.h"
 #include "pc/settings.h"
+#include "pc/translation.h"
 
 namespace xport::pc {
 
@@ -446,15 +447,21 @@ const fs::path& mods_folder() {
     return folder;
 }
 
+// Then the translation's files (translation.cpp), when one is on: a mod of the player's comes first.
 bool open_mod(const Location& location, FileObject& file) {
     std::error_code error;
     static const bool any = fs::is_directory(mods_folder(), error);
-    if (!any) return false;
-    fs::path path = mods_folder();
-    for (const std::string& component : location.components) {
-        path /= fs::path(std::u8string(component.begin(), component.end()));
+    fs::path path;
+    for (const fs::path* folder : {any ? &mods_folder() : nullptr, &translation_folder()}) {
+        if (!folder || folder->empty()) continue;
+        path = *folder;
+        for (const std::string& component : location.components) {
+            path /= fs::path(std::u8string(component.begin(), component.end()));
+        }
+        if (fs::is_regular_file(path, error)) break;
+        path.clear();
     }
-    if (!fs::is_regular_file(path, error)) return false;
+    if (path.empty()) return false;
     file.host = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file.host == INVALID_HANDLE_VALUE) {
         log_line("mods: cannot open %s (error %lu): reading the disc's file", path.string().c_str(), GetLastError());

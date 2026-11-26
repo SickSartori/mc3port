@@ -100,6 +100,7 @@ Type: filesandordirs; Name: "{app}\shader_cache"
 Source: "{#SourceDir}\mc3.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\mc3runtime.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\recomplauncher.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\translations\*"; DestDir: "{app}\translations"; Flags: ignoreversion
 Source: "{#SourceDir}\README.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
 Source: "{#SourceDir}\docs\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#SourceDir}\docs\CHANGELOG.md"; DestDir: "{app}\docs"; Flags: ignoreversion

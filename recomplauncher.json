@@ -63,7 +63,8 @@
         { "label": "Deutsch", "set": { "game_language": "3" } },
         { "label": "Français", "set": { "game_language": "4" } },
         { "label": "Español", "set": { "game_language": "5" } },
-        { "label": "Italiano", "set": { "game_language": "6" } }
+        { "label": "Italiano", "set": { "game_language": "6" } },
+        { "label": "Português (Brasil)", "set": { "game_language": "7" } }
       ],
       "defaults": { "game_language": "0" }
     },

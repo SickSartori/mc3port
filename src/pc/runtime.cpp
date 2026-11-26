@@ -45,6 +45,7 @@
 #include "pc/physical_memory.h"
 #include "pc/privileged.h"
 #include "pc/profile.h"
+#include "pc/translation.h"
 #include "pc/settings.h"
 #include "pc/xbox_thread.h"
 
@@ -772,6 +773,7 @@ extern "C" __declspec(dllexport) __declspec(noreturn) void __cdecl mc3_run(void*
              kernel.unimplemented);
 
     set_kernel_xbe(&*g_xbe);
+    translation_prepare(*g_disc);  // before the game reads a file
     const std::filesystem::path hdd_directory = data_directory() / "xbox_hdd";
     configure_file_system(g_disc.get(), hdd_directory.c_str());
     log_line("hard disk partitions: %s", reinterpret_cast<const char*>(hdd_directory.u8string().c_str()));

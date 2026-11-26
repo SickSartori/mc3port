@@ -4,6 +4,11 @@
 
 ### New
 
+- **Português (Brasil)** as the game's language (settings, Game; also RecompLauncher): João13 e cia's translation
+  of the Xbox game, with their credits in the About page and in `translations/README.md` (CC BY-NC 4.0), added at
+  the suggestion of NAKADANI's video. The first time it is chosen, mc3port makes the translated files from your disc
+  (about 1.1 GB in `translations\pt-br` in the data folder, some seconds); the European and the USA discs both work.
+  The redrawn HUD has its start word too.
 - **Controller rumble** in the settings (Game), also in the in-game menu: how strongly the controllers rumble, from 0
   (off) to 100% of what the game asks, the default. It changes at the game's next rumble.
 - **Gamma and brightness** in the settings (Effects), also in the in-game menu, for a screen that shows the game too

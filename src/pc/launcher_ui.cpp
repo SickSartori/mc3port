@@ -89,7 +89,7 @@ struct Texts {
     const char *tab_keys, *controls_lead, *press_key, *reset_keys, *system_keys, *full_screen_key, *effects_key, *launcher_keys, *pads_note;
     const char *about_lead, *checking, *up_to_date, *update_found, *update_sub, *open, *logs, *logs_sub, *report, *report_sub, *update_to,
         *legal,
-        *credits;
+        *credits, *translation_credit;
     const char *update_now, *update_install_sub;
     const char *update_title, *update_lead, *update_big, *update_install_note, *update_page, *update_portable_note,
         *update_later;
@@ -149,6 +149,7 @@ const Texts kEnglish = {
     "The form on GitHub, already filled in, and the log to attach", "Update to %s",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "Licences, credits and how to contribute: on GitHub",
+    "Translated by Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), added at the suggestion of NAKADANI's video",
     "Update", "Your browser downloads the installer; open it to update",
     "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE",
     "Your browser downloads the installer: open it and it replaces this version. Your saves and settings stay.",
@@ -255,6 +256,7 @@ const Texts kItalian = {
     "Il modulo su GitHub, gi\xC3\xA0 compilato, e il log da allegare", "Aggiorna alla %s",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenze, crediti e come contribuire: su GitHub",
+    "Tradotto da Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), aggiunto su idea del video di NAKADANI",
     "Aggiorna", "Il browser scarica l'installer: aprilo per aggiornare",
     "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA",
     "Il browser scarica l'installer: aprilo e sostituisce questa versione. Salvataggi e impostazioni restano.",
@@ -364,6 +366,7 @@ const Texts kPortuguese = {
     "O formulário no GitHub, já preenchido, e o log para anexar", "Atualizar para %s",
     "Midnight Club é uma marca da Take-Two Interactive / Rockstar Games. Este projeto não tem ligação com elas.",
     "Licenças, créditos e como contribuir: no GitHub",
+    "Tradução de João13 e cia (CC BY-NC 4.0), adicionada por ideia do vídeo de NAKADANI",
     "Atualizar", "O navegador baixa o instalador: abra-o para atualizar",
     "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR",
     "O navegador baixa o instalador: abra-o e ele substitui esta versão. Seus saves e configurações ficam.",
@@ -469,6 +472,7 @@ const Texts kSpanish = {
     "El formulario en GitHub, ya rellenado, y el registro para adjuntar", "Actualizar a %s",
     "Midnight Club es una marca de Take-Two Interactive / Rockstar Games. Este proyecto no está afiliado a ellas.",
     "Licencias, créditos y cómo contribuir: en GitHub",
+    "Traducido por João13 e cia (CC BY-NC 4.0), añadido por idea del vídeo de NAKADANI",
     "Actualizar", "El navegador descarga el instalador: ábrelo para actualizar",
     "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR",
     "El navegador descarga el instalador: ábrelo y sustituye esta versión. Tus partidas y ajustes se quedan.",
@@ -2619,13 +2623,15 @@ void Launcher::page_settings() {
         cursor_ += px(62);
     } else if (settings_tab_ == 3) {
         row(t.game_language, t.game_language_sub, true);
-        static const int kLanguages[] = {0, 1, 4, 3, 5, 6};
-        const char* names[] = {t.like_windows, "English", "Fran\xC3\xA7" "ais", "Deutsch", "Espa\xC3\xB1ol", "Italiano"};
+        // 7: Português (Brasil), a translation over the game's English (translation.cpp).
+        static const int kLanguages[] = {0, 1, 4, 3, 5, 6, 7};
+        const char* names[] = {t.like_windows, "English", "Fran\xC3\xA7" "ais", "Deutsch", "Espa\xC3\xB1ol", "Italiano",
+                               "Portugu\xC3\xAAs (Brasil)"};
         int index = 0;
-        for (int i = 0; i < 6; ++i) {
+        for (int i = 0; i < 7; ++i) {
             if (static_cast<int>(setting("game_language")) == kLanguages[i]) index = i;
         }
-        if (combo("##language", names, 6, &index)) set_setting("game_language", static_cast<float>(kLanguages[index]));
+        if (combo("##language", names, 7, &index)) set_setting("game_language", static_cast<float>(kLanguages[index]));
         row(t.hud, t.hud_sub, true);
         // Shown in this order; the setting: 0 the game's, 2 the game's with its pictures redrawn, 1 mc3port's.
         const char* huds[] = {t.hud_game, t.hud_redrawn, "mc3port"};
@@ -2987,6 +2993,9 @@ void Launcher::page_about() {
     std::snprintf(heading, sizeof(heading), "mc3port %s", MC3PORT_VERSION);
     if (status(true, heading, t.credits, "GitHub", "##github")) {
         ShellExecuteA(nullptr, "open", (std::string("https://github.com/") + kRepository).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }
+    if (status(true, "Portugu\xC3\xAAs (Brasil)", t.translation_credit, "joao13traducoes.com", "##translation")) {
+        ShellExecuteA(nullptr, "open", "https://joao13traducoes.com", nullptr, nullptr, SW_SHOWNORMAL);
     }
     if (status(true, t.saves, t.saves_sub, t.open, "##saves")) show_saves();
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
