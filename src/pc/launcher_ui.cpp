@@ -2992,7 +2992,7 @@ void Launcher::page_about() {
     const Texts& t = T();
     title(t.about);
     lead(t.about_lead);
-    // Two tabs: mc3port (its author, GitHub, the other ports, the tools) and the credits of what others made.
+    // Two tabs: mc3port (its author's GitHub, the tools) and the credits of what others made.
     if (!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
         key_pressed({ImGuiKey_GamepadL1, ImGuiKey_GamepadR1, ImGuiKey_Q, ImGuiKey_E, ImGuiKey_PageUp, ImGuiKey_PageDown})) {
         about_tab_ = 1 - about_tab_;
@@ -3016,10 +3016,6 @@ void Launcher::page_about() {
     char heading[64];
     std::snprintf(heading, sizeof(heading), "mc3port %s", MC3PORT_VERSION);
     if (status(true, heading, t.credits, "GitHub", "##github")) open_url((std::string("https://github.com/") + kRepository).c_str());
-    if (status(true, "Spider-Man 2", "sm2port \xC2\xB7 Xbox", "GitHub", "##sm2port")) open_url("https://github.com/SickSartori/sm2port");
-    if (status(true, "Uncharted: Golden Abyss", "abyssport \xC2\xB7 PS Vita", "GitHub", "##abyssport")) {
-        open_url("https://github.com/SickSartori/abyssport");
-    }
     if (status(true, t.saves, t.saves_sub, t.open, "##saves")) show_saves();
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
     if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
