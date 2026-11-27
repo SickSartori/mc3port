@@ -557,10 +557,40 @@ void attach_archive_mods(FileObject& file) {
         file.archive_mods = known->second;
         return;
     }
+    // New files go to the archive with the deepest folder of their path, from the names of the disc's six archives.
+    static const std::map<std::string, std::vector<std::string>> additions = [] {
+        static const char* const kArchives[] = {"assets_x.dat",   "assets_x.dat_1", "assets_x.dat_2",
+                                                "assets_x.dat_3", "assets_x.dat_4", "assets_x.dat_5"};
+        std::vector<std::vector<std::string>> archives;
+        for (const char* archive : kArchives) {
+            std::vector<uint8_t> head;
+            if (const std::optional<XdvdfsImage::Entry> entry = g_disc->find(std::string("\\") + archive)) {
+                head.resize(16);
+                if (g_disc->read(*entry, 0, head.data(), 16) == 16 && std::memcmp(head.data(), "Dave", 4) == 0) {
+                    uint32_t sizes[2];
+                    std::memcpy(sizes, &head[8], sizeof(sizes));
+                    head.resize(0x800 + static_cast<size_t>(sizes[0]) + sizes[1]);
+                    if (head.size() > entry->size || g_disc->read(*entry, 0, head.data(), head.size()) != head.size()) head.clear();
+                }
+            }
+            archives.push_back(dave_entry_names(head));
+        }
+        const auto on_disc = [](const std::string& path) {
+            std::string xbox = "\\" + path;
+            std::replace(xbox.begin(), xbox.end(), '/', '\\');
+            return g_disc->find(xbox).has_value();
+        };
+        std::map<std::string, std::vector<std::string>> result;
+        const std::vector<std::vector<std::string>> assigned = assign_additions(archives, mods, on_disc);
+        for (size_t i = 0; i < assigned.size(); ++i) result[kArchives[i]] = assigned[i];
+        return result;
+    }();
     const ArchiveRead base = [&file](uint64_t offset, void* destination, size_t size) {
         return read_unmodded(file, offset, destination, size);
     };
-    std::shared_ptr<const ArchiveOverlay> overlay = make_archive_overlay(base, unmodded_size(file), mods);
+    const auto gains = additions.find(name);
+    std::shared_ptr<const ArchiveOverlay> overlay = make_archive_overlay(
+        base, unmodded_size(file), mods, gains != additions.end() ? gains->second : std::vector<std::string>{});
     if (overlay) {
         log_line("mods: %s: %zu entries from mods", key.c_str(), overlay->replaced.size());
         for (const std::string& entry : overlay->replaced) log_line("mods:   %s", entry.c_str());

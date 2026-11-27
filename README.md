@@ -275,9 +275,12 @@ instead of the disc's artwork; the left part goes under the menu.
 **Mods**: a file in a folder `mods` next to `mc3port.ini`, with the path it has on the disc (for example
 `mods\flash\bg_main.xbck`), is read instead of the disc's. The same goes for the files inside the game's archives
 (`assets_x.dat` to `assets_x.dat_5`), with their path in the archive: `mods\tune\vehicle\vehicle.lst`, or a car's
-`mods\resources\vehicle\vp_350z_04\vp_350z_04.xbck`. A mod replaces a file the game has; it cannot add one. The
-launcher's About page opens the folder (Mods folder), and `mc3port.log` names every file taken from it and when the game
-first reads it. A car's file bigger than the game's may not load: the game keeps cars in blocks of a fixed size.
+`mods\resources\vehicle\vp_350z_04\vp_350z_04.xbck`. A file the archives do not have is added, into the archive
+with the deepest of its folders (a new car's folder under `resources\vehicle\` goes beside the others): a new car
+comes as its files and the whole `vehicle.lst` with its block added at the end (the list's order is the saves' order,
+so never in the middle). The launcher's About page opens the folder (Mods folder), and `mc3port.log` names every file
+taken from it and when the game first reads it. A car's file bigger than the game's may not load: the game keeps cars in
+blocks of a fixed size.
 
 mc3port includes no such pictures or files: the folders do not exist until you make them.
 

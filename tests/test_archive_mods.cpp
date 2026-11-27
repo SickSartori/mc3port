@@ -1,7 +1,9 @@
 // Entries of the game's Dave archives replaced by files of the mods folder (archive_mods.h): the names as the game
 // decodes them, the rewritten directory, and reads across the directory, the original data and the appended files.
 
+#include <algorithm>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -147,6 +149,57 @@ int main() {
         const size_t expected = offset >= overlay->size ? 0 : std::min<size_t>(size, static_cast<size_t>(overlay->size - offset));
         CHECK(read == expected);
         if (read == expected && read) CHECK(std::memcmp(part.data(), seen.data() + offset, read) == 0);
+    }
+
+    // Files added: the directory is written again, in order, with the new folders; every entry, old and new, holds its
+    // own bytes at the offset the directory gives.
+    {
+        const std::string mod_c = "an added file";
+        std::filesystem::create_directories(folder.path / "newdir" / "deep");
+        write_file(folder.path / "tune" / "c.txt", mod_c.data(), mod_c.size());
+        write_file(folder.path / "newdir" / "deep" / "x.bin", "XYZ", 3);
+        write_file(folder.path / "bad?name.txt", "?", 1);
+        const auto mods2 = mod_files(folder.path);
+        const auto grown = make_archive_overlay(base, archive.size(), mods2,
+                                                {"tune/c.txt", "newdir/deep/x.bin", "bad?name.txt", "tune/a.txt"});
+        CHECK(grown != nullptr);
+        if (grown) {
+            std::vector<uint8_t> all(static_cast<size_t>(grown->size));
+            CHECK(read_archive_overlay(*grown, base, 0, all.data(), all.size()) == all.size());
+            const uint32_t n = u32(all, 4);
+            std::vector<uint8_t> head2(all.begin(), all.begin() + 0x800 + u32(all, 8) + u32(all, 12));
+            const std::vector<std::string> got = dave_entry_names(head2);
+            CHECK(got.size() == n);
+            CHECK(std::is_sorted(got.begin(), got.end()));
+            const std::vector<std::string> expected = {"anim/x", "dir/", "newdir/", "newdir/deep/", "newdir/deep/x.bin",
+                                                       "tune/", "tune/a.txt", "tune/a.txt", "tune/b.txt", "tune/c.txt"};
+            CHECK(got == expected);
+            const auto content = [&](size_t i) {
+                const uint32_t at = u32(all, 0x800 + i * 16 + 4), size = u32(all, 0x800 + i * 16 + 8);
+                return std::string(all.begin() + at, all.begin() + at + size);
+            };
+            if (got == expected) {
+                CHECK(content(0) == "animation");
+                CHECK(content(4) == "XYZ");
+                CHECK(content(6) == mod_a && content(7) == mod_a);
+                CHECK(content(8) == "original b, longer");
+                CHECK(content(9) == mod_c);
+                CHECK(u32(all, 0x800 + 2 * 16 + 8) == 0 && u32(all, 0x800 + 2 * 16 + 12) == 0);  // a folder
+            }
+            CHECK(grown->delta % 2048 == 0);
+        }
+        // Which archive gains a new file: the deepest folder wins, the disc's own files and unknown folders stay out.
+        const std::vector<std::vector<std::string>> archives = {{"tune/a.txt", "fonts/f.tex"},
+                                                                {"resources/vehicle/v1/v1.xbck", "resources/x.bin"}};
+        const std::map<std::string, std::filesystem::path> candidates = {
+            {"resources/vehicle/v2/v2.xbck", {}}, {"tune/new.txt", {}}, {"flash/menu.xbck", {}}, {"nowhere/a.bin", {}},
+            {"tune/a.txt", {}}, {"top.bin", {}}};
+        const auto assigned = assign_additions(archives, candidates, [](const std::string& path) { return path == "flash/menu.xbck"; });
+        CHECK(assigned.size() == 2);
+        if (assigned.size() == 2) {
+            CHECK(assigned[0] == std::vector<std::string>{"tune/new.txt"});
+            CHECK(assigned[1] == std::vector<std::string>{"resources/vehicle/v2/v2.xbck"});
+        }
     }
 
     // Not a Dave archive: nothing to do.
