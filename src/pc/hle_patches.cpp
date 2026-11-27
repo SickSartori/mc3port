@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <map>
+#include <mutex>
+#include <tuple>
 #include <vector>
 
 #include "pc/exec_memory.h"
@@ -270,6 +273,71 @@ __declspec(naked) void wma_overlap_second() {
     }
 }
 
+// MC3_TRACE_UNLOCK=1: what the game asks its "is it unlocked?" (0x292CD0, thiscall (type, id, default), ret 0Ch,
+// answer in AL; sick-xport analisi-0.5.0/E-sblocca-xbe.md), for an "unlock all" of our own: each (type, id, caller) in
+// the log once, and again when its answer changes, with how deep in the progress cache's recount (0x292D70) it came.
+// Nothing changes for the game.
+volatile int g_unlock_cache_depth = 0;  // the game's code runs on one core
+
+void __stdcall trace_unlock(uint32_t type, uint32_t id, uint32_t fallback, uint32_t from, uint32_t result) {
+    static std::mutex mutex;
+    static std::map<std::tuple<uint32_t, uint32_t, uint32_t>, uint32_t> seen;
+    std::lock_guard<std::mutex> lock(mutex);
+    const auto [it, added] = seen.try_emplace({type, id, from}, result);
+    if (!added && it->second == result) return;
+    it->second = result;
+    log_line("unlock: type %u id %08X default %u from %08X cache %d -> %u", type, id, fallback, from,
+             g_unlock_cache_depth, result);
+}
+
+__declspec(naked) void unlock_query_original() {  // the 7 bytes the jump covers, then the rest of it
+    __asm {
+        sub esp, 14h
+        mov edx, dword ptr [esp + 20h]
+        push 0x00292CD7
+        ret
+    }
+}
+__declspec(naked) void unlock_query_traced() {
+    __asm {
+        push ecx                         // this
+        push dword ptr [esp + 16]        // default
+        push dword ptr [esp + 16]        // id
+        push dword ptr [esp + 16]        // type
+        mov ecx, dword ptr [esp + 12]
+        call unlock_query_original       // ret 0Ch
+        movzx eax, al
+        push eax                         // kept
+        push eax                         // result
+        push dword ptr [esp + 12]        // caller
+        push dword ptr [esp + 28]        // default
+        push dword ptr [esp + 28]        // id
+        push dword ptr [esp + 28]        // type
+        call trace_unlock
+        pop eax
+        pop ecx
+        ret 0Ch
+    }
+}
+__declspec(naked) void unlock_cache_original() {  // the 5 bytes the jump covers
+    __asm {
+        push ebp
+        mov ebp, dword ptr [esp + 8]
+        push 0x00292D75
+        ret
+    }
+}
+__declspec(naked) void unlock_cache_traced() {  // thiscall (list, notify), ret 8; ecx untouched
+    __asm {
+        inc g_unlock_cache_depth
+        push dword ptr [esp + 8]
+        push dword ptr [esp + 8]
+        call unlock_cache_original
+        dec g_unlock_cache_depth
+        ret 8
+    }
+}
+
 struct JumpPatch {
     const char* name;
     uint32_t address;
@@ -397,16 +465,23 @@ void apply_hle_patches(const Xbe& /*xbe*/) {
         std::memcpy(code, patch.replacement.data(), patch.replacement.size());
         log_line("HLE: %s at %08X replaced", patch.name, patch.address);
     }
-    for (const JumpPatch& patch : kJumpPatches) {
+    const auto redirect = [](const JumpPatch& patch) {
         auto* code = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(patch.address));
         if (std::memcmp(code, patch.original.data(), patch.original.size()) != 0) {
             log_line("HLE: %s at %08X does not match this XBE, not patched", patch.name, patch.address);
-            continue;
+            return;
         }
         code[0] = 0xE9;  // jmp rel32
         const uint32_t relative = address_of(patch.target) - (patch.address + 5);
         std::memcpy(code + 1, &relative, sizeof(relative));
         log_line("HLE: %s at %08X redirected", patch.name, patch.address);
+    };
+    for (const JumpPatch& patch : kJumpPatches) redirect(patch);
+    if (GetEnvironmentVariableA("MC3_TRACE_UNLOCK", nullptr, 0)) {
+        redirect({"unlock query (traced)", 0x00292CD0, {0x83, 0xEC, 0x14, 0x8B, 0x54, 0x24, 0x20},
+                  reinterpret_cast<const void*>(&unlock_query_traced)});
+        redirect({"unlock cache recount (traced)", 0x00292D70, {0x55, 0x8B, 0x6C, 0x24, 0x08},
+                  reinterpret_cast<const void*>(&unlock_cache_traced)});
     }
     patch_shape_and_field_of_view();
 }
