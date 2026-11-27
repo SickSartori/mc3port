@@ -10,6 +10,11 @@
   a file, it cannot add one; `mc3port.log` names each one.
 - **Mods folder** in the launcher's About page: opens the folder, made empty the first time.
 
+### Fixed
+
+- **No more flicker at 21:9**: at high frame rates some frames of a race were taken for a loading screen and shown
+  at 16:9 for an instant (the game draws the next frame while the last one waits to be shown).
+
 ## 0.4.1 (2026-11-26)
 
 ### New
