@@ -562,11 +562,11 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     ImVec2 radar_c;
     if (g_radar.presents_since < 30) {
         // The radar is the game's, its ring texture drawn again in mc3port's style (hud_mc3port). Over it, here, what
-        // that texture cannot do (its palette is not coloured by the game): the line in the HUD's colour on the band's
-        // inner edge, and the N in a disc of the HUD's colour on the tab. Measured on the texture, in its texels (the
-        // ring quad shows 128 of them): the ring's centre is 3.7 texels from the quad's centre away from the tab and
-        // 0.8 to its right, the line 52.5 texels out and 2.2 wide, the tab's centre 57.2 texels towards it. All turn with
-        // the map, as the quad does.
+        // that texture cannot do (its palette is not coloured by the game): the N in a disc of the HUD's colour on the
+        // tab. No line in that colour round the map: the opponents and checkpoints sit on the band's edge and any line
+        // there crossed them. Measured on the texture, in its texels (the ring quad shows 128 of them): the ring's
+        // centre is 3.7 texels from the quad's centre away from the tab and 0.8 to its right, the tab's centre 57.2
+        // texels towards it. All turn with the map, as the quad does.
         const float half = g_radar.side / 2;
         radar_c = ImVec2(pic.window_left + (g_radar.x * narrow - pic.surface_left) * scale_x,
                          pic.window_top + (g_radar.y - pic.surface_top) * scale_y);
@@ -575,9 +575,6 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         const ImVec2 north(g_radar.north_x, g_radar.north_y), right(-g_radar.north_y, g_radar.north_x);
         const ImVec2 ring(radar_c.x + (-3.7f * north.x + 0.8f * right.x) * texel,
                           radar_c.y + (-3.7f * north.y + 0.8f * right.y) * texel);
-        // inside the band's inner edge: the opponents and checkpoints are centred on its outer edge, about 5.5 texels
-        // wide, and a line further out cut them
-        list->AddCircle(ring, 52.5f * texel, accent, 128, 2.2f * texel);
         const ImVec2 n(ring.x + (57.2f * north.x - 0.3f * right.x) * texel, ring.y + (57.2f * north.y - 0.3f * right.y) * texel);
         list->AddCircleFilled(n, 9.6f * texel, accent, 32);
         list->AddCircle(n, 9.6f * texel, colour(11, 11, 13), 32, 1.2f * texel);
@@ -594,10 +591,10 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         if (g_special.charge > 0) arc(list, radar_c, r, kBottom - (kBottom - kTop) * g_special.charge, kBottom, accent, width);
         const int stacks = std::min(g_special.stacks, 5);
         for (int i = 0; i < stacks; ++i) {  // short dashes across, outside the bar
-            const float at = kBottom - 4 - 9.0f * i, from = r + width / 2 + 0.03f * radar_r, to = from + 0.1f * radar_r;
-            list->AddLine(polar(radar_c, from, at), polar(radar_c, to, at), colour(11, 11, 13, 0.85f), 0.065f * radar_r);
-            list->AddLine(polar(radar_c, from + 0.012f * radar_r, at), polar(radar_c, to - 0.012f * radar_r, at), accent,
-                          0.04f * radar_r);
+            const float at = kBottom - 5 - 12.0f * i, from = r + width / 2 + 0.03f * radar_r, to = from + 0.16f * radar_r;
+            list->AddLine(polar(radar_c, from, at), polar(radar_c, to, at), colour(11, 11, 13, 0.85f), 0.1f * radar_r);
+            list->AddLine(polar(radar_c, from + 0.018f * radar_r, at), polar(radar_c, to - 0.018f * radar_r, at), accent,
+                          0.065f * radar_r);
         }
         const bool ready = g_special.stacks > 0;
         const ImVec2 m = polar(radar_c, r, kTop - 14);
