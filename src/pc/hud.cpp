@@ -564,8 +564,8 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
             arc(list, radar_c, r, 198.5f, 341.5f, colour(11, 11, 13, 0.85f), width + 0.03f * radar_r);
             arc(list, radar_c, r, 200, 340, colour(255, 255, 255, 0.16f), width);
             if (g_special.charge > 0) arc(list, radar_c, r, 200, 200 + 140 * g_special.charge, accent, width);
-            // its mark at the arc's base, where the charge starts, in a disc like the gear's: seen at a glance
-            const ImVec2 m = polar(radar_c, r, 188);
+            // its mark above the arc's top end, outside the radar: below it, it was taken for one of the map's icons
+            const ImVec2 m = polar(radar_c, r + 0.2f * radar_r, 343);
             const float mr = 0.11f * radar_r;
             list->AddCircleFilled(ImVec2(m.x, m.y + 0.02f * radar_r), mr + 0.01f * radar_r, colour(0, 0, 0, 0.45f), 32);
             list->AddCircleFilled(m, mr, g_special.charge > 0.98f ? accent : colour(43, 44, 49), 32);
@@ -623,7 +623,7 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         }
         // The outer ring, apart from the face: nitrous lower left, slipstream lower right. Each meter on a dark band of
         // its own (so it stands out from the scene and from the next one), and a mark at its end: N2O, >>.
-        const float outer = 142 * s, thick = 6 * s;
+        const float outer = 142 * s, thick = 8 * s;
         const auto meter = [&](float from, float to, float fill_from, float fill_to, ImU32 fill) {
             arc(list, speed_centre, outer, from - 1.5f, to + 1.5f, colour(11, 11, 13, 0.85f), thick + 4 * s);
             arc(list, speed_centre, outer, from, to, colour(255, 255, 255, 0.16f), thick);
@@ -635,9 +635,14 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         };
         if (p.nitro >= 0) {
             // shortcut: one arc for all the bottles; drawn as the game's separate bottles once their count is read
-            meter(205, 295, 205, 205 + 90 * p.nitro,
-                  colour(channel(p.nitro_colour[0]), channel(p.nitro_colour[1]), channel(p.nitro_colour[2])));
-            mark(304, "N2O");
+            const ImU32 nitro = colour(channel(p.nitro_colour[0]), channel(p.nitro_colour[1]), channel(p.nitro_colour[2]));
+            meter(205, 295, 205, 205 + 90 * p.nitro, nitro);
+            // its mark at the top end, in a disc like the gear's, in the nitrous's colour while some is left
+            const ImVec2 m = polar(speed_centre, outer, 305);
+            list->AddCircleFilled(ImVec2(m.x, m.y + 2 * s), 17 * s, colour(0, 0, 0, 0.45f), 32);
+            list->AddCircleFilled(m, 16 * s, p.nitro > 0.01f ? nitro : colour(43, 44, 49), 32);
+            list->AddCircle(m, 16 * s, colour(11, 11, 13), 32, 2 * s);
+            centred_text(list, fonts.numbers, 13 * s, m, p.nitro > 0.01f ? colour(17, 17, 17) : colour(244, 244, 244), "N2O");
         }
         meter(65, 155, 155 - 90 * p.slipstream, 155, accent);  // always shown, empty as the game's track
         // inside the ring at its top end: outside, the gear's disc is there
