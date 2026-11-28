@@ -583,18 +583,19 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     if (g_special.presents_since < 30 && radar_r > 0) {
         // The special ability's charge, a bar of its own beside the radar (asked for 28 Nov 2026): an arc hugging the
         // radar's right side, filling from the bottom up in the HUD's colour as the car goes, on a dark band, SP above
-        // its top, lit when a charge is stored; the stored charges are dashes beside the bar's foot, one each.
+        // its top, lit when a charge is stored; the stored charges are dashes along it, one each.
         constexpr float kBottom = 150, kTop = 30;  // degrees, clockwise from up
         const float r = radar_r * 1.16f, width = 0.08f * radar_r;
         arc(list, radar_c, r, kTop - 2, kBottom + 2, colour(11, 11, 13, 0.85f), width + 0.04f * radar_r);
         arc(list, radar_c, r, kTop, kBottom, colour(255, 255, 255, 0.28f), width);
         if (g_special.charge > 0) arc(list, radar_c, r, kBottom - (kBottom - kTop) * g_special.charge, kBottom, accent, width);
         const int stacks = std::min(g_special.stacks, 5);
-        for (int i = 0; i < stacks; ++i) {  // short dashes across, outside the bar
-            const float at = kBottom - 5 - 12.0f * i, from = r + width / 2 + 0.03f * radar_r, to = from + 0.16f * radar_r;
-            list->AddLine(polar(radar_c, from, at), polar(radar_c, to, at), colour(11, 11, 13, 0.85f), 0.1f * radar_r);
-            list->AddLine(polar(radar_c, from + 0.018f * radar_r, at), polar(radar_c, to - 0.018f * radar_r, at), accent,
-                          0.065f * radar_r);
+        // one fifth of the bar's length each, from its foot up, on a thin track of their own beside it
+        const float step = (kBottom - kTop) / 5, stack_r = r + width / 2 + 0.05f * radar_r, stack_w = 0.028f * radar_r;
+        for (int i = 0; i < stacks; ++i) {
+            const float from = kBottom - step * (i + 1) + 2.5f, to = kBottom - step * i - 2.5f;
+            arc(list, radar_c, stack_r, from - 1, to + 1, colour(11, 11, 13, 0.85f), stack_w + 0.02f * radar_r);
+            arc(list, radar_c, stack_r, from, to, accent, stack_w);
         }
         const bool ready = g_special.stacks > 0;
         const ImVec2 m = polar(radar_c, r, kTop - 14);
