@@ -580,10 +580,10 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     }
     for (const Player& p : g_players) {
         // Style A's layout (1280 x 720), around the speedometer: s = 1 when the game's face is 108 lines of 480.
-        const float s = p.speed.size() * scale_y / 162 * 0.85f;  // 0.85: style A at full size covered too much
+        const float s = p.speed.size() * scale_y / 162 * 0.7f;  // 0.7: style A at full size covered too much (0.85 still did)
         const ImVec2 original = to_window(p.speed.centre_x(), p.speed.centre_y());
-        // Where the game's speedometer was, kept inside the picture with style A's margin below it.
-        const float lowest = pic.window_top + pic.window_height - 124 * s;
+        // Where the game's speedometer was, kept inside the picture: its outer arcs (127, 5 thick) and a margin below.
+        const float lowest = pic.window_top + pic.window_height - 140 * s;
         const ImVec2 speed_centre(original.x - 16 * s, std::min(original.y - 17 * s, lowest));
         const float mph = std::max(0.0f, (p.speed.angle + 130) / 270 * 175);
         const float shown = kmh ? mph * 1.609344f : mph;
