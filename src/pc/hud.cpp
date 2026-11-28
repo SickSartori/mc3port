@@ -443,7 +443,7 @@ bool hud_take_quad(const HudQuad& q) {
             return std::hypot(p.speed.centre_x() - x, p.speed.centre_y() - y) < p.speed.size() * 0.75f;
         });
         if (!near_speedometer) return false;
-        if (q.colour[3] > 0.02f) r.segments.push_back({x, y, q.colour[3]});  // unlit pieces: alpha 0
+        r.segments.push_back({x, y, q.colour[3]});  // all eleven: the unlit ones (alpha 0) show the meter's length
         return hide;
     }
     return false;
@@ -552,30 +552,32 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     float radar_r = 0;
     ImVec2 radar_c;
     if (g_radar.presents_since < 30) {
-        // The radar's ring, in the dials' style: a dark band over the game's ring (the map stays inside it), a line in
-        // the HUD's colour, and the N in a disc like the gear's, over the game's tab. Narrowed towards the left edge as
-        // the radar is. In the texture the ring's outer edge is 60.5 of its 128 texels, centred; the game draws the
-        // opponents and checkpoints centred on that edge, so the band ends 4 texels inside it and they show whole.
-        const float texel = g_radar.side / 128 * scale_y;
+        // The radar stays the game's own (made round by the renderer, renderer_game.cpp): a ring drawn over it could
+        // not match its border, nor the opponents and checkpoints the game draws on that border. Around it, the special
+        // ability's charge, lower left to top. Its centre and size are the game's ring quad's, narrowed as it is.
+        const float half = g_radar.side / 2;
         radar_c = ImVec2(pic.window_left + (g_radar.x * narrow - pic.surface_left) * scale_x,
                          pic.window_top + (g_radar.y - pic.surface_top) * scale_y);
-        radar_r = 60.5f * texel;
-        const float edge = radar_r - 4 * texel, band = 9.5f * texel;
-        list->AddCircle(radar_c, edge - band / 2, colour(17, 17, 20, 0.96f), 96, band);
-        list->AddCircle(radar_c, edge - band + 1.5f * texel, accent, 96, 1.6f * texel);
-        list->AddCircle(radar_c, edge - 0.4f * texel, colour(255, 255, 255, 0.14f), 96, 0.8f * texel);
-        if (g_special.presents_since < 30) {  // the special ability's charge: an arc around the ring, lower left to top
-            const float r = radar_r + 7 * texel;
-            arc(list, radar_c, r, 200, 340, colour(255, 255, 255, 0.16f), 3.5f * texel);
-            if (g_special.charge > 0) arc(list, radar_c, r, 200, 200 + 140 * g_special.charge, accent, 3.5f * texel);
+        radar_r = half * scale_y;
+        if (g_special.presents_since < 30) {
+            const float r = radar_r + 0.09f * radar_r, width = 0.06f * radar_r;
+            arc(list, radar_c, r, 198.5f, 341.5f, colour(11, 11, 13, 0.85f), width + 0.03f * radar_r);
+            arc(list, radar_c, r, 200, 340, colour(255, 255, 255, 0.16f), width);
+            if (g_special.charge > 0) arc(list, radar_c, r, 200, 200 + 140 * g_special.charge, accent, width);
+            // its mark at the arc's base, where the charge starts, in a disc like the gear's: seen at a glance
+            const ImVec2 m = polar(radar_c, r, 188);
+            const float mr = 0.11f * radar_r;
+            list->AddCircleFilled(ImVec2(m.x, m.y + 0.02f * radar_r), mr + 0.01f * radar_r, colour(0, 0, 0, 0.45f), 32);
+            list->AddCircleFilled(m, mr, g_special.charge > 0.98f ? accent : colour(43, 44, 49), 32);
+            list->AddCircle(m, mr, accent, 32, 0.02f * radar_r);
+            centred_text(list, fonts.numbers, 0.12f * radar_r, m,
+                         g_special.charge > 0.98f ? colour(17, 17, 17) : colour(244, 244, 244), "SP");
+            static ULONGLONG logged_at = 0;  // DEBUG: is the charge read?
+            if (GetTickCount64() - logged_at > 10000) {
+                logged_at = GetTickCount64();
+                log_line("hud: DEBUG special ability charge %.2f", g_special.charge);
+            }
         }
-        const float out = radar_r - 2 * texel;  // the N where the game's tab is: it turns with the map
-        const ImVec2 n(radar_c.x + g_radar.north_x * out, radar_c.y + g_radar.north_y * out);
-        const float nr = 9.5f * texel;
-        list->AddCircleFilled(ImVec2(n.x, n.y + 1.5f * texel), nr + texel, colour(0, 0, 0, 0.45f), 32);
-        list->AddCircleFilled(n, nr, accent, 32);
-        list->AddCircle(n, nr, colour(11, 11, 13), 32, 1.5f * texel);
-        centred_text(list, fonts.numbers, 13 * texel, ImVec2(n.x - 0.3f * texel, n.y), colour(17, 17, 17), "N");
     }
     for (const Player& p : g_players) {
         // Style A's sizes (1280 x 720) around the speedometer, s = 1 for a face of radius 118. One player with the
@@ -619,28 +621,51 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
             if (!text) std::snprintf(digit, sizeof(digit), "%d", p.gear), text = digit;
             centred_text(list, fonts.numbers, 34 * s, ImVec2(c.x - 1 * s, c.y), colour(17, 17, 17), text);
         }
-        const float outer = 134 * s;  // the outer ring: nitrous lower left, slipstream lower right
+        // The outer ring, apart from the face: nitrous lower left, slipstream lower right. Each meter on a dark band of
+        // its own (so it stands out from the scene and from the next one), and a mark at its end: N2O, >>.
+        const float outer = 142 * s, thick = 6 * s;
+        const auto meter = [&](float from, float to, float fill_from, float fill_to, ImU32 fill) {
+            arc(list, speed_centre, outer, from - 1.5f, to + 1.5f, colour(11, 11, 13, 0.85f), thick + 4 * s);
+            arc(list, speed_centre, outer, from, to, colour(255, 255, 255, 0.16f), thick);
+            if (fill_to > fill_from) arc(list, speed_centre, outer, fill_from, fill_to, fill, thick);
+        };
+        const auto mark = [&](float degrees, const char* text) {
+            centred_text(list, fonts.labels, 13 * s, polar(speed_centre, outer + 15 * s, degrees), colour(244, 244, 244),
+                         text);
+        };
         if (p.nitro >= 0) {
             // shortcut: one arc for all the bottles; drawn as the game's separate bottles once their count is read
-            arc(list, speed_centre, outer, 205, 295, colour(255, 255, 255, 0.16f), 5 * s);
-            arc(list, speed_centre, outer, 205, 205 + 90 * p.nitro,
-                colour(channel(p.nitro_colour[0]), channel(p.nitro_colour[1]), channel(p.nitro_colour[2])), 5 * s);
+            meter(205, 295, 205, 205 + 90 * p.nitro,
+                  colour(channel(p.nitro_colour[0]), channel(p.nitro_colour[1]), channel(p.nitro_colour[2])));
+            mark(304, "N2O");
         }
-        // The damage meter, at the angles the game's pieces have around its speedometer, on a ring of its own between
-        // the face and the outer ring. The game lights them at alpha 0.4 (all that was seen): full here.
-        for (const auto& [degrees, alpha] : p.damage) {
-            arc(list, speed_centre, 126 * s, degrees - 10, degrees + 10, colour(232, 57, 47, std::min(1.0f, alpha / 0.4f)),
-                4 * s);
+        meter(65, 155, 155 - 90 * p.slipstream, 155, accent);  // always shown, empty as the game's track
+        // inside the ring at its top end: outside, the gear's disc is there
+        centred_text(list, fonts.labels, 13 * s, polar(speed_centre, outer - 15 * s, 60), colour(244, 244, 244), ">>");
+        if (p.slipstream > 0.98f) {  // full, ready to use: a glow that pulses twice a second, as the game's own
+            const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 4 * kPi);
+            arc(list, speed_centre, outer, 65, 155, colour(red, green, blue, 0.15f + 0.30f * pulse), (9 + 6 * pulse) * s);
+            arc(list, speed_centre, outer, 65, 155,
+                colour((red + 255) / 2, (green + 255) / 2, (blue + 255) / 2, 0.55f + 0.45f * pulse), thick);
         }
-        if (p.slipstream > 0) {  // the slipstream turbo, filling upwards; none while it is empty
-            arc(list, speed_centre, outer, 65, 155, colour(255, 255, 255, 0.16f), 5 * s);
-            arc(list, speed_centre, outer, 155 - 90 * p.slipstream, 155, accent, 5 * s);
-            if (p.slipstream > 0.98f) {  // full, ready to use: a glow that pulses twice a second, as the game's own
-                const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 4 * kPi);
-                arc(list, speed_centre, outer, 65, 155, colour(red, green, blue, 0.15f + 0.30f * pulse), (9 + 6 * pulse) * s);
-                arc(list, speed_centre, outer, 65, 155,
-                    colour((red + 255) / 2, (green + 255) / 2, (blue + 255) / 2, 0.55f + 0.45f * pulse), 5 * s);
+        // The damage meter, as layout B has it: short and small, on a ring of its own just outside the face, centred at
+        // the bottom between the nitrous and the slipstream; as many pieces as the game's (eleven), all shown (unlit
+        // dark), lit from the right as the game's from its foot, and how much is lit in percent under it.
+        if (!p.damage.empty()) {
+            int lit = 0;
+            for (const auto& piece : p.damage) lit += piece.second > 0.02f;
+            const int pieces = static_cast<int>(p.damage.size());
+            constexpr float kFrom = 163, kTo = 197;  // degrees, right to left across the bottom
+            const float step = (kTo - kFrom) / pieces, ring = 127 * s;
+            for (int i = 0; i < pieces; ++i) {
+                const float a0 = kFrom + i * step;
+                arc(list, speed_centre, ring, a0 + 0.6f, a0 + step - 0.6f,
+                    i < lit ? colour(232, 57, 47) : colour(255, 255, 255, 0.22f), 4 * s);
             }
+            char percent[8];
+            std::snprintf(percent, sizeof(percent), "%d%%", lit * 100 / pieces);
+            centred_text(list, fonts.labels, 11 * s, polar(speed_centre, ring + 11 * s, 180),
+                         lit ? colour(232, 57, 47) : colour(201, 201, 201), percent);
         }
     }
 }
