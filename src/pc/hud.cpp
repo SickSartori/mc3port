@@ -576,9 +576,10 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         const ImVec2 ring(radar_c.x + (-3.7f * north.x + 0.8f * right.x) * texel,
                           radar_c.y + (-3.7f * north.y + 0.8f * right.y) * texel);
         const ImVec2 n(ring.x + (57.2f * north.x - 0.3f * right.x) * texel, ring.y + (57.2f * north.y - 0.3f * right.y) * texel);
-        list->AddCircleFilled(n, 9.6f * texel, accent, 32);
-        list->AddCircle(n, 9.6f * texel, colour(11, 11, 13), 32, 1.2f * texel);
-        centred_text(list, fonts.numbers, 12 * texel, n, colour(17, 17, 17), "N");
+        // small and partly clear: the game's icons (races, garages) pass under it on the radar's edge
+        const ImU32 see_through = (accent & ~IM_COL32_A_MASK) | (static_cast<ImU32>(150) << IM_COL32_A_SHIFT);
+        list->AddCircleFilled(n, 7 * texel, see_through, 32);
+        centred_text(list, fonts.numbers, 9 * texel, n, colour(17, 17, 17, 0.8f), "N");
     }
     if (g_special.presents_since < 30 && radar_r > 0) {
         // The special ability's charge, a bar of its own beside the radar (asked for 28 Nov 2026): an arc hugging the
