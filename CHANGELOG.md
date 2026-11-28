@@ -11,6 +11,13 @@
   others, with the whole `vehicle.lst` and its block added at the end; `mc3port.log` names each one.
 - **Mods folder** in the launcher's About page: opens the folder, made empty the first time.
 
+### Changed
+
+- **Português (Brasil) is now refresh's translation** (version 3, made for the PS2 game and carried to the Xbox's
+  files, with his permission), in place of the one before: every menu, tutorial and loading screen, the letters
+  Ã, Õ, Â and Ê drawn into the fonts, and the navigation system's title. The strings the Xbox words differently
+  (its buttons, saves and Xbox Live) are in Portuguese too. Choosing it again makes the new files from your disc.
+
 ### Fixed
 
 - **Smoother where the city is busy**: the drawing thread no longer checks the game's memory for changed textures

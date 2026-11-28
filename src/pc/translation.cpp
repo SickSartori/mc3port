@@ -1,6 +1,7 @@
-// game_language 7, Português (Brasil): João13 e cia's translation of the Xbox game (joao13traducoes.com, CC BY-NC 4.0),
-// added to mc3port at the suggestion of NAKADANI's video. It replaces the game's English: 588 files of the disc (the
-// text archives, the menus' and loading screens' Flash files, the radar's map). mc3port ships them as differences from
+// game_language 7, Português (Brasil): refresh's translation (version 3, Nexus Mods, used with his permission), made for
+// the PS2 game and carried to the Xbox's files (sick-xport projects/mc3port/MODS-VALUTAZIONE.md), added to mc3port at
+// the suggestion of NAKADANI's video. It replaces the game's English: 745 files of the disc (the two archives with the
+// texts, fonts and subtitles, and the menus' and loading screens' Flash files). mc3port ships them as differences from
 // the disc's files (translations\pt-br.mc3patch, 2.6 MB, made by sick-xport's tools/translation/make_patch.py), and
 // makes the files once, from the player's own disc, in the data folder: the European and the USA discs have the same
 // files (only their XBEs differ), so both work.

@@ -149,7 +149,7 @@ const Texts kEnglish = {
     "The form on GitHub, already filled in, and the log to attach", "Update to %s",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "Licences, credits and how to contribute: on GitHub",
-    "Translated by Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), added at the suggestion of NAKADANI's video",
+    "Translated by refresh (version 3), used with his permission, added at the suggestion of NAKADANI's video",
     "Credits",
     "Update", "Your browser downloads the installer; open it to update",
     "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE",
@@ -258,7 +258,7 @@ const Texts kItalian = {
     "Il modulo su GitHub, gi\xC3\xA0 compilato, e il log da allegare", "Aggiorna alla %s",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenze, crediti e come contribuire: su GitHub",
-    "Tradotto da Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), aggiunto su idea del video di NAKADANI",
+    "Tradotto da refresh (versione 3), usato con il suo permesso, aggiunto su idea del video di NAKADANI",
     "Crediti",
     "Aggiorna", "Il browser scarica l'installer: aprilo per aggiornare",
     "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA",
@@ -370,7 +370,7 @@ const Texts kPortuguese = {
     "O formulário no GitHub, já preenchido, e o log para anexar", "Atualizar para %s",
     "Midnight Club é uma marca da Take-Two Interactive / Rockstar Games. Este projeto não tem ligação com elas.",
     "Licenças, créditos e como contribuir: no GitHub",
-    "Tradução de João13 e cia (CC BY-NC 4.0), adicionada por ideia do vídeo de NAKADANI",
+    "Tradução de refresh (versão 3), usada com a permissão dele, adicionada por ideia do vídeo de NAKADANI",
     "Créditos",
     "Atualizar", "O navegador baixa o instalador: abra-o para atualizar",
     "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR",
@@ -478,7 +478,7 @@ const Texts kSpanish = {
     "El formulario en GitHub, ya rellenado, y el registro para adjuntar", "Actualizar a %s",
     "Midnight Club es una marca de Take-Two Interactive / Rockstar Games. Este proyecto no está afiliado a ellas.",
     "Licencias, créditos y cómo contribuir: en GitHub",
-    "Traducido por João13 e cia (CC BY-NC 4.0), añadido por idea del vídeo de NAKADANI",
+    "Traducido por refresh (versión 3), usado con su permiso, añadido por idea del vídeo de NAKADANI",
     "Créditos",
     "Actualizar", "El navegador descarga el instalador: ábrelo para actualizar",
     "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR",
@@ -3015,8 +3015,8 @@ void Launcher::page_about() {
     tabs(tab_labels, 2, &about_tab_);
     const auto open_url = [](const char* url) { ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL); };
     if (about_tab_ == 1) {
-        if (status(true, "Portugu\xC3\xAAs (Brasil)", t.translation_credit, "joao13traducoes.com", "##translation")) {
-            open_url("https://joao13traducoes.com");
+        if (status(true, "Portugu\xC3\xAAs (Brasil)", t.translation_credit, "Nexus Mods", "##translation")) {
+            open_url("https://www.nexusmods.com/midnightclub3dubeditionremix/mods/46");
         }
         if (status(true, "NAKADANI", "YouTube", "YouTube", "##nakadani")) open_url("https://youtu.be/i5IWJ2krkeo");
         if (status(true, "Dear ImGui", "Omar Cornut \xC2\xB7 MIT", "GitHub", "##imgui")) open_url("https://github.com/ocornut/imgui");
