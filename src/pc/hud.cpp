@@ -572,7 +572,7 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         // that texture cannot do (its palette is not coloured by the game): the line in the HUD's colour on the band's
         // inner edge, and the N in a disc of the HUD's colour on the tab. Measured on the texture, in its texels (the
         // ring quad shows 128 of them): the ring's centre is 3.7 texels from the quad's centre away from the tab and
-        // 0.8 to its right, the line 56 texels out and 2.4 wide, the tab's centre 57.2 texels towards it. All turn with
+        // 0.8 to its right, the line 52.5 texels out and 2.2 wide, the tab's centre 57.2 texels towards it. All turn with
         // the map, as the quad does.
         const float half = g_radar.side / 2;
         radar_c = ImVec2(pic.window_left + (g_radar.x * narrow - pic.surface_left) * scale_x,
@@ -582,7 +582,9 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         const ImVec2 north(g_radar.north_x, g_radar.north_y), right(-g_radar.north_y, g_radar.north_x);
         const ImVec2 ring(radar_c.x + (-3.7f * north.x + 0.8f * right.x) * texel,
                           radar_c.y + (-3.7f * north.y + 0.8f * right.y) * texel);
-        list->AddCircle(ring, 56 * texel, accent, 128, 2.4f * texel);
+        // inside the band's inner edge: the opponents and checkpoints are centred on its outer edge, about 5.5 texels
+        // wide, and a line further out cut them
+        list->AddCircle(ring, 52.5f * texel, accent, 128, 2.2f * texel);
         const ImVec2 n(ring.x + (57.2f * north.x - 0.3f * right.x) * texel, ring.y + (57.2f * north.y - 0.3f * right.y) * texel);
         list->AddCircleFilled(n, 9.6f * texel, accent, 32);
         list->AddCircle(n, 9.6f * texel, colour(11, 11, 13), 32, 1.2f * texel);
