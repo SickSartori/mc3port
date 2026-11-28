@@ -568,40 +568,35 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     float radar_r = 0;
     ImVec2 radar_c;
     if (g_radar.presents_since < 30) {
-        // The radar stays the game's own (made round by the renderer, renderer_game.cpp): a ring drawn over it could
-        // not match its border, nor the opponents and checkpoints the game draws on that border. Around it, the special
-        // ability's charge, lower left to top. Its centre and size are the game's ring quad's, narrowed as it is.
+        // The radar is the game's, its ring texture drawn again in mc3port's style (hud_mc3port). Over it, here, what
+        // that texture cannot do (its palette is not coloured by the game): the line in the HUD's colour on the band's
+        // inner edge, and the N in a disc of the HUD's colour on the tab. Measured on the texture, in its texels (the
+        // ring quad shows 128 of them): the ring's centre is 3.7 texels from the quad's centre away from the tab and
+        // 0.8 to its right, the line 56 texels out and 2.4 wide, the tab's centre 57.2 texels towards it. All turn with
+        // the map, as the quad does.
         const float half = g_radar.side / 2;
         radar_c = ImVec2(pic.window_left + (g_radar.x * narrow - pic.surface_left) * scale_x,
                          pic.window_top + (g_radar.y - pic.surface_top) * scale_y);
         radar_r = half * scale_y;
+        const float texel = g_radar.side / 128 * scale_y;
+        const ImVec2 north(g_radar.north_x, g_radar.north_y), right(-g_radar.north_y, g_radar.north_x);
+        const ImVec2 ring(radar_c.x + (-3.7f * north.x + 0.8f * right.x) * texel,
+                          radar_c.y + (-3.7f * north.y + 0.8f * right.y) * texel);
+        list->AddCircle(ring, 56 * texel, accent, 128, 2.4f * texel);
+        const ImVec2 n(ring.x + (57.2f * north.x - 0.3f * right.x) * texel, ring.y + (57.2f * north.y - 0.3f * right.y) * texel);
+        list->AddCircleFilled(n, 9.6f * texel, accent, 32);
+        list->AddCircle(n, 9.6f * texel, colour(11, 11, 13), 32, 1.2f * texel);
+        centred_text(list, fonts.numbers, 12 * texel, n, colour(17, 17, 17), "N");
     }
     if (g_special.presents_since < 30 && radar_r > 0) {
-        // The special ability's charge, a bar of its own (asked for 28 Nov 2026): the game's curve over the radar, from
-        // its foot by the radar up to the top of its track, drawn again where it is (narrowed towards the left edge as
-        // the radar is) in the meters' style: a dark band, the empty track, the charge in the HUD's colour, SP at its
-        // top. Its thickness follows the radar's size.
-        const float box_width = g_special.right - g_special.left, box_height = g_special.bottom - g_special.top;
-        const ImVec2 from(0.78f, 0), control(-0.31f, 0.55f), to(0.12f, 1);  // the game's curve, in its track's box
-        constexpr int kSteps = 48;
-        ImVec2 points[kSteps + 1];
-        int charged_from = kSteps + 1;
-        for (int i = 0; i <= kSteps; ++i) {
-            const float t = static_cast<float>(i) / kSteps, u = 1 - t;
-            const float x = u * u * from.x + 2 * u * t * control.x + t * t * to.x;
-            const float y = u * u * from.y + 2 * u * t * control.y + t * t * to.y;
-            if (charged_from > kSteps && y >= 1 - g_special.charge) charged_from = i;
-            const float surface_x = (g_special.left + x * box_width) * narrow;
-            points[i] = ImVec2(pic.window_left + (surface_x - pic.surface_left) * scale_x,
-                               pic.window_top + (g_special.top + y * box_height - pic.surface_top) * scale_y);
-        }
-        const float width = 0.075f * radar_r;
-        list->AddPolyline(points, kSteps + 1, colour(11, 11, 13, 0.85f), ImDrawFlags_None, width + 0.04f * radar_r);
-        list->AddPolyline(points, kSteps + 1, colour(255, 255, 255, 0.28f), ImDrawFlags_None, width);
-        if (g_special.charge > 0 && charged_from < kSteps) {
-            list->AddPolyline(points + charged_from, kSteps + 1 - charged_from, accent, ImDrawFlags_None, width);
-        }
-        const ImVec2 m(points[0].x, points[0].y - 0.13f * radar_r);  // SP above the top of the bar
+        // The special ability's charge, a bar of its own beside the radar (asked for 28 Nov 2026): an arc hugging the
+        // radar's right side, filling from the bottom up in the HUD's colour, on a dark band, SP above its top.
+        constexpr float kBottom = 150, kTop = 30;  // degrees, clockwise from up
+        const float r = radar_r * 1.16f, width = 0.08f * radar_r;
+        arc(list, radar_c, r, kTop - 2, kBottom + 2, colour(11, 11, 13, 0.85f), width + 0.04f * radar_r);
+        arc(list, radar_c, r, kTop, kBottom, colour(255, 255, 255, 0.28f), width);
+        if (g_special.charge > 0) arc(list, radar_c, r, kBottom - (kBottom - kTop) * g_special.charge, kBottom, accent, width);
+        const ImVec2 m = polar(radar_c, r, kTop - 14);
         const float mr = 0.11f * radar_r;
         list->AddCircleFilled(ImVec2(m.x, m.y + 0.02f * radar_r), mr + 0.01f * radar_r, colour(0, 0, 0, 0.45f), 32);
         list->AddCircleFilled(m, mr, g_special.charge > 0.98f ? accent : colour(43, 44, 49), 32);
