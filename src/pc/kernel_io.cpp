@@ -777,9 +777,13 @@ NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_rout
             slow_disc_read(file->disc_entry.sector * 2048ull + offset, read);
             // A read the game waits on shows as a hitch: which file, and whether the game asked for it to be
             // asynchronous (an event or an APC), which a disc image answers at once anyway.
+            // Of that, how long it waited for another thread's read of the image (the reads take turns): a short read
+            // of the music behind a long one of the city is a wait, a slow drive is a read (issue 29).
             if (const ULONGLONG ms = GetTickCount64() - start; ms >= 20) {
-                log_line("disc: read of %s took %llu ms (offset %llX, %X bytes%s)", file->location.xbox_path.c_str(), ms,
-                         static_cast<unsigned long long>(offset), length, event || apc_routine ? ", asked async" : "");
+                const unsigned long long waited = XdvdfsImage::last_read_wait_us() / 1000;
+                log_line("disc: read of %s took %llu ms, %llu of them waiting for another read (offset %llX, %X bytes%s)",
+                         file->location.xbox_path.c_str(), ms, waited, static_cast<unsigned long long>(offset), length,
+                         event || apc_routine ? ", asked async" : "");
             }
         }
     } else if (file->host != INVALID_HANDLE_VALUE) {
