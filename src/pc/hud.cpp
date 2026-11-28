@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <cstdio>
 #include <set>
-#include <tuple>
 #include <vector>
 
 #include "imgui.h"
@@ -124,6 +123,8 @@ uint32_t g_nitro_texture = 0;    // its texture: for the log, other pieces on it
 struct Special {
     float left = 0, top = 0, right = 0, bottom = 0;  // the track, surface pixels
     float charge = 0;                                 // 0 to 1
+    int stacks = 0;                                   // charges stored, ready to use
+    int fills = 0;                                    // fills drawn since the track
     int presents_since = 1000;                        // since the track was last drawn
 };
 Special g_special;
@@ -309,36 +310,28 @@ bool hud_take_quad(const HudQuad& q) {
             }
             return false;
         }
-        // DEBUG: the pieces near the special ability's track that are not its track or fill (its stored charges?),
-        // each kind once: texture, box, colour, uv.
-        if (hide && g_special.presents_since < 30 && left < g_special.right + 60 && right > g_special.left - 60 &&
-            top < g_special.bottom + 60 && bottom > g_special.top - 60 &&
-            !(std::fabs(left - g_special.left) < 1 && std::fabs(right - g_special.right) < 1)) {
-            static std::set<std::tuple<uint32_t, int, int, int>> seen;
-            const auto key = std::make_tuple(q.texture, static_cast<int>(width), static_cast<int>(height),
-                                             static_cast<int>(q.colour[3] * 10));
-            if (seen.size() < 60 && seen.insert(key).second) {
-                log_line("hud: DEBUG near the special track: texture %08X%s %.0fx%.0f at %.0f,%.0f, colour %.2f %.2f %.2f %.2f, "
-                         "uv %.3f,%.3f-%.3f,%.3f (track %.0f..%.0f x %.0f..%.0f)", q.texture, q.program ? " program" : "",
-                         width, height, left, top, q.colour[0], q.colour[1], q.colour[2], q.colour[3], u0, v0, u1, v1,
-                         g_special.left, g_special.right, g_special.top, g_special.bottom);
-            }
-        }
         if (!hide || !q.program || !aligned || !g_gauge_texture || q.texture != g_gauge_texture || width < 20 ||
             g_players.size() != 1) {
             return false;
         }
         if (q.colour[3] < 0.6f && height > 3 * width) {
-            // The charge is the fill's alone (always drawn, with a height of 0 when empty): the track comes more
-            // than once in a frame.
+            // The track, twice a frame; after the first, two fills from its foot (seen in a drive, 28 Nov 2026): the
+            // charge, growing as the car goes and falling back, then the charges stored, 45 of the track's 212 pixels
+            // each (one seen). Both are drawn with a height of 0 when empty.
             g_special.left = left, g_special.top = top, g_special.right = right, g_special.bottom = bottom;
             g_special.presents_since = 0;
+            g_special.fills = 0;
             return true;
         }
         if (g_special.presents_since == 0 && std::fabs(left - g_special.left) < 1 &&
             std::fabs(right - g_special.right) < 1) {
-            g_special.charge = std::clamp(height / (g_special.bottom - g_special.top), 0.0f, 1.0f);
-            std::copy(q.colour, q.colour + 3, g_hud_colour);
+            const float full = std::max(bottom - g_special.top, 1.0f);
+            if (g_special.fills++ == 0) {
+                g_special.charge = std::clamp(height / full, 0.0f, 1.0f);
+                std::copy(q.colour, q.colour + 3, g_hud_colour);
+            } else {
+                g_special.stacks = static_cast<int>(std::lround(height / (full * 45 / 212)));
+            }
             return true;
         }
         return false;
@@ -592,24 +585,27 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
     }
     if (g_special.presents_since < 30 && radar_r > 0) {
         // The special ability's charge, a bar of its own beside the radar (asked for 28 Nov 2026): an arc hugging the
-        // radar's right side, filling from the bottom up in the HUD's colour, on a dark band, SP above its top.
+        // radar's right side, filling from the bottom up in the HUD's colour as the car goes, on a dark band, SP above
+        // its top, lit when a charge is stored; the stored charges are dashes beside the bar's foot, one each.
         constexpr float kBottom = 150, kTop = 30;  // degrees, clockwise from up
         const float r = radar_r * 1.16f, width = 0.08f * radar_r;
         arc(list, radar_c, r, kTop - 2, kBottom + 2, colour(11, 11, 13, 0.85f), width + 0.04f * radar_r);
         arc(list, radar_c, r, kTop, kBottom, colour(255, 255, 255, 0.28f), width);
         if (g_special.charge > 0) arc(list, radar_c, r, kBottom - (kBottom - kTop) * g_special.charge, kBottom, accent, width);
+        const int stacks = std::min(g_special.stacks, 5);
+        for (int i = 0; i < stacks; ++i) {  // short dashes across, outside the bar
+            const float at = kBottom - 4 - 9.0f * i, from = r + width / 2 + 0.03f * radar_r, to = from + 0.1f * radar_r;
+            list->AddLine(polar(radar_c, from, at), polar(radar_c, to, at), colour(11, 11, 13, 0.85f), 0.065f * radar_r);
+            list->AddLine(polar(radar_c, from + 0.012f * radar_r, at), polar(radar_c, to - 0.012f * radar_r, at), accent,
+                          0.04f * radar_r);
+        }
+        const bool ready = g_special.stacks > 0;
         const ImVec2 m = polar(radar_c, r, kTop - 14);
         const float mr = 0.11f * radar_r;
         list->AddCircleFilled(ImVec2(m.x, m.y + 0.02f * radar_r), mr + 0.01f * radar_r, colour(0, 0, 0, 0.45f), 32);
-        list->AddCircleFilled(m, mr, g_special.charge > 0.98f ? accent : colour(43, 44, 49), 32);
+        list->AddCircleFilled(m, mr, ready ? accent : colour(43, 44, 49), 32);
         list->AddCircle(m, mr, accent, 32, 0.02f * radar_r);
-        centred_text(list, fonts.numbers, 0.12f * radar_r, m,
-                     g_special.charge > 0.98f ? colour(17, 17, 17) : colour(244, 244, 244), "SP");
-        static ULONGLONG logged_at = 0;  // DEBUG: is the charge read?
-        if (GetTickCount64() - logged_at > 10000) {
-            logged_at = GetTickCount64();
-            log_line("hud: DEBUG special ability charge %.2f", g_special.charge);
-        }
+        centred_text(list, fonts.numbers, 0.12f * radar_r, m, ready ? colour(17, 17, 17) : colour(244, 244, 244), "SP");
     }
     for (const Player& p : g_players) {
         // Style A's sizes (1280 x 720) around the speedometer, s = 1 for a face of radius 118. One player with the
