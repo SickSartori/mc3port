@@ -271,26 +271,19 @@ void __cdecl wait_fence_or_event(uint32_t device, uint32_t fence, uint32_t wait_
             ++by_event;
             break;
         }
+        // Most waits outlast 1 ms with the event still to come (the GPU is simply far from the fence): sleep on it
+        // again. Spinning here instead (4 ms of SwitchToThread after each timeout) kept the game's core busy most
+        // of the time, 650 ms a second in a drive (28 Nov 2026), for frames a slower or hotter PC could not spare.
         if (static_cast<int32_t>(*issued - fence) >= static_cast<int32_t>(*issued - *done)) {
             ++by_fence;
             break;
         }
-        // The event did not come in 1 ms: likely lost (its NOP was read before it was patched). No more timed sleeps,
-        // whose 1-2 ms each could push a frame past its blank: the fence is looked at as the drawing passes it.
-        // At most 4 ms so (the game's core is shared by its threads); then the timed wait again.
-        const ULONGLONG until = GetTickCount64() + 4;
-        while (static_cast<int32_t>(*issued - fence) < static_cast<int32_t>(*issued - *done) && GetTickCount64() < until) {
-            SwitchToThread();
-        }
-        if (static_cast<int32_t>(*issued - fence) < static_cast<int32_t>(*issued - *done)) continue;
-        ++by_fence;
-        break;
     }
     QueryPerformanceCounter(&end);
     QueryPerformanceFrequency(&frequency);
     spent_us += static_cast<uint64_t>((end.QuadPart - start.QuadPart) * 1000000 / frequency.QuadPart);
     if (GetTickCount64() - logged_at >= 10000) {
-        log_line("d3d: DEBUG fence waits %u in 10 s: %u woken by the event, %u by the fence (event lost), %llu ms waited",
+        log_line("d3d: DEBUG fence waits %u in 10 s: %u woken by the event, %u by the fence (event late or lost), %llu ms waited",
                  waits, by_event, by_fence, static_cast<unsigned long long>(spent_us / 1000));
         waits = by_event = by_fence = 0, spent_us = 0, logged_at = GetTickCount64();
     }
