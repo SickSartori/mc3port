@@ -258,10 +258,41 @@ void __cdecl wait_fence_or_event(uint32_t device, uint32_t fence, uint32_t wait_
     const auto wait = reinterpret_cast<KeWaitForSingleObjectFunction>(static_cast<uintptr_t>(wait_function));
     const auto issued = reinterpret_cast<volatile uint32_t*>(device + 0x2C);
     const auto* done = reinterpret_cast<volatile uint32_t*>(*reinterpret_cast<volatile uint32_t*>(device + 0x30));
+    // DEBUG: how often the event came, how often the fence was passed without it, and the time spent.
+    static uint32_t waits = 0, by_event = 0, by_fence = 0;
+    static uint64_t spent_us = 0;
+    static ULONGLONG logged_at = GetTickCount64();
+    LARGE_INTEGER start, end, frequency;
+    QueryPerformanceCounter(&start);
+    ++waits;
     for (;;) {
         int64_t timeout = -10000;  // 1 ms, relative, in 100 ns
-        if (wait(device + 0x1DCC, 6, 1, 0, &timeout) == 0) return;  // Executive, UserMode, as the game's own call
-        if (static_cast<int32_t>(*issued - fence) >= static_cast<int32_t>(*issued - *done)) return;
+        if (wait(device + 0x1DCC, 6, 1, 0, &timeout) == 0) {  // Executive, UserMode, as the game's own call
+            ++by_event;
+            break;
+        }
+        if (static_cast<int32_t>(*issued - fence) >= static_cast<int32_t>(*issued - *done)) {
+            ++by_fence;
+            break;
+        }
+        // The event did not come in 1 ms: likely lost (its NOP was read before it was patched). No more timed sleeps,
+        // whose 1-2 ms each could push a frame past its blank: the fence is looked at as the drawing passes it.
+        // At most 4 ms so (the game's core is shared by its threads); then the timed wait again.
+        const ULONGLONG until = GetTickCount64() + 4;
+        while (static_cast<int32_t>(*issued - fence) < static_cast<int32_t>(*issued - *done) && GetTickCount64() < until) {
+            SwitchToThread();
+        }
+        if (static_cast<int32_t>(*issued - fence) < static_cast<int32_t>(*issued - *done)) continue;
+        ++by_fence;
+        break;
+    }
+    QueryPerformanceCounter(&end);
+    QueryPerformanceFrequency(&frequency);
+    spent_us += static_cast<uint64_t>((end.QuadPart - start.QuadPart) * 1000000 / frequency.QuadPart);
+    if (GetTickCount64() - logged_at >= 10000) {
+        log_line("d3d: DEBUG fence waits %u in 10 s: %u woken by the event, %u by the fence (event lost), %llu ms waited",
+                 waits, by_event, by_fence, static_cast<unsigned long long>(spent_us / 1000));
+        waits = by_event = by_fence = 0, spent_us = 0, logged_at = GetTickCount64();
     }
 }
 
