@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <set>
+#include <tuple>
 #include <vector>
 
 #include "imgui.h"
@@ -308,6 +309,21 @@ bool hud_take_quad(const HudQuad& q) {
             }
             return false;
         }
+        // DEBUG: the pieces near the special ability's track that are not its track or fill (its stored charges?),
+        // each kind once: texture, box, colour, uv.
+        if (hide && g_special.presents_since < 30 && left < g_special.right + 60 && right > g_special.left - 60 &&
+            top < g_special.bottom + 60 && bottom > g_special.top - 60 &&
+            !(std::fabs(left - g_special.left) < 1 && std::fabs(right - g_special.right) < 1)) {
+            static std::set<std::tuple<uint32_t, int, int, int>> seen;
+            const auto key = std::make_tuple(q.texture, static_cast<int>(width), static_cast<int>(height),
+                                             static_cast<int>(q.colour[3] * 10));
+            if (seen.size() < 60 && seen.insert(key).second) {
+                log_line("hud: DEBUG near the special track: texture %08X%s %.0fx%.0f at %.0f,%.0f, colour %.2f %.2f %.2f %.2f, "
+                         "uv %.3f,%.3f-%.3f,%.3f (track %.0f..%.0f x %.0f..%.0f)", q.texture, q.program ? " program" : "",
+                         width, height, left, top, q.colour[0], q.colour[1], q.colour[2], q.colour[3], u0, v0, u1, v1,
+                         g_special.left, g_special.right, g_special.top, g_special.bottom);
+            }
+        }
         if (!hide || !q.program || !aligned || !g_gauge_texture || q.texture != g_gauge_texture || width < 20 ||
             g_players.size() != 1) {
             return false;
@@ -559,24 +575,43 @@ void hud_draw(ImDrawList* list, const HudFonts& fonts) {
         radar_c = ImVec2(pic.window_left + (g_radar.x * narrow - pic.surface_left) * scale_x,
                          pic.window_top + (g_radar.y - pic.surface_top) * scale_y);
         radar_r = half * scale_y;
-        if (g_special.presents_since < 30) {
-            const float r = radar_r + 0.09f * radar_r, width = 0.06f * radar_r;
-            arc(list, radar_c, r, 198.5f, 341.5f, colour(11, 11, 13, 0.85f), width + 0.03f * radar_r);
-            arc(list, radar_c, r, 200, 340, colour(255, 255, 255, 0.16f), width);
-            if (g_special.charge > 0) arc(list, radar_c, r, 200, 200 + 140 * g_special.charge, accent, width);
-            // its mark above the arc's top end, outside the radar: below it, it was taken for one of the map's icons
-            const ImVec2 m = polar(radar_c, r + 0.2f * radar_r, 343);
-            const float mr = 0.11f * radar_r;
-            list->AddCircleFilled(ImVec2(m.x, m.y + 0.02f * radar_r), mr + 0.01f * radar_r, colour(0, 0, 0, 0.45f), 32);
-            list->AddCircleFilled(m, mr, g_special.charge > 0.98f ? accent : colour(43, 44, 49), 32);
-            list->AddCircle(m, mr, accent, 32, 0.02f * radar_r);
-            centred_text(list, fonts.numbers, 0.12f * radar_r, m,
-                         g_special.charge > 0.98f ? colour(17, 17, 17) : colour(244, 244, 244), "SP");
-            static ULONGLONG logged_at = 0;  // DEBUG: is the charge read?
-            if (GetTickCount64() - logged_at > 10000) {
-                logged_at = GetTickCount64();
-                log_line("hud: DEBUG special ability charge %.2f", g_special.charge);
-            }
+    }
+    if (g_special.presents_since < 30 && radar_r > 0) {
+        // The special ability's charge, a bar of its own (asked for 28 Nov 2026): the game's curve over the radar, from
+        // its foot by the radar up to the top of its track, drawn again where it is (narrowed towards the left edge as
+        // the radar is) in the meters' style: a dark band, the empty track, the charge in the HUD's colour, SP at its
+        // top. Its thickness follows the radar's size.
+        const float box_width = g_special.right - g_special.left, box_height = g_special.bottom - g_special.top;
+        const ImVec2 from(0.78f, 0), control(-0.31f, 0.55f), to(0.12f, 1);  // the game's curve, in its track's box
+        constexpr int kSteps = 48;
+        ImVec2 points[kSteps + 1];
+        int charged_from = kSteps + 1;
+        for (int i = 0; i <= kSteps; ++i) {
+            const float t = static_cast<float>(i) / kSteps, u = 1 - t;
+            const float x = u * u * from.x + 2 * u * t * control.x + t * t * to.x;
+            const float y = u * u * from.y + 2 * u * t * control.y + t * t * to.y;
+            if (charged_from > kSteps && y >= 1 - g_special.charge) charged_from = i;
+            const float surface_x = (g_special.left + x * box_width) * narrow;
+            points[i] = ImVec2(pic.window_left + (surface_x - pic.surface_left) * scale_x,
+                               pic.window_top + (g_special.top + y * box_height - pic.surface_top) * scale_y);
+        }
+        const float width = 0.075f * radar_r;
+        list->AddPolyline(points, kSteps + 1, colour(11, 11, 13, 0.85f), ImDrawFlags_None, width + 0.04f * radar_r);
+        list->AddPolyline(points, kSteps + 1, colour(255, 255, 255, 0.28f), ImDrawFlags_None, width);
+        if (g_special.charge > 0 && charged_from < kSteps) {
+            list->AddPolyline(points + charged_from, kSteps + 1 - charged_from, accent, ImDrawFlags_None, width);
+        }
+        const ImVec2 m(points[0].x, points[0].y - 0.13f * radar_r);  // SP above the top of the bar
+        const float mr = 0.11f * radar_r;
+        list->AddCircleFilled(ImVec2(m.x, m.y + 0.02f * radar_r), mr + 0.01f * radar_r, colour(0, 0, 0, 0.45f), 32);
+        list->AddCircleFilled(m, mr, g_special.charge > 0.98f ? accent : colour(43, 44, 49), 32);
+        list->AddCircle(m, mr, accent, 32, 0.02f * radar_r);
+        centred_text(list, fonts.numbers, 0.12f * radar_r, m,
+                     g_special.charge > 0.98f ? colour(17, 17, 17) : colour(244, 244, 244), "SP");
+        static ULONGLONG logged_at = 0;  // DEBUG: is the charge read?
+        if (GetTickCount64() - logged_at > 10000) {
+            logged_at = GetTickCount64();
+            log_line("hud: DEBUG special ability charge %.2f", g_special.charge);
         }
     }
     for (const Player& p : g_players) {
