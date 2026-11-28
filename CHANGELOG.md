@@ -13,6 +13,8 @@
 
 ### Fixed
 
+- **The game no longer freezes switching cars in the garage** (or opening the pause menu): the game's graphics code
+  could go to sleep waiting for a signal that, with the drawing on its own thread, had already gone by.
 - **No more flicker at 21:9**: at high frame rates some frames of a race were taken for a loading screen and shown
   at 16:9 for an instant (the game draws the next frame while the last one waits to be shown).
 

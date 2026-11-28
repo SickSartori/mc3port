@@ -244,6 +244,36 @@ __declspec(naked) void read_get_without_trap() {
 // and the loop ran on for 4 billion turns, reading and writing past its buffers until a page was missing: the crash
 // at a song change (issue #13; at 0x42D351 eax was -2231). On the Xbox it evidently never came to that; here, with
 // the port's timing, it did. A count of 0 now goes straight past the loop, its registers as they were.
+// D3D's fence wait (0x4165A0), when the GPU is still far from the fence (8 KB of commands or more), turns the NOPs
+// reserved at the fence into a software method that sets an event (device+0x1DCC) and sleeps on it (0x4166E8). Far is
+// measured from GET, which here follows the drawing; with the render thread the GPU thread has read well past it, so
+// the NOPs could already be read as NOPs: the event never came and the game froze (switching cars in the garage at
+// 120 fps, report 159174). The wait now also ends when the fence is passed, as the spin for a near fence does (signed,
+// like the patched loop at 0x4166DD).
+void __cdecl wait_fence_or_event(uint32_t device, uint32_t fence) {
+    const auto* signal_state = reinterpret_cast<volatile int32_t*>(device + 0x1DD0);  // the event's header + 4
+    const auto issued = reinterpret_cast<volatile uint32_t*>(device + 0x2C);
+    const auto* done = reinterpret_cast<volatile uint32_t*>(*reinterpret_cast<volatile uint32_t*>(device + 0x30));
+    while (*signal_state == 0 && static_cast<int32_t>(*issued - fence) < static_cast<int32_t>(*issued - *done)) Sleep(1);
+}
+
+// Replaces "add esi,1DCCh" at 0x4166EE (esi = device, ebp = the fence's record, whose first word the spin at 0x4166CD
+// waits for when it comes from the same place) and returns for the function, as its own epilogue at 0x416703 does: pop
+// ebx, ebp, edi, esi; ret 8.
+__declspec(naked) void d3d_fence_event_wait() {
+    __asm {
+        push dword ptr [ebp]
+        push esi
+        call wait_fence_or_event
+        add esp, 8
+        pop ebx
+        pop ebp
+        pop edi
+        pop esi
+        ret 8
+    }
+}
+
 __declspec(naked) void wma_overlap_first() {
     __asm {
         movd mm0, dword ptr [ebp - 1Ch]
@@ -346,6 +376,8 @@ struct JumpPatch {
 };
 
 const JumpPatch kJumpPatches[] = {
+    {"D3D fence wait, the event", 0x004166EE, {0x81, 0xC6, 0xCC, 0x1D, 0x00, 0x00},
+     reinterpret_cast<const void*>(&d3d_fence_event_wait)},
     {"WMA overlap-add, first loop", 0x0042CDC1, {0x0F, 0x6E, 0x45, 0xE4, 0x0F, 0x6E, 0x4D, 0xDC, 0x8B, 0x45, 0xD0},
      reinterpret_cast<const void*>(&wma_overlap_first)},
     {"WMA overlap-add, second loop", 0x0042D121, {0x0F, 0x6E, 0x45, 0xE4, 0x0F, 0x6E, 0x4D, 0xDC, 0x8B, 0x45, 0xC0},
