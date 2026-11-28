@@ -2976,9 +2976,10 @@ void report_problem() {
         char line[512];
         for (int i = 0; i < 80 && std::fgets(line, sizeof(line), file); ++i) {
             line[std::strcspn(line, "\r\n")] = 0;
-            if (std::strncmp(line, "host: ", 6) != 0 || std::strstr(line, "(software)")) continue;
+            const char* text = without_stamp(line);
+            if (std::strncmp(text, "host: ", 6) != 0 || std::strstr(text, "(software)")) continue;
             if (!system.empty()) system += "; ";
-            system += line + 6;
+            system += text + 6;
         }
         std::fclose(file);
     }
