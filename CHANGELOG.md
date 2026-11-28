@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.4.2
+## 0.4.2 (2026-11-28)
 
 ### New
 
@@ -19,6 +19,8 @@
   style (folder `hud_mc3port`), its icons whole on the edge, the N small and partly clear. The special ability has a
   bar beside the radar that fills as you drive, as the game's does, with the charges you have stored along it and
   SP lit when one is ready.
+- **A log that tells more**: every line has the time since the start, the first lines say how the session before
+  ended (a crash, a freeze, closed normally), and every 5 minutes one line sums up the frame rate and the hitches.
 - **Português (Brasil) is now refresh's translation** (version 3, made for the PS2 game and carried to the Xbox's
   files, with his permission), in place of the one before: every menu, tutorial and loading screen, the letters
   Ã, Õ, Â and Ê drawn into the fonts, and the navigation system's title. The strings the Xbox words differently

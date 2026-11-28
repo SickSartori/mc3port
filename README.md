@@ -218,8 +218,8 @@ changed in the launcher's **Controls** page.
 ## Settings
 
 Everything is in the launcher's **Settings** page, in the in-game menu (F1), and in `mc3port.ini`, where each key is
-explained. Language, frame rate, aspect ratio, resolution, filtering and the HUD apply the next time the game starts;
-the others at once.
+explained. Language, frame rate, aspect ratio, resolution and the HD HUD apply the next time the game starts; the
+others at once.
 
 The quickest choice is the **style**, above the tabs:
 
