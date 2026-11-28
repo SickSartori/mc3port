@@ -29,6 +29,7 @@
 - **Much lighter on the processor**: waiting for the graphics card, the game's core now sleeps instead of checking
   over and over. In a drive at 60 fps it is busy about 40% of the time, from about 70% in 0.4.1: room that slower
   processors, laptops and handhelds need to hold 60 fps without stutters.
+- **The game's HUD, the special ability's bar**: in 16:9 its green fill was drawn beside the curve, not on it.
 - **Smoother where the city is busy**: the drawing thread no longer checks the game's memory for changed textures
   itself (another thread does, as often): about 80 ms of its work a second less while driving.
 - **Settings that apply at once**: the texture filter and the HUD (mc3port's or the game's) change while you play;

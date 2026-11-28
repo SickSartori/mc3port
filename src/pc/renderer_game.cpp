@@ -154,8 +154,7 @@ RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, const Dra
     const uint32_t texture = state.textures[0].enabled ? state.textures[0].descriptor.address : 0;
     static const bool small_arcs = setting_at_start("hud_style") == 2;
     const ShownPicture picture = renderer_shown_picture();
-    if (!small_arcs || !texture || left > right || !picture.width || !picture.height ||
-        !renderer_over_shown_scene(surface)) {
+    if (!texture || left > right || !picture.width || !picture.height || !renderer_over_shown_scene(surface)) {
         return aspect_narrowing(surface, left, right, top, bottom, texture);
     }
     const float width = static_cast<float>(picture.width), height = static_cast<float>(picture.height);
@@ -167,9 +166,12 @@ RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, const Dra
     const bool piece = now - side.seen < 1000 && texture == side.texture && left >= side.left - 40 &&
                        right <= side.right + 40 && top >= side.top - 2 && bottom <= side.bottom + 2;
     if (!piece) return aspect_narrowing(surface, left, right, top, bottom, texture);
-    // The pieces are narrowed as their track is (a short fill inside the radar's box was narrowed apart from it), after
-    // the scaling: anchor a and factor f, then anchor A and factor k, make one anchor c with the factor f k.
+    // The pieces are narrowed as their track is, with any HUD: the special ability's short fills at its track's foot are
+    // inside the radar's box, and were narrowed towards the left apart from the curve they fill (seen with the game's
+    // HUD, 28 Nov 2026).
     RendererNarrowing n = aspect_narrowing(surface, side.left, side.right, side.top, side.bottom, texture);
+    if (!small_arcs) return n;
+    // After the scaling: anchor a and factor f, then anchor A and factor k, make one anchor c with the factor f k.
     const float f = kSideArcScale, k = n.factor, a = (side.left + side.right) / 2, A = n.anchor;
     n.anchor = (A * (1 - k) + a * k * (1 - f)) / (1 - f * k);
     n.factor = f * k;
