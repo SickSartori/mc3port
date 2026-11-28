@@ -2314,10 +2314,11 @@ std::string pad_text(const char* text) {
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
     for (const char* key :
-         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "upscaler", "upscaler_quality", "anisotropy", "hud_style", "sharp_2d", "sharp_textures"}) {
+         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "upscaler", "upscaler_quality", "sharp_2d", "sharp_textures"}) {
         if (setting(key) != setting_at_start(key)) return true;
     }
-    return false;
+    // hud_style and anisotropy apply at once, but for the redrawn pictures (hud_style 2), read at start.
+    return (setting("hud_style") == 2) != (setting_at_start("hud_style") == 2);
 }
 
 // Started by RecompLauncher, mc3.exe starts the next process itself (restart_codes.h), so the one it watches lasts.
@@ -2572,7 +2573,7 @@ void Launcher::page_settings() {
                 set_setting("render_scale", kResolutions[resolution].scale);
             }
         }
-        row(t.anisotropy, nullptr, true);
+        row(t.anisotropy, nullptr);
         const char* levels[] = {"1x", "4x", "8x", "16x"};
         static const float kLevels[] = {1, 4, 8, 16};
         int level = 0;
@@ -2640,7 +2641,7 @@ void Launcher::page_settings() {
             if (static_cast<int>(setting("game_language")) == kLanguages[i]) index = i;
         }
         if (combo("##language", names, 7, &index)) set_setting("game_language", static_cast<float>(kLanguages[index]));
-        row(t.hud, t.hud_sub, true);
+        row(t.hud, t.hud_sub, (setting("hud_style") == 2) != (setting_at_start("hud_style") == 2));
         // Shown in this order; the setting: 0 the game's, 2 the game's with its pictures redrawn, 1 mc3port's.
         const char* huds[] = {t.hud_game, t.hud_redrawn, "mc3port"};
         static const int kHudStyles[] = {0, 2, 1};
@@ -4616,6 +4617,7 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
     }
     const bool counter_on = setting("fps_counter") != 0;
     const bool hint_on = now < kMenuHintEnd;  // how to open the menu, for the first seconds of the game
+    hud_settings_refresh();  // hud_style 0/1 and hud_aspect changed in the menu apply from this frame
     const bool hud_on = hud_enabled();
     if (!visible_ && !counter_on && !hint_on && !hud_on) return;
 

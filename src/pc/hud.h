@@ -24,6 +24,9 @@ struct HudQuad {
 };
 
 bool hud_enabled();
+// hud_style 1 and hud_aspect as they are now (they apply at once); refreshed once a frame by hud_settings_refresh.
+bool hud_aspect_on();
+void hud_settings_refresh();
 // Whether the dials are read: for the new HUD, and for hud_aspect (renderer_d3d11.cpp narrows what lies in them).
 bool hud_reading();
 // The draw is one of the dials the new HUD replaces: it is then not drawn (with hud_style only).

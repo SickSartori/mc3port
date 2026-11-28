@@ -35,10 +35,7 @@ bool inside(float left, float top, float right, float bottom, const HudBox& box,
            bottom <= box.bottom + margin && (!box.wide_only || right - left >= 0.8f * (box.right - box.left));
 }
 
-bool hud_aspect() {
-    static const bool on = setting_at_start("hud_aspect") != 0;
-    return on;
-}
+bool hud_aspect() { return hud_aspect_on(); }
 
 // The game's atlas of button symbols shows White and Black as plain discs. Here those buttons are LB and RB
 // (input_hle.cpp), so the discs get those letters, drawn in code as the texture is decoded.

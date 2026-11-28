@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
@@ -253,16 +254,27 @@ int g_presents_without = 0;  // presents since the last dial was read
 
 }  // namespace
 
-bool hud_enabled() {
-    static const bool enabled = setting_at_start("hud_style") == 1;
-    return enabled;
+// hud_style 0 and 1 and hud_aspect apply at once: read once a frame (hud_settings_refresh), not at every draw.
+// hud_style 2 (the redrawn pictures) still needs a restart: its folder is read when the renderer starts.
+std::atomic<int> g_live_hud_style{-1};
+std::atomic<bool> g_live_hud_aspect{false};
+
+void hud_settings_refresh() {
+    g_live_hud_style = static_cast<int>(setting("hud_style"));
+    g_live_hud_aspect = setting("hud_aspect") != 0;
 }
 
-bool hud_reading() {
-    static const bool reading =
-        hud_enabled() || (setting_at_start("widescreen") != 0 && setting_at_start("hud_aspect") != 0);
-    return reading;
+bool hud_enabled() {
+    if (g_live_hud_style < 0) hud_settings_refresh();
+    return g_live_hud_style == 1;
 }
+
+bool hud_aspect_on() {
+    if (g_live_hud_style < 0) hud_settings_refresh();
+    return g_live_hud_aspect;
+}
+
+bool hud_reading() { return hud_enabled() || (setting_at_start("widescreen") != 0 && hud_aspect_on()); }
 
 const std::vector<HudBox>& hud_boxes() { return g_boxes; }
 

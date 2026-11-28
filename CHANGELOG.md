@@ -13,6 +13,10 @@
 
 ### Fixed
 
+- **Smoother where the city is busy**: the drawing thread no longer checks the game's memory for changed textures
+  itself (another thread does, as often): about 80 ms of its work a second less while driving.
+- **Settings that apply at once**: the texture filter and the HUD (mc3port's or the game's) change while you play;
+  only the HD HUD still needs a restart.
 - **No more short hitches at the same places of every race** (issue 29): the music's reads from the disc image no
   longer wait for the city's; each part of the game reads the image on its own. A read that still holds the game up
   says in the log how much of its time it waited for another.

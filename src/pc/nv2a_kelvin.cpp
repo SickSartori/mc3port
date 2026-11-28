@@ -869,8 +869,7 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
     // Only the positions go through the CPU once more, and only for draws whose first vertex is flat: more work
     // here slowed this thread enough to change the game's timing, and the game crashed.
     g_k.draw.screen_left = 1, g_k.draw.screen_right = 0;
-    static const bool measure = (setting_at_start("widescreen") != 0 && setting_at_start("hud_aspect") != 0) ||
-                                setting_at_start("hud_style") == 1 || setting_at_start("sharp_2d") != 0;
+    const bool measure = hud_reading() || setting_at_start("sharp_2d") != 0;
     if (measure && target.width >= 640 && count <= 1024 && renderer_over_shown_scene(target)) {
         Vec4 inputs[kVshAttributes];
         Vec4 outputs[kVshOutputs];
