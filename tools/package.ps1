@@ -70,6 +70,9 @@ if ($From) {
     # The HD HUD's pictures (hud_redrawn/README.md)
     New-Item -ItemType Directory -Force "$stage\hud_redrawn" | Out-Null
     Copy-Item hud_redrawn/*.png, hud_redrawn/README.md "$stage\hud_redrawn"
+    # mc3port's HUD: the radar the game draws, in its style (hud_mc3port/README.md)
+    New-Item -ItemType Directory -Force "$stage\hud_mc3port" | Out-Null
+    Copy-Item hud_mc3port/*.png, hud_mc3port/README.md "$stage\hud_mc3port"
     Copy-Item README.md, CHANGELOG.md, LICENSE, THIRD_PARTY.md "$stage\docs"
     # The PS2 loading music's guide, where the README's link (loading_music/README.md) finds it
     New-Item -ItemType Directory -Force "$stage\docs\loading_music" | Out-Null

@@ -776,6 +776,7 @@ void gpu_thread() {
     // GET follows the drawing: a plain store (the default one locks the bus, at every command).
     renderer_set_progress([](uint32_t get) { g_push.get.store(get, std::memory_order_release); });
     if (setting_at_start("hud_style") == 2) renderer_replacement_folder("hud_redrawn");  // the original HUD redrawn
+    if (setting_at_start("hud_style") == 1) renderer_replacement_folder("hud_mc3port");  // the radar in mc3port's style
     g_renderer_ready = renderer_start(g_window);
     if (!g_renderer_ready && !GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0)) no_direct3d();
     bool started = false;
