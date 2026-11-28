@@ -853,14 +853,14 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
     // Setting widescreen 2: a frame with a vertex in perspective is a 3D scene, shown as wide as the screen; films and
     // loading screens are flat (w 1) and stay 16:9. The first vertex of each draw, until one is in perspective.
     static const bool wider = renderer_aspect() > 16.0f / 9.0f + 0.01f;
-    if (wider && target.width >= 640 && count && !renderer_scene_noted()) {
+    if (wider && target.width >= 640 && count && !renderer_scene_noted(target.color_address)) {
         Vec4 inputs[kVshAttributes];
         std::copy(std::begin(g_k.attribute), std::end(g_k.attribute), inputs);
         fetch(0, inputs);
         Vec4 outputs[kVshOutputs];
         if (!fixed_function) g_k.vertex_program.execute(inputs, g_k.constants, outputs);
         const Vec4 first = fixed_function ? fixed_function_position(inputs[kInPosition]) : outputs[kOutPosition];
-        if (first[3] != 1) renderer_note_scene();
+        if (first[3] != 1) renderer_note_scene(target.color_address);
     }
 
     // Setting hud_aspect: where a flat draw over the 3D scene falls on the screen. Flat: w 1 on every vertex and one
@@ -869,8 +869,7 @@ void draw(uint32_t count, const VertexSource& source, Fetch fetch) {
     // Only the positions go through the CPU once more, and only for draws whose first vertex is flat: more work
     // here slowed this thread enough to change the game's timing, and the game crashed.
     g_k.draw.screen_left = 1, g_k.draw.screen_right = 0;
-    static const bool measure = (setting_at_start("widescreen") != 0 && setting_at_start("hud_aspect") != 0) ||
-                                setting_at_start("hud_style") == 1 || setting_at_start("sharp_2d") != 0;
+    const bool measure = hud_reading() || setting_at_start("sharp_2d") != 0;
     if (measure && target.width >= 640 && count <= 1024 && renderer_over_shown_scene(target)) {
         Vec4 inputs[kVshAttributes];
         Vec4 outputs[kVshOutputs];

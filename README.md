@@ -218,8 +218,8 @@ changed in the launcher's **Controls** page.
 ## Settings
 
 Everything is in the launcher's **Settings** page, in the in-game menu (F1), and in `mc3port.ini`, where each key is
-explained. Language, frame rate, aspect ratio, resolution, filtering and the HUD apply the next time the game starts;
-the others at once.
+explained. Language, frame rate, aspect ratio, resolution and the HD HUD apply the next time the game starts; the
+others at once.
 
 The quickest choice is the **style**, above the tabs:
 
@@ -235,7 +235,7 @@ The quickest choice is the **style**, above the tabs:
 
 | Setting | What it does |
 |---|---|
-| Game language | English, French, German, Spanish, Italian or Português (Brasil); by default like Windows. Português (Brasil) is João13 e cia's translation: the first time, mc3port makes its files from your disc (about 1.1 GB in `translations\pt-br` in the data folder, some seconds) |
+| Game language | English, French, German, Spanish, Italian or Português (Brasil); by default like Windows. Português (Brasil) is refresh's translation: the first time, mc3port makes its files from your disc (about 1.1 GB in `translations\pt-br` in the data folder, some seconds) |
 | Frames per second | 60, or 30 like the Xbox |
 | VSync | off by default: more frames per second, but the picture can tear (a horizontal line where two frames meet). On: it never tears, but a PC that cannot keep up may drop to 30 fps |
 | Aspect ratio | 16:9 (the game's widescreen mode), 4:3, or 21:9: your screen's own shape when it is wider than 16:9 (21:9, 32:9), with the view widened to the sides; films and loading screens stay 16:9, with bars at the sides |
@@ -273,7 +273,14 @@ folder `launcher_backgrounds` (PNG, JPG and the other formats Windows reads) bec
 instead of the disc's artwork; the left part goes under the menu.
 
 **Mods**: a file in a folder `mods` next to `mc3port.ini`, with the path it has on the disc (for example
-`mods\flash\bg_main.xbck`), is read instead of the disc's.
+`mods\flash\bg_main.xbck`), is read instead of the disc's. The same goes for the files inside the game's archives
+(`assets_x.dat` to `assets_x.dat_5`), with their path in the archive: `mods\tune\vehicle\vehicle.lst`, or a car's
+`mods\resources\vehicle\vp_350z_04\vp_350z_04.xbck`. A file the archives do not have is added, into the archive
+with the deepest of its folders (a new car's folder under `resources\vehicle\` goes beside the others): a new car
+comes as its files and the whole `vehicle.lst` with its block added at the end (the list's order is the saves' order,
+so never in the middle). The launcher's About page opens the folder (Mods folder), and `mc3port.log` names every file
+taken from it and when the game first reads it. A car's file bigger than the game's may not load: the game keeps cars in
+blocks of a fixed size.
 
 mc3port includes no such pictures or files: the folders do not exist until you make them.
 
@@ -378,12 +385,10 @@ xemu and other open-source Xbox projects were studied as references only; no cod
 - [Barlow](https://github.com/jpt/barlow) by Jeremy Tribby, SIL Open Font License: the launcher's font.
 - The launcher's background music was generated for mc3port with ElevenLabs Music (through Magnific), and is under
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- The Português (Brasil) translation is by **João13 e cia** ([joao13traducoes.com](https://joao13traducoes.com)):
-  João13 (administration, texts, review), OAleex, Krisp, Godoy and HeitorSpectre (romhack), niccbilac and João13
-  (graphics), with tools by Delutto, HeitorSpectre, Aluigi and OAleex. Licence
-  [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); mc3port ships it as differences from the disc's
-  files, unchanged (`translations/README.md`). Added at the suggestion of
-  [NAKADANI's video](https://youtu.be/i5IWJ2krkeo).
+- The Português (Brasil) translation is by **refresh** (translation and romhack, version 3,
+  [Nexus Mods](https://www.nexusmods.com/midnightclub3dubeditionremix/mods/46)), made for the PS2 game and used with his permission; mc3port
+  carries it to the Xbox's files and ships it as differences from the disc's files (`translations/README.md`). Added
+  at the suggestion of [NAKADANI's video](https://youtu.be/i5IWJ2krkeo).
 - The HD HUD's dials have their numbers and words in Republika by Apostrophic Laboratories (freeware); the font file is
   not in mc3port, only the pictures drawn with it (`hud_redrawn/README.md`).
 - The program icon and logo are mc3port's own (`tools/make_icon.py`), in the spirit of the game's logo.

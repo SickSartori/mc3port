@@ -104,7 +104,7 @@ struct Texts {
     const char *cheats, *cheats_lead, *cheat_money, *cheat_money_sub, *add_money, *game_codes, *game_codes_lead;
     const char *loading_screens, *loading_screens_sub;
     const char *crash_heading, *crash_sub, *crash_button, *crash_link;
-    const char *rtss_heading, *rtss_sub, *saves, *saves_sub;
+    const char *rtss_heading, *rtss_sub, *saves, *saves_sub, *mods, *mods_sub;
     const char *move_heading, *move_sub, *move_failed, *move_button;
     const char *move_title, *move_lead, *move_now, *move_later;
     const char *vsync, *vsync_sub;
@@ -149,7 +149,7 @@ const Texts kEnglish = {
     "The form on GitHub, already filled in, and the log to attach", "Update to %s",
     "Midnight Club is a trademark of Take-Two Interactive / Rockstar Games. This project is not affiliated with them.",
     "Licences, credits and how to contribute: on GitHub",
-    "Translated by Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), added at the suggestion of NAKADANI's video",
+    "Translated by refresh (version 3), used with his permission, added at the suggestion of NAKADANI's video",
     "Credits",
     "Update", "Your browser downloads the installer; open it to update",
     "NEW VERSION", "mc3port %s is out. What is new:", "UPDATE",
@@ -177,6 +177,7 @@ const Texts kEnglish = {
     "The game crashed last time", "mc3port-crash-report.zip is ready to attach to a report", "Report", "Report the crash",
     "RivaTuner (RTSS) can slow the game down a lot", "If it stutters: set mc3.exe to detection level None in RTSS, or close RTSS",
     "Save folder", "Your profiles. For a backup, copy the whole xbox_hdd folder",
+    "Mods folder", "Files read instead of the game's, from the disc or its archives, by the same path",
     "You have files from an earlier version", "Move your saves and settings to Documents\\mc3port",
     "Could not move them: close what uses them, then try again", "Move",
     "Move your files", "Your saves and settings from an earlier version are in a hidden folder. Move them to Documents\\mc3port, where they are easy to find and copy. Until you do, the game keeps using them where they are.", "Move now", "Later",
@@ -257,7 +258,7 @@ const Texts kItalian = {
     "Il modulo su GitHub, gi\xC3\xA0 compilato, e il log da allegare", "Aggiorna alla %s",
     "Midnight Club \xC3\xA8 un marchio di Take-Two Interactive / Rockstar Games. Progetto non affiliato.",
     "Licenze, crediti e come contribuire: su GitHub",
-    "Tradotto da Jo\xC3\xA3o13 e cia (CC BY-NC 4.0), aggiunto su idea del video di NAKADANI",
+    "Tradotto da refresh (versione 3), usato con il suo permesso, aggiunto su idea del video di NAKADANI",
     "Crediti",
     "Aggiorna", "Il browser scarica l'installer: aprilo per aggiornare",
     "NUOVA VERSIONE", "\xC3\x88 uscito mc3port %s. Le novit\xC3\xA0:", "AGGIORNA",
@@ -288,6 +289,7 @@ const Texts kItalian = {
     "L'ultima volta il gioco si \xC3\xA8 chiuso per un errore", "mc3port-crash-report.zip \xC3\xA8 pronto da allegare alla segnalazione", "Segnala", "Segnala il crash",
     "RivaTuner (RTSS) pu\xC3\xB2 rallentare molto il gioco", "Se scatta: in RTSS metti mc3.exe su detection level None, o chiudi RTSS",
     "Cartella dei salvataggi", "I tuoi profili. Per un backup copia tutta la cartella xbox_hdd",
+    "Cartella delle mod", "File letti al posto di quelli del gioco, del disco o dei suoi archivi, con lo stesso percorso",
     "Hai file di una versione precedente", "Sposta salvataggi e impostazioni in Documenti\\mc3port",
     "Spostamento non riuscito: chiudi ci\xC3\xB2 che li usa e riprova", "Sposta",
     "Sposta i tuoi file", "I salvataggi e le impostazioni di una versione precedente sono in una cartella nascosta. Spostali in Documenti\\mc3port, dove sono facili da trovare e copiare. Finch\xC3\xA9 non lo fai, il gioco continua a usarli dove sono.", "Sposta ora", "Pi\xC3\xB9 tardi",
@@ -368,7 +370,7 @@ const Texts kPortuguese = {
     "O formulário no GitHub, já preenchido, e o log para anexar", "Atualizar para %s",
     "Midnight Club é uma marca da Take-Two Interactive / Rockstar Games. Este projeto não tem ligação com elas.",
     "Licenças, créditos e como contribuir: no GitHub",
-    "Tradução de João13 e cia (CC BY-NC 4.0), adicionada por ideia do vídeo de NAKADANI",
+    "Tradução de refresh (versão 3), usada com a permissão dele, adicionada por ideia do vídeo de NAKADANI",
     "Créditos",
     "Atualizar", "O navegador baixa o instalador: abra-o para atualizar",
     "NOVA VERSÃO", "Saiu o mc3port %s. As novidades:", "ATUALIZAR",
@@ -396,6 +398,7 @@ const Texts kPortuguese = {
     "O jogo fechou com um erro da última vez", "mc3port-crash-report.zip está pronto para anexar a um relato", "Relatar", "Relatar o erro",
     "O RivaTuner (RTSS) pode deixar o jogo muito lento", "Se travar: no RTSS ponha mc3.exe em detection level None, ou feche o RTSS",
     "Pasta dos saves", "Seus perfis. Para um backup, copie toda a pasta xbox_hdd",
+    "Pasta de mods", "Arquivos lidos no lugar dos do jogo, do disco ou dos seus pacotes, pelo mesmo caminho",
     "Você tem arquivos de uma versão anterior", "Mover seus saves e configurações para Documentos\\mc3port",
     "Não foi possível movê-los: feche o que os usa e tente de novo", "Mover",
     "Mover seus arquivos", "Seus saves e configurações de uma versão anterior estão numa pasta oculta. Mova-os para Documentos\\mc3port, onde é fácil encontrá-los e copiá-los. Até lá, o jogo continua a usá-los onde estão.", "Mover agora", "Mais tarde",
@@ -475,7 +478,7 @@ const Texts kSpanish = {
     "El formulario en GitHub, ya rellenado, y el registro para adjuntar", "Actualizar a %s",
     "Midnight Club es una marca de Take-Two Interactive / Rockstar Games. Este proyecto no está afiliado a ellas.",
     "Licencias, créditos y cómo contribuir: en GitHub",
-    "Traducido por João13 e cia (CC BY-NC 4.0), añadido por idea del vídeo de NAKADANI",
+    "Traducido por refresh (versión 3), usado con su permiso, añadido por idea del vídeo de NAKADANI",
     "Créditos",
     "Actualizar", "El navegador descarga el instalador: ábrelo para actualizar",
     "NUEVA VERSIÓN", "Ha salido mc3port %s. Las novedades:", "ACTUALIZAR",
@@ -503,6 +506,7 @@ const Texts kSpanish = {
     "La última vez el juego se cerró por un error", "mc3port-crash-report.zip está listo para adjuntar a un informe", "Informar", "Informar del error",
     "RivaTuner (RTSS) puede ralentizar mucho el juego", "Si da tirones: en RTSS pon mc3.exe en detection level None, o cierra RTSS",
     "Carpeta de partidas", "Tus perfiles. Para una copia de seguridad, copia toda la carpeta xbox_hdd",
+    "Carpeta de mods", "Archivos leÃ­dos en lugar de los del juego, del disco o de sus paquetes, por la misma ruta",
     "Tienes archivos de una versión anterior", "Mover tus partidas y ajustes a Documentos\\mc3port",
     "No se pudieron mover: cierra lo que los usa y vuelve a intentarlo", "Mover",
     "Mover tus archivos", "Tus partidas y ajustes de una versión anterior están en una carpeta oculta. Muévelos a Documentos\\mc3port, donde es fácil encontrarlos y copiarlos. Hasta entonces, el juego sigue usándolos donde están.", "Mover ahora", "Más tarde",
@@ -2310,10 +2314,11 @@ std::string pad_text(const char* text) {
 // In the game: a setting the game or the renderer reads only at start (the rows marked "next start") has changed.
 bool restart_pending() {
     for (const char* key :
-         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "upscaler", "upscaler_quality", "anisotropy", "hud_style", "sharp_2d", "sharp_textures"}) {
+         {"game_language", "frame_rate", "vsync", "widescreen", "render_scale", "upscaler", "upscaler_quality", "sharp_2d", "sharp_textures"}) {
         if (setting(key) != setting_at_start(key)) return true;
     }
-    return false;
+    // hud_style and anisotropy apply at once, but for the redrawn pictures (hud_style 2), read at start.
+    return (setting("hud_style") == 2) != (setting_at_start("hud_style") == 2);
 }
 
 // Started by RecompLauncher, mc3.exe starts the next process itself (restart_codes.h), so the one it watches lasts.
@@ -2568,7 +2573,7 @@ void Launcher::page_settings() {
                 set_setting("render_scale", kResolutions[resolution].scale);
             }
         }
-        row(t.anisotropy, nullptr, true);
+        row(t.anisotropy, nullptr);
         const char* levels[] = {"1x", "4x", "8x", "16x"};
         static const float kLevels[] = {1, 4, 8, 16};
         int level = 0;
@@ -2636,7 +2641,7 @@ void Launcher::page_settings() {
             if (static_cast<int>(setting("game_language")) == kLanguages[i]) index = i;
         }
         if (combo("##language", names, 7, &index)) set_setting("game_language", static_cast<float>(kLanguages[index]));
-        row(t.hud, t.hud_sub, true);
+        row(t.hud, t.hud_sub, (setting("hud_style") == 2) != (setting_at_start("hud_style") == 2));
         // Shown in this order; the setting: 0 the game's, 2 the game's with its pictures redrawn, 1 mc3port's.
         const char* huds[] = {t.hud_game, t.hud_redrawn, "mc3port"};
         static const int kHudStyles[] = {0, 2, 1};
@@ -2938,6 +2943,14 @@ void show_saves() {
     ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
+// The mods folder (kernel_io.cpp, archive_mods.h), made empty the first time.
+void show_mods() {
+    const std::filesystem::path folder = data_directory() / "mods";
+    std::error_code ignored;
+    std::filesystem::create_directories(folder, ignored);
+    ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
 // mc3port.log selected in Explorer, or the report of a crash when there is a new one.
 void show_log() {
     const std::filesystem::path file = crash_report_ready() ? crash_report_path() : log_directory() / "mc3port.log";
@@ -2963,9 +2976,10 @@ void report_problem() {
         char line[512];
         for (int i = 0; i < 80 && std::fgets(line, sizeof(line), file); ++i) {
             line[std::strcspn(line, "\r\n")] = 0;
-            if (std::strncmp(line, "host: ", 6) != 0 || std::strstr(line, "(software)")) continue;
+            const char* text = without_stamp(line);
+            if (std::strncmp(text, "host: ", 6) != 0 || std::strstr(text, "(software)")) continue;
             if (!system.empty()) system += "; ";
-            system += line + 6;
+            system += text + 6;
         }
         std::fclose(file);
     }
@@ -3002,8 +3016,8 @@ void Launcher::page_about() {
     tabs(tab_labels, 2, &about_tab_);
     const auto open_url = [](const char* url) { ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL); };
     if (about_tab_ == 1) {
-        if (status(true, "Portugu\xC3\xAAs (Brasil)", t.translation_credit, "joao13traducoes.com", "##translation")) {
-            open_url("https://joao13traducoes.com");
+        if (status(true, "Portugu\xC3\xAAs (Brasil)", t.translation_credit, "Nexus Mods", "##translation")) {
+            open_url("https://www.nexusmods.com/midnightclub3dubeditionremix/mods/46");
         }
         if (status(true, "NAKADANI", "YouTube", "YouTube", "##nakadani")) open_url("https://youtu.be/i5IWJ2krkeo");
         if (status(true, "Dear ImGui", "Omar Cornut \xC2\xB7 MIT", "GitHub", "##imgui")) open_url("https://github.com/ocornut/imgui");
@@ -3017,6 +3031,7 @@ void Launcher::page_about() {
     std::snprintf(heading, sizeof(heading), "mc3port %s", MC3PORT_VERSION);
     if (status(true, heading, t.credits, "GitHub", "##github")) open_url((std::string("https://github.com/") + kRepository).c_str());
     if (status(true, t.saves, t.saves_sub, t.open, "##saves")) show_saves();
+    if (status(true, t.mods, t.mods_sub, t.open, "##mods")) show_mods();
     if (status(true, t.logs, t.logs_sub, t.open, "##logs")) show_log();
     if (status(true, t.report, t.report_sub, t.open, "##report")) report_problem();
     // Never needed to play, and it buys nothing (README, "Supporting the project"): a row among the others, no reminders.
@@ -4603,6 +4618,7 @@ void Launcher::overlay(ID3D11Device* device, ID3D11DeviceContext* context, ID3D1
     }
     const bool counter_on = setting("fps_counter") != 0;
     const bool hint_on = now < kMenuHintEnd;  // how to open the menu, for the first seconds of the game
+    hud_settings_refresh();  // hud_style 0/1 and hud_aspect changed in the menu apply from this frame
     const bool hud_on = hud_enabled();
     if (!visible_ && !counter_on && !hint_on && !hud_on) return;
 

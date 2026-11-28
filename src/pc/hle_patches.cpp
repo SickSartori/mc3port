@@ -6,6 +6,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <map>
+#include <mutex>
+#include <tuple>
 #include <vector>
 
 #include "pc/exec_memory.h"
@@ -241,6 +244,69 @@ __declspec(naked) void read_get_without_trap() {
 // and the loop ran on for 4 billion turns, reading and writing past its buffers until a page was missing: the crash
 // at a song change (issue #13; at 0x42D351 eax was -2231). On the Xbox it evidently never came to that; here, with
 // the port's timing, it did. A count of 0 now goes straight past the loop, its registers as they were.
+// D3D's fence wait (0x4165A0), when the GPU is still far from the fence (8 KB of commands or more), turns the NOPs
+// reserved at the fence into a software method that sets an event (device+0x1DCC) and sleeps on it (0x4166E8). Far is
+// measured from GET, which here follows the drawing; with the render thread the GPU thread has read well past it, so
+// the NOPs could already be read as NOPs: the event never came and the game froze (switching cars in the garage at
+// 120 fps, report 159174). The wait now also ends when the fence is passed, as the spin for a near fence does (signed,
+// like the patched loop at 0x4166DD).
+// The game's own KeWaitForSingleObject (in edi at the hook) waits on the event as before, so its set wakes the game
+// at once; a timeout of 1 ms looks at the fence. (Polling with Sleep(1) cost frames: up to 15 ms a wait.)
+using KeWaitForSingleObjectFunction = int32_t(__stdcall*)(uint32_t object, uint32_t reason, uint32_t mode,
+                                                          uint32_t alertable, int64_t* timeout);
+void __cdecl wait_fence_or_event(uint32_t device, uint32_t fence, uint32_t wait_function) {
+    const auto wait = reinterpret_cast<KeWaitForSingleObjectFunction>(static_cast<uintptr_t>(wait_function));
+    const auto issued = reinterpret_cast<volatile uint32_t*>(device + 0x2C);
+    const auto* done = reinterpret_cast<volatile uint32_t*>(*reinterpret_cast<volatile uint32_t*>(device + 0x30));
+    // DEBUG: how often the event came, how often the fence was passed without it, and the time spent.
+    static uint32_t waits = 0, by_event = 0, by_fence = 0;
+    static uint64_t spent_us = 0;
+    static ULONGLONG logged_at = GetTickCount64();
+    LARGE_INTEGER start, end, frequency;
+    QueryPerformanceCounter(&start);
+    ++waits;
+    for (;;) {
+        int64_t timeout = -10000;  // 1 ms, relative, in 100 ns
+        if (wait(device + 0x1DCC, 6, 1, 0, &timeout) == 0) {  // Executive, UserMode, as the game's own call
+            ++by_event;
+            break;
+        }
+        // Most waits outlast 1 ms with the event still to come (the GPU is simply far from the fence): sleep on it
+        // again. Spinning here instead (4 ms of SwitchToThread after each timeout) kept the game's core busy most
+        // of the time, 650 ms a second in a drive (28 Nov 2026), for frames a slower or hotter PC could not spare.
+        if (static_cast<int32_t>(*issued - fence) >= static_cast<int32_t>(*issued - *done)) {
+            ++by_fence;
+            break;
+        }
+    }
+    QueryPerformanceCounter(&end);
+    QueryPerformanceFrequency(&frequency);
+    spent_us += static_cast<uint64_t>((end.QuadPart - start.QuadPart) * 1000000 / frequency.QuadPart);
+    if (GetTickCount64() - logged_at >= 10000) {
+        log_line("d3d: DEBUG fence waits %u in 10 s: %u woken by the event, %u by the fence (event late or lost), %llu ms waited",
+                 waits, by_event, by_fence, static_cast<unsigned long long>(spent_us / 1000));
+        waits = by_event = by_fence = 0, spent_us = 0, logged_at = GetTickCount64();
+    }
+}
+
+// Replaces "add esi,1DCCh" at 0x4166EE (esi = device, edi = KeWaitForSingleObject just loaded, ebp = the fence's record, whose first word the spin at 0x4166CD
+// waits for when it comes from the same place) and returns for the function, as its own epilogue at 0x416703 does: pop
+// ebx, ebp, edi, esi; ret 8.
+__declspec(naked) void d3d_fence_event_wait() {
+    __asm {
+        push edi
+        push dword ptr [ebp]
+        push esi
+        call wait_fence_or_event
+        add esp, 12
+        pop ebx
+        pop ebp
+        pop edi
+        pop esi
+        ret 8
+    }
+}
+
 __declspec(naked) void wma_overlap_first() {
     __asm {
         movd mm0, dword ptr [ebp - 1Ch]
@@ -270,6 +336,71 @@ __declspec(naked) void wma_overlap_second() {
     }
 }
 
+// MC3_TRACE_UNLOCK=1: what the game asks its "is it unlocked?" (0x292CD0, thiscall (type, id, default), ret 0Ch,
+// answer in AL; sick-xport analisi-0.5.0/E-sblocca-xbe.md), for an "unlock all" of our own: each (type, id, caller) in
+// the log once, and again when its answer changes, with how deep in the progress cache's recount (0x292D70) it came.
+// Nothing changes for the game.
+volatile int g_unlock_cache_depth = 0;  // the game's code runs on one core
+
+void __stdcall trace_unlock(uint32_t type, uint32_t id, uint32_t fallback, uint32_t from, uint32_t result) {
+    static std::mutex mutex;
+    static std::map<std::tuple<uint32_t, uint32_t, uint32_t>, uint32_t> seen;
+    std::lock_guard<std::mutex> lock(mutex);
+    const auto [it, added] = seen.try_emplace({type, id, from}, result);
+    if (!added && it->second == result) return;
+    it->second = result;
+    log_line("unlock: type %u id %08X default %u from %08X cache %d -> %u", type, id, fallback, from,
+             g_unlock_cache_depth, result);
+}
+
+__declspec(naked) void unlock_query_original() {  // the 7 bytes the jump covers, then the rest of it
+    __asm {
+        sub esp, 14h
+        mov edx, dword ptr [esp + 20h]
+        push 0x00292CD7
+        ret
+    }
+}
+__declspec(naked) void unlock_query_traced() {
+    __asm {
+        push ecx                         // this
+        push dword ptr [esp + 16]        // default
+        push dword ptr [esp + 16]        // id
+        push dword ptr [esp + 16]        // type
+        mov ecx, dword ptr [esp + 12]
+        call unlock_query_original       // ret 0Ch
+        movzx eax, al
+        push eax                         // kept
+        push eax                         // result
+        push dword ptr [esp + 12]        // caller
+        push dword ptr [esp + 28]        // default
+        push dword ptr [esp + 28]        // id
+        push dword ptr [esp + 28]        // type
+        call trace_unlock
+        pop eax
+        pop ecx
+        ret 0Ch
+    }
+}
+__declspec(naked) void unlock_cache_original() {  // the 5 bytes the jump covers
+    __asm {
+        push ebp
+        mov ebp, dword ptr [esp + 8]
+        push 0x00292D75
+        ret
+    }
+}
+__declspec(naked) void unlock_cache_traced() {  // thiscall (list, notify), ret 8; ecx untouched
+    __asm {
+        inc g_unlock_cache_depth
+        push dword ptr [esp + 8]
+        push dword ptr [esp + 8]
+        call unlock_cache_original
+        dec g_unlock_cache_depth
+        ret 8
+    }
+}
+
 struct JumpPatch {
     const char* name;
     uint32_t address;
@@ -278,6 +409,8 @@ struct JumpPatch {
 };
 
 const JumpPatch kJumpPatches[] = {
+    {"D3D fence wait, the event", 0x004166EE, {0x81, 0xC6, 0xCC, 0x1D, 0x00, 0x00},
+     reinterpret_cast<const void*>(&d3d_fence_event_wait)},
     {"WMA overlap-add, first loop", 0x0042CDC1, {0x0F, 0x6E, 0x45, 0xE4, 0x0F, 0x6E, 0x4D, 0xDC, 0x8B, 0x45, 0xD0},
      reinterpret_cast<const void*>(&wma_overlap_first)},
     {"WMA overlap-add, second loop", 0x0042D121, {0x0F, 0x6E, 0x45, 0xE4, 0x0F, 0x6E, 0x4D, 0xDC, 0x8B, 0x45, 0xC0},
@@ -397,16 +530,23 @@ void apply_hle_patches(const Xbe& /*xbe*/) {
         std::memcpy(code, patch.replacement.data(), patch.replacement.size());
         log_line("HLE: %s at %08X replaced", patch.name, patch.address);
     }
-    for (const JumpPatch& patch : kJumpPatches) {
+    const auto redirect = [](const JumpPatch& patch) {
         auto* code = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(patch.address));
         if (std::memcmp(code, patch.original.data(), patch.original.size()) != 0) {
             log_line("HLE: %s at %08X does not match this XBE, not patched", patch.name, patch.address);
-            continue;
+            return;
         }
         code[0] = 0xE9;  // jmp rel32
         const uint32_t relative = address_of(patch.target) - (patch.address + 5);
         std::memcpy(code + 1, &relative, sizeof(relative));
         log_line("HLE: %s at %08X redirected", patch.name, patch.address);
+    };
+    for (const JumpPatch& patch : kJumpPatches) redirect(patch);
+    if (GetEnvironmentVariableA("MC3_TRACE_UNLOCK", nullptr, 0)) {
+        redirect({"unlock query (traced)", 0x00292CD0, {0x83, 0xEC, 0x14, 0x8B, 0x54, 0x24, 0x20},
+                  reinterpret_cast<const void*>(&unlock_query_traced)});
+        redirect({"unlock cache recount (traced)", 0x00292D70, {0x55, 0x8B, 0x6C, 0x24, 0x08},
+                  reinterpret_cast<const void*>(&unlock_cache_traced)});
     }
     patch_shape_and_field_of_view();
 }

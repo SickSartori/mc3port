@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(mc3port VERSION 0.4.1 LANGUAGES C CXX)
+project(mc3port VERSION 0.4.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -58,6 +58,7 @@ if(WIN32)
     # Runtime: maps the XBE, emulates the Xbox kernel and hosts the game's threads.
     add_library(mc3runtime SHARED
         ${XPORT_RUNTIME_SOURCES}
+        src/pc/archive_mods.cpp
         src/pc/audio_mixer.cpp
         src/pc/dsound_hle.cpp
         src/pc/game_disc.cpp
@@ -126,6 +127,8 @@ if(WIN32)
         target_link_libraries(test_soundtracks PRIVATE mf mfplat mfreadwrite mfuuid ole32 shell32)
         mc3_test(test_audio_gains)
         mc3_test(test_vcdiff src/pc/vcdiff.cpp)
+        mc3_test(test_archive_mods src/pc/archive_mods.cpp ${XPORT_DIR}/src/pc/log.cpp ${XPORT_DIR}/src/pc/paths.cpp)
+        xport_identity(test_archive_mods mc3port MC3PORT MC3_)
         mc3_test(test_launcher_style src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp ${XPORT_DIR}/src/pc/paths.cpp)
         mc3_test(test_settings src/pc/settings.cpp ${XPORT_DIR}/src/pc/log.cpp ${XPORT_DIR}/src/pc/paths.cpp)
         xport_identity(test_launcher_style mc3port MC3PORT MC3_)

@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.4.2 (2026-11-28)
+
+### New
+
+- **Mods inside the game's archives**: a file in the folder `mods` with the path it has inside `assets_x.dat` to
+  `assets_x.dat_5` (the game's tuning, texts, cars, cities) is read instead of the archive's, as the disc's files
+  already were: `mods\tune\vehicle\vehicle.lst`, `mods\resources\vehicle\vp_350z_04\vp_350z_04.xbck`. A file the
+  archives do not have is added, into the archive with the deepest of its folders: a new car's files beside the
+  others, with the whole `vehicle.lst` and its block added at the end; `mc3port.log` names each one.
+- **Mods folder** in the launcher's About page: opens the folder, made empty the first time.
+
+### Changed
+
+- **mc3port's HUD, new layout**: the speedometer mirrors the radar (same size, same height, on the other side);
+  nitrous and slipstream have sectors of their own on its ring, marked N2O and >>; the damage is a small dashed bar
+  between them with every piece shown, lit or not, and a percentage. The radar has a ring of its own in the dials'
+  style (folder `hud_mc3port`), its icons whole on the edge, the N small and partly clear. The special ability has a
+  bar beside the radar that fills as you drive, as the game's does, with the charges you have stored along it and
+  SP lit when one is ready.
+- **A log that tells more**: every line has the time since the start, the first lines say how the session before
+  ended (a crash, a freeze, closed normally), and every 5 minutes one line sums up the frame rate and the hitches.
+- **Português (Brasil) is now refresh's translation** (version 3, made for the PS2 game and carried to the Xbox's
+  files, with his permission), in place of the one before: every menu, tutorial and loading screen, the letters
+  Ã, Õ, Â and Ê drawn into the fonts, and the navigation system's title. The strings the Xbox words differently
+  (its buttons, saves and Xbox Live) are in Portuguese too. Choosing it again makes the new files from your disc.
+
+### Fixed
+
+- **Much lighter on the processor**: waiting for the graphics card, the game's core now sleeps instead of checking
+  over and over. In a drive at 60 fps it is busy about 40% of the time, from about 70% in 0.4.1: room that slower
+  processors, laptops and handhelds need to hold 60 fps without stutters.
+- **The game's HUD, the special ability's bar**: in 16:9 its green fill was drawn beside the curve, not on it.
+- **Smoother where the city is busy**: the drawing thread no longer checks the game's memory for changed textures
+  itself (another thread does, as often): about 80 ms of its work a second less while driving.
+- **Settings that apply at once**: the texture filter and the HUD (mc3port's or the game's) change while you play;
+  only the HD HUD still needs a restart.
+- **No more short hitches at the same places of every race** (issue 29): the music's reads from the disc image no
+  longer wait for the city's; each part of the game reads the image on its own. A read that still holds the game up
+  says in the log how much of its time it waited for another.
+- **The game no longer freezes switching cars in the garage** (or opening the pause menu): the game's graphics code
+  could go to sleep waiting for a signal that, with the drawing on its own thread, had already gone by.
+- **No more flicker at 21:9**: at high frame rates some frames of a race were taken for a loading screen and shown
+  at 16:9 for an instant (the game draws the next frame while the last one waits to be shown).
+
 ## 0.4.1 (2026-11-26)
 
 ### New

@@ -35,10 +35,7 @@ bool inside(float left, float top, float right, float bottom, const HudBox& box,
            bottom <= box.bottom + margin && (!box.wide_only || right - left >= 0.8f * (box.right - box.left));
 }
 
-bool hud_aspect() {
-    static const bool on = setting_at_start("hud_aspect") != 0;
-    return on;
-}
+bool hud_aspect() { return hud_aspect_on(); }
 
 // The game's atlas of button symbols shows White and Black as plain discs. Here those buttons are LB and RB
 // (input_hle.cpp), so the discs get those letters, drawn in code as the texture is decoded.
@@ -152,12 +149,12 @@ constexpr float kSideArcScale = 0.7f;
 
 // The narrowing for something from `left` to `right` and `top` to `bottom` (pixels) on `surface`; none when it is
 // not HUD.
-RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float left, float right, float top, float bottom,
-                                          uint32_t texture) {
+RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, const DrawState& state) {
+    const float left = state.screen_left, right = state.screen_right, top = state.screen_top, bottom = state.screen_bottom;
+    const uint32_t texture = state.textures[0].enabled ? state.textures[0].descriptor.address : 0;
     static const bool small_arcs = setting_at_start("hud_style") == 2;
     const ShownPicture picture = renderer_shown_picture();
-    if (!small_arcs || !texture || left > right || !picture.width || !picture.height ||
-        !renderer_over_shown_scene(surface)) {
+    if (!texture || left > right || !picture.width || !picture.height || !renderer_over_shown_scene(surface)) {
         return aspect_narrowing(surface, left, right, top, bottom, texture);
     }
     const float width = static_cast<float>(picture.width), height = static_cast<float>(picture.height);
@@ -169,9 +166,12 @@ RendererNarrowing renderer_game_narrowing(const SurfaceState& surface, float lef
     const bool piece = now - side.seen < 1000 && texture == side.texture && left >= side.left - 40 &&
                        right <= side.right + 40 && top >= side.top - 2 && bottom <= side.bottom + 2;
     if (!piece) return aspect_narrowing(surface, left, right, top, bottom, texture);
-    // The pieces are narrowed as their track is (a short fill inside the radar's box was narrowed apart from it), after
-    // the scaling: anchor a and factor f, then anchor A and factor k, make one anchor c with the factor f k.
+    // The pieces are narrowed as their track is, with any HUD: the special ability's short fills at its track's foot are
+    // inside the radar's box, and were narrowed towards the left apart from the curve they fill (seen with the game's
+    // HUD, 28 Nov 2026).
     RendererNarrowing n = aspect_narrowing(surface, side.left, side.right, side.top, side.bottom, texture);
+    if (!small_arcs) return n;
+    // After the scaling: anchor a and factor f, then anchor A and factor k, make one anchor c with the factor f k.
     const float f = kSideArcScale, k = n.factor, a = (side.left + side.right) / 2, A = n.anchor;
     n.anchor = (A * (1 - k) + a * k * (1 - f)) / (1 - f * k);
     n.factor = f * k;

@@ -7,7 +7,7 @@ licences:
 |---|---|---|
 | Dear ImGui 1.92.9b, by Omar Cornut and contributors | `third_party/imgui` | MIT, see `third_party/imgui/LICENSE.txt` |
 | SDL 3.4.20, by Sam Lantinga and contributors | downloaded by CMake while building (not in the repository); its licence is in `third_party/sdl3` | zlib, see `third_party/sdl3/LICENSE.txt` |
-| Português (Brasil) translation 1.0, by João13 e cia (joao13traducoes.com) | `translations/pt-br.mc3patch`: differences from the disc's files, unchanged; credits in `translations/README.md` | CC BY-NC 4.0, see https://creativecommons.org/licenses/by-nc/4.0/ |
+| Português (Brasil) translation, version 3, by refresh (https://www.nexusmods.com/midnightclub3dubeditionremix/mods/46) | `translations/pt-br.mc3patch`: differences from the disc's files, his translation carried from the PS2 game to the Xbox's files; credits in `translations/README.md` | used with the author's permission |
 | Republika, by Apostrophic Laboratories | only drawn into the pictures of `hud_redrawn` (the font file is not included) | freeware, usable in any context; not to be modified for re-release or sold |
 | Barlow Semi Condensed, by Jeremy Tribby (The Barlow Project Authors) | `third_party/fonts` | SIL Open Font License 1.1, see `third_party/fonts/OFL.txt` |
 | Launcher music, by SickSartori, generated for mc3port with ElevenLabs Music through Magnific | `res/launcher_music.mp3` | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |

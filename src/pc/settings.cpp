@@ -24,7 +24,7 @@ struct Setting {
 };
 
 const Setting kSettings[] = {
-    {"game_language", 0, "Game language: 0 = like Windows, 1 = English, 3 = German, 4 = French, 5 = Spanish, 6 = Italian, 7 = Português (Brasil) (João13 e cia's translation, over English)."},
+    {"game_language", 0, "Game language: 0 = like Windows, 1 = English, 3 = German, 4 = French, 5 = Spanish, 6 = Italian, 7 = Português (Brasil) (refresh's translation, over English)."},
     {"frame_rate", 60, "Game frames per second: 30 like the Xbox, 60 smoother (needs a PC that handles twice the work), 120 for a fast processor and a 120 Hz screen."},
     {"vsync", 0, "Wait for the screen before showing a frame: 1 = the picture never tears (on a slow PC the game may drop to 30 fps), 0 = more frames per second."},
     {"widescreen", 1, "Picture shape: 1 = 16:9, the game's own widescreen mode (wider view, no black bars); 0 = 4:3 like a classic TV; 2 = your screen's shape when it is wider than 16:9 (21:9, 32:9: the view widens to the sides, films and loading screens stay 16:9)."},

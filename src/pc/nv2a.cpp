@@ -776,6 +776,7 @@ void gpu_thread() {
     // GET follows the drawing: a plain store (the default one locks the bus, at every command).
     renderer_set_progress([](uint32_t get) { g_push.get.store(get, std::memory_order_release); });
     if (setting_at_start("hud_style") == 2) renderer_replacement_folder("hud_redrawn");  // the original HUD redrawn
+    if (setting_at_start("hud_style") == 1) renderer_replacement_folder("hud_mc3port");  // the radar in mc3port's style
     g_renderer_ready = renderer_start(g_window);
     if (!g_renderer_ready && !GetEnvironmentVariableW(L"MC3_NO_DIALOG", nullptr, 0)) no_direct3d();
     bool started = false;
@@ -1046,15 +1047,16 @@ void interrupt_thread() {
             }
         }
         // Hang detector without an extra thread (which changes the scheduling): the push buffer has not moved for
-        // 10 s, so log once where the game threads are.
+        // 10 s, so log once where the game threads are. Counted in blanks of the rate in use (600 were 5 s at 120 Hz).
         static uint32_t last_get = 0;
         static uint32_t still_frames = 0;
         const uint32_t get = g_push.get.load();
         still_frames = (get == last_get) ? still_frames + 1 : 0;
         last_get = get;
-        if (still_frames == 600 || still_frames == 660 || still_frames == 720) {
+        const uint32_t hz = static_cast<uint32_t>(nv2a_vblank_hz());
+        if (still_frames == hz * 10 || still_frames == hz * 11 || still_frames == hz * 12) {
             log_game_threads("nv2a: push buffer idle for 10 s");  // three samples, to tell a loop from a wait
-            if (still_frames == 600) log_recent_traps();
+            if (still_frames == hz * 10) log_recent_traps();
         }
     }
 }

@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -26,6 +27,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "pc/archive_mods.h"
 #include "pc/handles.h"
 #include "pc/kernel_internal.h"
 #include "pc/loading_screen.h"
@@ -116,6 +118,7 @@ struct FileObject {
     uint64_t position = 0;
     bool delete_on_close = false;
     std::mutex mutex;
+    std::shared_ptr<const ArchiveOverlay> archive_mods;  // one of the game's archives with entries from mods
 
     std::vector<DirectoryItem> listing;
     size_t next_item = 0;
@@ -372,6 +375,15 @@ std::optional<FileInfo> host_info(const fs::path& path) {
 }
 
 std::optional<FileInfo> info_of(FileObject& file) {
+    if (file.archive_mods) {
+        std::optional<FileInfo> base = file.kind == FileObject::Kind::DiscFile ? disc_info(file.disc_entry)
+                                                                               : host_info(file.host_path);
+        if (!base) return base;
+        FileInfo info = *base;
+        info.end_of_file = file.archive_mods->size;
+        info.allocation_size = (info.end_of_file + 2047) & ~uint64_t{2047};
+        return info;
+    }
     switch (file.kind) {
         case FileObject::Kind::DiscFile:
         case FileObject::Kind::DiscDirectory:
@@ -389,6 +401,8 @@ std::optional<FileInfo> info_of(FileObject& file) {
     return std::nullopt;
 }
 
+// shortcut: by path, a disc file's size is the disc's even when mods or an archive's entries change it; the game opens
+// the archives and the files it reads, which go through info_of(FileObject&).
 std::optional<FileInfo> info_of(const Location& location) {
     if (location.device == Device::Disc) {
         const std::optional<XdvdfsImage::Entry> entry = disc_entry_of(location);
@@ -507,6 +521,84 @@ NTSTATUS open_disc(const Location& location, uint32_t disposition, uint32_t opti
     return kStatusSuccess;
 }
 
+// The file's bytes as opened, before the mods of its entries: the disc's or the host file's (mods, translation).
+size_t read_unmodded(const FileObject& file, uint64_t offset, void* destination, size_t size) {
+    if (file.kind == FileObject::Kind::DiscFile) return g_disc->read(file.disc_entry, offset, destination, size);
+    OVERLAPPED overlapped{};
+    overlapped.Offset = static_cast<DWORD>(offset);
+    overlapped.OffsetHigh = static_cast<DWORD>(offset >> 32);
+    DWORD count = 0;
+    ReadFile(file.host, destination, static_cast<DWORD>(size), &count, &overlapped);
+    return count;
+}
+
+uint64_t unmodded_size(const FileObject& file) {
+    if (file.kind == FileObject::Kind::DiscFile) return file.disc_entry.size;
+    LARGE_INTEGER size{};
+    return GetFileSizeEx(file.host, &size) ? static_cast<uint64_t>(size.QuadPart) : 0;
+}
+
+// assets_x.dat and assets_x.dat_1 to _5 (archive_mods.h), whichever copy is open: the disc's, mods' or the
+// translation's. Each copy's overlay is made once, at its first opening, and kept.
+void attach_archive_mods(FileObject& file) {
+    if (file.location.components.empty() || file.kind == FileObject::Kind::DiscDirectory) return;
+    const std::string name = lower(file.location.components.back());
+    if (name != "assets_x.dat" && !name.starts_with("assets_x.dat_")) return;
+    static const std::map<std::string, fs::path> mods = [] {
+        std::error_code error;
+        return fs::is_directory(mods_folder(), error) ? mod_files(mods_folder()) : std::map<std::string, fs::path>{};
+    }();
+    if (mods.empty()) return;
+    static std::mutex mutex;
+    static std::unordered_map<std::string, std::shared_ptr<const ArchiveOverlay>> overlays;
+    const std::string key = file.kind == FileObject::Kind::DiscFile ? "disc:" + name : file.host_path.string();
+    std::lock_guard<std::mutex> lock(mutex);
+    if (const auto known = overlays.find(key); known != overlays.end()) {
+        file.archive_mods = known->second;
+        return;
+    }
+    // New files go to the archive with the deepest folder of their path, from the names of the disc's six archives.
+    static const std::map<std::string, std::vector<std::string>> additions = [] {
+        static const char* const kArchives[] = {"assets_x.dat",   "assets_x.dat_1", "assets_x.dat_2",
+                                                "assets_x.dat_3", "assets_x.dat_4", "assets_x.dat_5"};
+        std::vector<std::vector<std::string>> archives;
+        for (const char* archive : kArchives) {
+            std::vector<uint8_t> head;
+            if (const std::optional<XdvdfsImage::Entry> entry = g_disc->find(std::string("\\") + archive)) {
+                head.resize(16);
+                if (g_disc->read(*entry, 0, head.data(), 16) == 16 && std::memcmp(head.data(), "Dave", 4) == 0) {
+                    uint32_t sizes[2];
+                    std::memcpy(sizes, &head[8], sizeof(sizes));
+                    head.resize(0x800 + static_cast<size_t>(sizes[0]) + sizes[1]);
+                    if (head.size() > entry->size || g_disc->read(*entry, 0, head.data(), head.size()) != head.size()) head.clear();
+                }
+            }
+            archives.push_back(dave_entry_names(head));
+        }
+        const auto on_disc = [](const std::string& path) {
+            std::string xbox = "\\" + path;
+            std::replace(xbox.begin(), xbox.end(), '/', '\\');
+            return g_disc->find(xbox).has_value();
+        };
+        std::map<std::string, std::vector<std::string>> result;
+        const std::vector<std::vector<std::string>> assigned = assign_additions(archives, mods, on_disc);
+        for (size_t i = 0; i < assigned.size(); ++i) result[kArchives[i]] = assigned[i];
+        return result;
+    }();
+    const ArchiveRead base = [&file](uint64_t offset, void* destination, size_t size) {
+        return read_unmodded(file, offset, destination, size);
+    };
+    const auto gains = additions.find(name);
+    std::shared_ptr<const ArchiveOverlay> overlay = make_archive_overlay(
+        base, unmodded_size(file), mods, gains != additions.end() ? gains->second : std::vector<std::string>{});
+    if (overlay) {
+        log_line("mods: %s: %zu entries from mods", key.c_str(), overlay->replaced.size());
+        for (const std::string& entry : overlay->replaced) log_line("mods:   %s", entry.c_str());
+    }
+    overlays.emplace(key, overlay);
+    file.archive_mods = std::move(overlay);
+}
+
 NTSTATUS open_host(const Location& location, uint32_t access, uint32_t disposition, uint32_t options, FileObject& file,
                    uint32_t* information) {
     file.host_path = host_path_of(location);
@@ -597,6 +689,7 @@ NTSTATUS __stdcall NtCreateFile(uint32_t* file_handle, uint32_t desired_access, 
                           ? open_disc(*location, disposition, options, *file, &information)
                           : open_host(*location, desired_access, disposition, options, *file, &information);
     if (status >= 0 && skip_intro_video(location->xbox_path)) status = kStatusObjectNameNotFound;
+    if (status >= 0 && location->device == Device::Disc) attach_archive_mods(*file);
     log_line("NtCreateFile('%s' -> %s, disposition %u, options %X) = %08X", name.c_str(),
              location->xbox_path.c_str(), disposition, options, static_cast<uint32_t>(status));
     if (status >= 0) input_note_file_opened(location->xbox_path);
@@ -655,7 +748,15 @@ NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_rout
 
     NTSTATUS status = kStatusSuccess;
     uint32_t read = 0;
-    if (file->kind == FileObject::Kind::DiscFile) {
+    if (file->archive_mods) {
+        const ArchiveRead base = [&file](uint64_t at, void* destination, size_t size) {
+            const size_t done = read_unmodded(*file, at, destination, size);
+            if (file->kind == FileObject::Kind::DiscFile) slow_disc_read(file->disc_entry.sector * 2048ull + at, done);
+            return done;
+        };
+        read = static_cast<uint32_t>(read_archive_overlay(*file->archive_mods, base, offset, buffer, length));
+        if (read == 0 && length) status = offset >= file->archive_mods->size ? kStatusEndOfFile : kStatusUnsuccessful;
+    } else if (file->kind == FileObject::Kind::DiscFile) {
         if (offset >= file->disc_entry.size && length) {
             status = kStatusEndOfFile;
         } else {
@@ -676,9 +777,13 @@ NTSTATUS __stdcall NtReadFile(uint32_t handle, uint32_t event, uint32_t apc_rout
             slow_disc_read(file->disc_entry.sector * 2048ull + offset, read);
             // A read the game waits on shows as a hitch: which file, and whether the game asked for it to be
             // asynchronous (an event or an APC), which a disc image answers at once anyway.
+            // Of that, how long it waited for another thread's read of the image (the reads take turns): a short read
+            // of the music behind a long one of the city is a wait, a slow drive is a read (issue 29).
             if (const ULONGLONG ms = GetTickCount64() - start; ms >= 20) {
-                log_line("disc: read of %s took %llu ms (offset %llX, %X bytes%s)", file->location.xbox_path.c_str(), ms,
-                         static_cast<unsigned long long>(offset), length, event || apc_routine ? ", asked async" : "");
+                const unsigned long long waited = XdvdfsImage::last_read_wait_us() / 1000;
+                log_line("disc: read of %s took %llu ms, %llu of them waiting for another read (offset %llX, %X bytes%s)",
+                         file->location.xbox_path.c_str(), ms, waited, static_cast<unsigned long long>(offset), length,
+                         event || apc_routine ? ", asked async" : "");
             }
         }
     } else if (file->host != INVALID_HANDLE_VALUE) {
